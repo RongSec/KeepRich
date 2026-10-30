@@ -501,7 +501,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
   bool _loading = true;
   bool _hasFamily = false;
   bool _isAdmin = false;
-  int? _myFamilyId;
 
   @override
   void initState() {
@@ -521,8 +520,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
       return;
     }
     _hasFamily = true;
-    final f = fam.data!['family'] as Map<String, dynamic>;
-    _myFamilyId = (f['id'] as num?)?.toInt();
     final m = await ApiClient.instance.familyMembers();
     if (!mounted) return;
     final me = context.read<AuthState>().user;
@@ -547,7 +544,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     if (ok != true) return;
     final r = await ApiClient.instance.updateFamilyMember(m.id, !m.isAdmin);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已更新' : (r.message ?? '失败'))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已更新' : (r.message.isEmpty ? '失败' : r.message))));
     _load();
   }
 
@@ -569,7 +566,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     if (ok != true) return;
     final r = await ApiClient.instance.removeFamilyMember(m.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已移除' : (r.message ?? '失败'))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已移除' : (r.message.isEmpty ? '失败' : r.message))));
     _load();
   }
 
@@ -592,7 +589,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     if (ok != true) return;
     final r = await ApiClient.instance.forceDeleteFamily();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '家庭已删除' : (r.message ?? '失败'))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '家庭已删除' : (r.message.isEmpty ? '失败' : r.message))));
     Navigator.pop(context);
   }
 

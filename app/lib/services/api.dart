@@ -80,7 +80,7 @@ class ApiClient {
         receiveTimeout: const Duration(seconds: 15),
       )).post('/auth/refresh', data: {'refreshToken': _refreshToken});
       final data = r.data as Map<String, dynamic>?;
-      if (data != null && data['ok'] == true && data['data'] != null) {
+      if (data != null && data['code'] == 0 && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
         _accessToken = d['accessToken'] as String?;
         await persistTokens();

@@ -751,7 +751,6 @@ class _OverviewPageState extends State<OverviewPage> {
     if (_ov == null) return;
     final ov = _ov!;
     final f = NumberFormat('#,##0.00');
-    final a = ov.allocation;
 
     showDialog(
       context: context,

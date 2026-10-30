@@ -20,6 +20,24 @@ class ApiClient {
         }
         handler.next(options);
       },
+      onError: (e, handler) async {
+        // 401 → 用 refresh token 换新后重试一次（access token 过期免重登）
+        if (e.response?.statusCode == 401 &&
+            _refreshToken != null &&
+            e.requestOptions.extra['retried'] != true) {
+          try {
+            final ok = await _refreshAccessToken();
+            if (ok) {
+              e.requestOptions.extra['retried'] = true;
+              e.requestOptions.headers['Authorization'] = 'Bearer $_accessToken';
+              final clone = await _dio.fetch(e.requestOptions);
+              return handler.resolve(clone);
+            }
+          } catch (_) {}
+          await clear();
+        }
+        handler.next(e);
+      },
     ));
   }
   static final ApiClient instance = ApiClient._();
@@ -27,6 +45,29 @@ class ApiClient {
   late final Dio _dio;
   String? _accessToken;
   String? _refreshToken;
+
+  Future<bool> _refreshAccessToken() async {
+    try {
+      final r = await Dio(BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+      )).post('/auth/refresh', data: {'refreshToken': _refreshToken});
+      final d = r.data as Map<String, dynamic>?;
+      if (d != null && d['code'] == 0 && d['data'] != null) {
+        final data = d['data'] as Map<String, dynamic>;
+        _accessToken = data['accessToken'] as String?;
+        if (_accessToken != null) {
+          final p = await SharedPreferences.getInstance();
+          await p.setString('admin_access_token', _accessToken!);
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   bool get hasToken => _accessToken != null;
   String? get accessToken => _accessToken;

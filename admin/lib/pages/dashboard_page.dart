@@ -11,7 +11,6 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   int _userCount = 0;
   int _familyCount = 0;
-  int _txCount = 0;
   bool _loading = true;
   String? _error;
 
