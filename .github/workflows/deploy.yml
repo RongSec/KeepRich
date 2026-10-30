@@ -1,9 +1,11 @@
 name: deploy
 
 on:
-  # 仅在打版本 tag 时部署（避免 main 首推即触发失败；配置好 Secrets 后可改回 push: main）
-  push:
-    tags: [ 'v*' ]
+  # 部署需要镜像仓库与 SSH Secrets，未配置前仅允许手动触发（避免发版时挂红）
+  # 配置好 REGISTRY_USERNAME/REGISTRY_PASSWORD/SSH_* 等 Secrets 后，可改回：
+  # push:
+  #   tags: [ 'v*' ]
+  workflow_dispatch:
 
 jobs:
   build-and-push:
