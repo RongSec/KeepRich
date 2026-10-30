@@ -1,0 +1,56 @@
+# Backend
+backend/bin/
+backend/tmp/
+backend/.env
+backend/config.local.yaml
+backend/coverage.out
+backend/docs/docs.go
+
+# Flutter
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+# 应用项目应提交 pubspec.lock 保证 CI 可复现，故不忽略
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/macos/Pods/
+**/macos/Flutter/Flutter.framework
+**/macos/Flutter/Flutter.podspec
+**/linux/flutter/
+**/linux/Flutter/ephemeral/
+**/windows/flutter/
+**/windows/Flutter/ephemeral/
+**/*.iml
+**/.idea/
+**/.vscode/
+**/.metadata
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 本地工具/助手目录（不公开）
+.claude/
+.workbuddy/
+.tmp_home/
+*.tar.gz
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+.env.local

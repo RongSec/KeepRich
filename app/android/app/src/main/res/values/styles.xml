@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动主题：深色背景 -->
+    <style name="LaunchTheme" parent="@android:style/Theme.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+    <!-- 正常主题：也使用深色背景，避免过渡时白色闪烁 -->
+    <style name="NormalTheme" parent="@android:style/Theme.NoTitleBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>

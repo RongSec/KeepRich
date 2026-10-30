@@ -1,0 +1,42 @@
+name: family_finance_app
+description: 家庭与个人财务管理系统客户端
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^1.2.0
+  dio: ^5.4.0
+  go_router: ^13.0.0
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+  intl: ^0.19.0
+  fl_chart: ^0.66.0
+  web_socket_channel: ^2.4.0
+  qr_flutter: ^4.1.0
+  google_fonts: ^6.1.0
+  local_auth: ^2.2.0
+  flutter_local_notifications: ^17.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.7
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/icon.ico"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

@@ -1,0 +1,36 @@
+app:
+  name: family-finance
+  env: development
+  port: 8080
+  timezone: Asia/Shanghai
+
+database:
+  host: 127.0.0.1
+  port: 3306
+  user: finance
+  password: finance_pass
+  name: family_finance
+  charset: utf8mb4
+  parseTime: true
+  loc: Local
+
+jwt:
+  accessSecret: dev-access-secret
+  refreshSecret: dev-refresh-secret
+  accessTTL: 3600
+  refreshTTL: 2592000
+
+mfa:
+  issuer: FamilyFinance
+  cooldownDays: 7
+
+notify:
+  wsEnabled: true
+  fcmEnabled: false
+  fcmServerKey: ""
+
+plan:
+  emergencyTarget: 1000000
+  pensionTarget: 500000
+  bigPurchaseRatio: 0.5
+  investAnnualRate: 0.05

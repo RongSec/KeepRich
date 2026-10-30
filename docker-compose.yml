@@ -1,0 +1,74 @@
+name: family-finance
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: finance-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_pass}
+      MYSQL_DATABASE: ${DB_NAME:-family_finance}
+      MYSQL_USER: ${DB_USER:-finance}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-finance_pass}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./deploy/mysql/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "33060:3306"
+    networks:
+      - finance-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finance-backend
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+    ports:
+      - "28080:8080"
+    networks:
+      - finance-net
+
+  admin-web:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile.web
+    container_name: finance-admin-web
+    restart: unless-stopped
+    networks:
+      - finance-net
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: finance-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - admin-web
+    ports:
+      - "18000:80"
+      - "18443:443"
+    volumes:
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - ./deploy/nginx/html:/usr/share/nginx/html:ro
+    networks:
+      - finance-net
+
+volumes:
+  mysql_data:
+
+networks:
+  finance-net:
+    driver: bridge
