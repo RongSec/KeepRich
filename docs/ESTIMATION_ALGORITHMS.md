@@ -160,26 +160,41 @@ estimatedPayoffAt = now + remainingMonths 个月
 
 ---
 
-## 6. 未来利益（保险/理财）终值
+## 6. 未来利益（保险/理财）现值
 
-### 6.1 终值（复利）
+### 6.1 数据模型（与实现一致）
+
+用户直接录入**发放时间 + 发放额**（不做本金×复利换算）：
+
+| 字段 | 含义 |
+| --- | --- |
+| `payoutDate` | 一次性=发放日期；逐月/年/终身/自定义=开始发放时间 |
+| `payoutAmount` | 一次性=总发放额；逐月/终身/自定义=每月发放额；按年=每年发放额 |
+| `type` | `lump_sum` / `monthly` / `yearly` / `lifetime` / `custom_years` |
+| `customYears` | 自定义发放年限（仅 `custom_years`） |
+
+### 6.2 现值（折现到当下）
+
+折现率 `r = plan.investAnnualRate`（自身年化收益率，小数）；未设置时回退保守 **3%**。
 
 ```
-finalAmount = principal × (1 + annualRate / 100)^termYears
+yearsLeft = (payoutDate - now) / 365.25天
+presentValue = Σ  payoutAmount / (1+r)^(yearsLeft + i)
 ```
 
-### 6.2 发放方式
-
-| 类型 | 描述 | 计算 |
-| --- | --- | --- |
-| `monthly` | 按月发放 30 年 | monthlyPayout = finalAmount / 360 |
-| `yearly` | 按年发放 20 年 | yearlyPayout = finalAmount / 20 |
-| `lump_sum` | 到期一次性发放 | finalAmount 一次性入账 |
+| 类型 | 求和期数 i |
+| --- | --- |
+| `lump_sum` | 单笔：`payoutAmount / (1+r)^yearsLeft` |
+| `monthly` | 月度发放至 `lifeExpectancy` 岁（每月一期） |
+| `yearly` | 年度发放至 `lifeExpectancy` 岁（每年一期） |
+| `lifetime` | 终身逐月至 `lifeExpectancy` 岁 |
+| `custom_years` | 逐月发放 `customYears` 年 |
 
 ### 6.3 总收益
 
 ```
-totalGain = finalAmount - principal
+totalPayout = payoutAmount × 总期数（按类型）
+totalGain = totalPayout - presentValue
 ```
 
 ---
@@ -204,6 +219,10 @@ if actualGain > expectGain:
     # 70% 留作自由资金，30% 自动转入"硬性存储"（不可消费）
 ```
 
+**落地实现**：`hardSavingTransfer` 记入 `InvestmentRecord.hardSavingTransfer`，
+同时自动生成一笔桶间转移流水（`transfer` + `to_saving`，`sourceBucket=investment`，
+SourceRef 幂等），30% 超额从投资桶转入**储蓄桶**（即硬性存储，不参与消费）。
+
 ### 7.3 不足部分扣补
 
 ```
@@ -211,6 +230,9 @@ if actualGain < expectGain:
     deficit = expectGain - actualGain
     # 从"下月可消费余额"中扣补，确保总进度追平目标
 ```
+
+**落地实现**：`deficit` 记入 `InvestmentRecord.deficit`；总览接口计算
+`monthConsumableLeft` 时自动减去上月 `deficit`（保留负数直观展示超支）。
 
 ### 7.4 月度提醒
 
@@ -227,17 +249,18 @@ if actualGain < expectGain:
 ## 8. 家庭总财富（totalWealth）
 
 ```
-totalWealth = saving + investment + emergency + pension
+totalWealth = totalCash（现金池）
+            + saving + investment + emergency + pension
             + housingFund
-            + sum(finalAmount of future benefits, 折现到今天)
+            + sum(presentValue of future benefits, 折现到今天)
             - sum(remainingAmount of all loans)
 ```
 
 **折现说明**：
 - 未来利益是 X 年后才到期的"未来钱"
-- 折现率 = 自身年化收益率
+- 折现率 = 自身年化收益率（`plan.investAnnualRate`，未设置回退 3%）
 - 体现"真实现值"而非账面金额
-- 折现公式：`presentValue = finalAmount / (1 + r)^yearsLeft`
+- 折现公式见 §6.2
 
 ---
 
@@ -287,5 +310,16 @@ estimatedPayoffAt = now + maxRemaining 个月
 
 ---
 
-**版本**：v1.0  
-**最后更新**：2026-07-18
+## 13. 金额精度约定
+
+- 金额最小单位为**分**：所有累加/比较/分配运算在**整数分**上进行（后端 `utils/money.go`：
+  `ToCents` / `FromCents` / `Round2` / `SumYuan` / `EqualMoney`），杜绝浮点误差
+- 存储层 `decimal(14,2)` 精确到分，SQL SUM 聚合无精度损失
+- API 边界以「元」(float64) 传输，出入统一经 `Round2` 规范化到 2 位小数
+- 金额相等比较一律用「精确到分」比较（禁止 `math.Abs(a-b) > 0.01` 形式）
+- 前端展示统一 `toStringAsFixed(2)` / `NumberFormat('#,##0.00')`
+
+---
+
+**版本**：v1.1  
+**最后更新**：2026-10-30

@@ -194,28 +194,77 @@ func UpsertInvestment(c *gin.Context) {
 
 	// 幂等关联键：同一 scope+target+年月 的自动入账流水唯一
 	sourceRef := fmt.Sprintf("inv:%s:%d:%d:%d", req.Scope, targetID, req.Year, req.Month)
+	hardRef := fmt.Sprintf("invs:%s:%d:%d:%d", req.Scope, targetID, req.Year, req.Month)
 
-	if req.Amount != 0 || hasOld {
+	// —— 文档 §7 月度结算 ——
+	// 目标收益率：规划中的投资年收益率（未设置回退 3%）
+	var plan models.FinancialPlan
+	database.DB.Where("scope = ? AND target_id = ?", req.Scope, targetID).First(&plan)
+	targetRate := plan.InvestAnnualRate
+	if targetRate <= 0 {
+		targetRate = 0.03
+	}
+	// 投资桶本金 = 累计转入 + 累计收益（不含本期自动入账）
+	oldAmount := 0.0
+	if hasOld {
+		oldAmount = old.Amount
+	}
+	principal := invExpense + invIncome - oldAmount
+	expectGain := principal * targetRate / 12.0
+	actualGain := utils.Round2(req.Amount)
+
+	hardSaving := 0.0 // §7.2 超额 30% 转入硬性存储（储蓄桶）
+	deficit := 0.0    // §7.3 不足部分（下月可消费扣补）
+	if actualGain > expectGain {
+		hardSaving = utils.Round2((actualGain - expectGain) * 0.3)
+	} else if actualGain < expectGain {
+		deficit = utils.Round2(expectGain - actualGain)
+	}
+
+	if req.Amount != 0 || hasOld || hardSaving > 0 {
 		// 事务内「删旧插新」：以 SourceRef 定位旧自动流水，改备注/多次编辑都不会重复入账
 		err := database.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Where("source_ref = ?", sourceRef).Delete(&models.Transaction{}).Error; err != nil {
 				return err
 			}
-			if req.Amount == 0 {
-				return nil // 清零：只删旧流水，不入新账（冲销）
+			if req.Amount != 0 {
+				txNew := models.Transaction{
+					UID:        uid,
+					FamilyID:   familyID,
+					Scope:      req.Scope,
+					Type:       models.TxTypeIncome,
+					Category:   models.IncomeInvestment,
+					Amount:     actualGain,
+					Note:       "投资月度收益自动入账",
+					OccurredAt: time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.Local).Unix(),
+					SourceRef:  sourceRef,
+				}
+				if err := tx.Create(&txNew).Error; err != nil {
+					return err
+				}
 			}
-			txNew := models.Transaction{
-				UID:        uid,
-				FamilyID:   familyID,
-				Scope:      req.Scope,
-				Type:       models.TxTypeIncome,
-				Category:   models.IncomeInvestment,
-				Amount:     req.Amount,
-				Note:       "投资月度收益自动入账",
-				OccurredAt: time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.Local).Unix(),
-				SourceRef:  sourceRef,
+			// §7.2 超额收益 30% 自动转入硬性存储（储蓄桶，不可消费）——幂等
+			if err := tx.Where("source_ref = ?", hardRef).Delete(&models.Transaction{}).Error; err != nil {
+				return err
 			}
-			return tx.Create(&txNew).Error
+			if hardSaving > 0 {
+				hardTx := models.Transaction{
+					UID:          uid,
+					FamilyID:     familyID,
+					Scope:        req.Scope,
+					Type:         models.TxTypeTransfer,
+					Category:     models.TransferToSaving,
+					Amount:       hardSaving,
+					SourceBucket: "investment", // 从投资桶转出（桶间转移）
+					Note:         "投资超额收益 30% 自动转入硬性存储",
+					OccurredAt:   time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.Local).Unix(),
+					SourceRef:    hardRef,
+				}
+				if err := tx.Create(&hardTx).Error; err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 		if err != nil {
 			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
@@ -235,7 +284,9 @@ func UpsertInvestment(c *gin.Context) {
 	rec.Year = req.Year
 	rec.Month = req.Month
 	rec.MonthlyRate = req.MonthlyRate
-	rec.Amount = req.Amount
+	rec.Amount = actualGain
+	rec.HardSavingTransfer = hardSaving
+	rec.Deficit = deficit
 	rec.Note = req.Note
 	if rec.ID == 0 {
 		database.DB.Create(&rec)

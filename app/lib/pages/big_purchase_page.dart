@@ -71,13 +71,27 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      name.dispose();
+      price.dispose();
+      priority.dispose();
+      note.dispose();
+      return;
+    }
+    final nameText = name.text;
+    final priceText = price.text;
+    final priorityText = priority.text;
+    final noteText = note.text;
+    name.dispose();
+    price.dispose();
+    priority.dispose();
+    note.dispose();
     final body = <String, dynamic>{
       'scope': _scope,
-      'name': name.text,
-      'price': double.tryParse(price.text) ?? 0,
-      'priority': int.tryParse(priority.text) ?? 0,
-      'note': note.text,
+      'name': nameText,
+      'price': double.tryParse(priceText) ?? 0,
+      'priority': int.tryParse(priorityText) ?? 0,
+      'note': noteText,
     };
     dynamic r;
     if (initial == null) {

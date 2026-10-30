@@ -28,6 +28,24 @@ class _PlanPageState extends State<PlanPage> {
   final _consumption = TextEditingController(text: '0.25');
   bool _loading = false;
 
+  @override
+  void dispose() {
+    _emergencyTarget.dispose();
+    _pensionTarget.dispose();
+    _survival.dispose();
+    _bigPurchase.dispose();
+    _annualRate.dispose();
+    _currentAge.dispose();
+    _lifeExpectancy.dispose();
+    _loan.dispose();
+    _saving.dispose();
+    _investment.dispose();
+    _emergency.dispose();
+    _pension.dispose();
+    _consumption.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final r = await ApiClient.instance.getPlan(scope: _scope);

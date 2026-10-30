@@ -54,3 +54,8 @@ logs/
 # Env
 .env
 .env.local
+
+# Android 正式签名（严禁入库）
+*.jks
+*.keystore
+key.properties

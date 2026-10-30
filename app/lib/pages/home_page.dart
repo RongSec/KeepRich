@@ -116,7 +116,13 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: _pages[_index]),
+          // IndexedStack 保活：切换 tab 不销毁页面状态
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: _pages,
+            ),
+          ),
         ],
       ),
     );
@@ -126,7 +132,11 @@ class _HomePageState extends State<HomePage> {
   Widget _narrowLayout(BuildContext context) {
     final unreadCount = context.watch<NotifyService>().unreadCount;
     return Scaffold(
-      body: _pages[_index],
+      // IndexedStack 保活：切换 tab 不销毁页面状态
+      body: IndexedStack(
+        index: _index,
+        children: _pages,
+      ),
       bottomNavigationBar: _BottomNavWithBall(
         index: _index,
         worryFreePersonal: _worryFreePersonal,

@@ -65,8 +65,16 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         ],
       ),
     );
-    if (ok != true) return;
-    final r = await ApiClient.instance.createFamily(name.text, desc.text);
+    if (ok != true) {
+      name.dispose();
+      desc.dispose();
+      return;
+    }
+    final nameText = name.text;
+    final descText = desc.text;
+    name.dispose();
+    desc.dispose();
+    final r = await ApiClient.instance.createFamily(nameText, descText);
     if (r.ok) {
       _load();
     } else if (mounted) {
@@ -95,8 +103,16 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         ],
       ),
     );
-    if (ok != true) return;
-    final r = await ApiClient.instance.applyJoin(code.text.trim(), msg.text);
+    if (ok != true) {
+      code.dispose();
+      msg.dispose();
+      return;
+    }
+    final codeText = code.text.trim();
+    final msgText = msg.text;
+    code.dispose();
+    msg.dispose();
+    final r = await ApiClient.instance.applyJoin(codeText, msgText);
     if (!mounted) return;
     if (r.ok) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('申请已提交，等待家庭管理员审批')));
@@ -195,8 +211,13 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         ],
       ),
     );
-    if (ok != true) return;
-    final r = await ApiClient.instance.requestDeleteFamily(reason: reason.text);
+    if (ok != true) {
+      reason.dispose();
+      return;
+    }
+    final reasonText = reason.text;
+    reason.dispose();
+    final r = await ApiClient.instance.requestDeleteFamily(reason: reasonText);
     if (r.ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已发起删除投票，等待其他成员同意')));
       _load();

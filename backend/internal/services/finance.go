@@ -166,6 +166,17 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	}
 	emergency -= emergencyExp
 	pension -= pensionExp
+	// 桶间转移（文档 §7.2 超额 30% 转入储蓄桶）：带 source_bucket 的 transfer 从来源桶扣减
+	// 储蓄桶增量已由 TransferToSaving 分类累计覆盖，这里只负责扣减来源桶
+	var savingTransferOut, investmentTransferOut, emergencyTransferOut, pensionTransferOut float64
+	_ = s.sumScopeTransferOut(scope, uid, familyID, "saving", &savingTransferOut)
+	_ = s.sumScopeTransferOut(scope, uid, familyID, "investment", &investmentTransferOut)
+	_ = s.sumScopeTransferOut(scope, uid, familyID, "emergency", &emergencyTransferOut)
+	_ = s.sumScopeTransferOut(scope, uid, familyID, "pension", &pensionTransferOut)
+	saving -= savingTransferOut
+	investment -= investmentTransferOut
+	emergency -= emergencyTransferOut
+	pension -= pensionTransferOut
 
 	var incomeSum, housingFund float64
 	_ = s.sumScopeAll(scope, uid, familyID, models.TxTypeIncome, &incomeSum)
@@ -207,10 +218,10 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	if activeMonths < 1 {
 		activeMonths = 1
 	}
-	annualIncome := salaryIncome / float64(activeMonths) * 12.0
+	annualIncome := utils.Round2(salaryIncome / float64(activeMonths) * 12.0)
 
 	// 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20（文档公式结果为万元，API 统一返回元）
-	worryFree := saving + annualIncome*20
+	worryFree := utils.Round2(saving + annualIncome*20)
 
 	plan, err := s.getPlan(scope, uid, familyID)
 	if err != nil {
@@ -261,11 +272,11 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	var monthDaily float64
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeExpense, models.ExpenseDaily, monthStart, &monthDaily)
 
-	// 投资缺口：当月实际收益率 < 目标
+	// 投资缺口：当月实际收益率 < 目标（文档 §7.1：基于投资桶余额，非月收入）
 	monthlyRate, _ := s.monthlyInvestmentRate(scope, uid, familyID, now.Year(), int(now.Month()))
 	expectRate := plan.InvestAnnualRate / 12.0
 	if monthlyRate < expectRate {
-		alloc.InvestmentGap = (expectRate - monthlyRate) * monthlyIncome
+		alloc.InvestmentGap = (expectRate - monthlyRate) * investment
 	}
 
 	// 完成度
@@ -298,8 +309,8 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	fbQ := s.applyGenericScopeQuery(s.DB, scope, uid, familyID)
 	fbQ.Find(&fb)
 	for _, b := range fb {
-		s := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, plan.CurrentAge, plan.LifeExpectancy, b.CustomYears)
-		if pv, ok := s["presentValue"].(float64); ok {
+		sm := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, plan.CurrentAge, plan.LifeExpectancy, b.CustomYears, plan.InvestAnnualRate)
+		if pv, ok := sm["presentValue"].(float64); ok {
 			wealthProduct += pv
 		}
 	}
@@ -342,9 +353,8 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	}
 	estimatedPayoffAt := time.Now().AddDate(0, maxRemain, 0).Unix()
 
-	// 家庭总财富：现金池 + 5 大桶余额 + 公积金
-	// 不包含贷款、债务、未来利益（这些单独在卡片中展示）
-	totalWealth := totalCash + saving + investment + emergency + pension + housingFund
+	// 家庭总财富（文档 §8）：现金池 + 4 桶 + 公积金 + 未来利益折现 - 待还款
+	totalWealth := utils.Round2(totalCash + saving + investment + emergency + pension + housingFund + wealthProduct - totalPending)
 	if totalWealth < 0 {
 		totalWealth = 0
 	}
@@ -353,6 +363,22 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	// 注意：花超后保留负数，便于用户直观看到超支金额
 	// 使用 alloc.Consumption（原始配额）而非 monthlyConsumable（已扣减 monthDaily 的剩余），避免重复扣减
 	monthConsumableLeft := alloc.Consumption - monthDaily
+	// 文档 §7.3：上月投资收益不足部分从下月可消费余额中扣补
+	prevYear, prevMonth := now.Year(), int(now.Month())-1
+	if prevMonth < 1 {
+		prevMonth = 12
+		prevYear--
+	}
+	var prevRec models.InvestmentRecord
+	prevQ := s.DB.Where("scope = ? AND year = ? AND month = ?", scope, prevYear, prevMonth)
+	if scope == models.TxScopePersonal {
+		prevQ = prevQ.Where("target_id = ?", uid)
+	} else {
+		prevQ = prevQ.Where("target_id = ?", pickTargetID(scope, uid, familyID))
+	}
+	if err := prevQ.First(&prevRec).Error; err == nil && prevRec.Deficit > 0 {
+		monthConsumableLeft -= prevRec.Deficit
+	}
 
 	return &OverviewData{
 		TotalCash:           totalCash,
@@ -496,7 +522,7 @@ func (s *FinanceService) GetChartData(scope string, uid uint64, familyID *uint64
 	}
 	wealthProductNow := 0.0
 	for _, b := range fblist {
-		sm := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, plan.CurrentAge, plan.LifeExpectancy, b.CustomYears)
+		sm := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, plan.CurrentAge, plan.LifeExpectancy, b.CustomYears, plan.InvestAnnualRate)
 		if v, ok := sm["presentValue"].(float64); ok {
 			wealthProductNow += v
 		}
@@ -743,6 +769,14 @@ func (s *FinanceService) sumScopeBySourceBucket(scope string, uid uint64, family
 
 	*out = singleSum + multiSum
 	return nil
+}
+
+// sumScopeTransferOut 累计从指定桶转出的金额（transfer 且 source_bucket = bucket，桶间转移专用）
+func (s *FinanceService) sumScopeTransferOut(scope string, uid uint64, familyID *uint64, bucket string, out *float64) error {
+	q := s.DB.Model(&models.Transaction{}).
+		Where("type = ? AND source_bucket = ? AND (source_details IS NULL OR source_details = '')", models.TxTypeTransfer, bucket)
+	q = s.applyScopeQuery(q, scope, uid, familyID)
+	return q.Select("COALESCE(SUM(amount),0)").Scan(out).Error
 }
 
 // applyGenericScopeQuery 通用 scope 查询（适用于非 transactions 表，如 loans、benefits 等）

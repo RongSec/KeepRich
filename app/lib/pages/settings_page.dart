@@ -171,8 +171,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ],
                               ),
                             );
-                            if (ok == true && pwd.text.isNotEmpty) {
-                              final success = await biometric.enable(user.username, pwd.text);
+                            final pwdText = pwd.text;
+                            pwd.dispose();
+                            if (ok == true && pwdText.isNotEmpty) {
+                              final success = await biometric.enable(user.username, pwdText);
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text(

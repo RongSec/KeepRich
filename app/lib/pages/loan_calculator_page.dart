@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../utils/money.dart';
+
 /// 可贷款计算模块
 /// 根据用户收入情况判断是否可以承担某笔贷款
 class LoanCalculatorPage extends StatefulWidget {
@@ -22,6 +24,14 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
   final _annualRate = TextEditingController(text: '3.5');
   final _termYears = TextEditingController(text: '30');
   String _method = 'equal_payment'; // equal_payment / equal_capital
+
+  @override
+  void dispose() {
+    _totalAmount.dispose();
+    _annualRate.dispose();
+    _termYears.dispose();
+    super.dispose();
+  }
 
   double _monthlyPayment = 0;
   double _totalPayment = 0;
@@ -92,9 +102,9 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
     final maxMonthly = widget.monthlyIncome * widget.loanRatio;
 
     setState(() {
-      _monthlyPayment = monthly;
-      _totalPayment = total;
-      _totalInterest = total - P;
+      _monthlyPayment = round2(monthly);
+      _totalPayment = round2(total);
+      _totalInterest = round2(total - P);
       _canAfford = monthly <= maxMonthly;
       // 月收入为 0 时避免除零得到 Infinity/NaN
       _debtRatio = widget.monthlyIncome > 0 ? monthly / widget.monthlyIncome : 1.0;

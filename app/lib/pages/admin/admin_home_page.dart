@@ -131,13 +131,21 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         ],
       ),
     );
-    if (ok != true) return;
-    if (!mounted) return;
-    if (pwd.text.length < 8) {
+    if (ok != true) {
+      pwd.dispose();
+      return;
+    }
+    if (!mounted) {
+      pwd.dispose();
+      return;
+    }
+    final newPwd = pwd.text;
+    pwd.dispose();
+    if (newPwd.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('密码至少 8 位')));
       return;
     }
-    final r = await ApiClient.instance.adminResetPassword(id, pwd.text);
+    final r = await ApiClient.instance.adminResetPassword(id, newPwd);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已重置' : r.message)));
   }
@@ -441,6 +449,12 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {

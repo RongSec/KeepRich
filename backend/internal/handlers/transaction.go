@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -61,7 +60,8 @@ func CreateTx(c *gin.Context) {
 	if req.OccurredAt == 0 {
 		req.OccurredAt = time.Now().Unix()
 	}
-	if req.Amount == 0 {
+	req.Amount = utils.Round2(req.Amount) // 金额统一规范化到分
+	if req.Amount <= 0 {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "金额必须大于 0")
 		return
 	}
@@ -107,8 +107,8 @@ func CreateTx(c *gin.Context) {
 				}
 				totalSource += sd.Amount
 			}
-			// 校验各来源金额之和等于总金额
-			if math.Abs(totalSource-req.Amount) > 0.01 {
+			// 校验各来源金额之和等于总金额（精确到分）
+			if !utils.EqualMoney(totalSource, req.Amount) {
 				utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
 					fmt.Sprintf("各来源金额之和 (%.2f) 与总金额 (%.2f) 不一致", totalSource, req.Amount))
 				return

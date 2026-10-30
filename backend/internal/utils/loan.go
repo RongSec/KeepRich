@@ -166,6 +166,12 @@ func ComputeLoanSummary(P, annualRate float64, n, paidMonths int, method string)
 		summary.RemainingAmount = P - summary.PaidAmount
 	}
 
+	// 金额输出统一规范化到分
+	summary.MonthlyPayment = Round2(summary.MonthlyPayment)
+	summary.TotalPayment = Round2(summary.TotalPayment)
+	summary.PaidAmount = Round2(summary.PaidAmount)
+	summary.RemainingAmount = Round2(summary.RemainingAmount)
+
 	if summary.TotalPayment > 0 {
 		summary.ProgressPct = summary.PaidAmount / summary.TotalPayment
 	}
@@ -189,11 +195,11 @@ func RemainingPrincipalAny(P, annualRate float64, n, paidMonths int, method stri
 	r := MonthlyRate(annualRate)
 	switch method {
 	case "equal_payment":
-		return RemainingPrincipalEqualPayment(P, r, paidMonths, n)
+		return Round2(RemainingPrincipalEqualPayment(P, r, paidMonths, n))
 	case "equal_capital":
-		return RemainingPrincipalEqualCapital(P, paidMonths, n)
+		return Round2(RemainingPrincipalEqualCapital(P, paidMonths, n))
 	case "interest_free":
-		return P - InterestFreeMonthlyPayment(P, n)*float64(paidMonths)
+		return Round2(P - InterestFreeMonthlyPayment(P, n)*float64(paidMonths))
 	}
 	return 0
 }
@@ -205,14 +211,15 @@ func RemainingPrincipalAny(P, annualRate float64, n, paidMonths int, method stri
 //   currentAge       当前年龄（仅 lifetime 用）
 //   lifeExpectancy   预期活到 X 岁（仅 lifetime 用，默认 80）
 //   customYears      自定义年限（仅 custom_years 用）
+//   discountRate     折现年化（小数，如 0.05）；<=0 时回退保守 3%（与文档 §8 一致：折现率=自身年化收益率）
 // 返回：
 //   - payoutDate
 //   - payoutAmount
 //   - type
 //   - yearsLeft    距离首期发放剩余年数
-//   - presentValue 折现到当下的总价值（按 3% 年化折现）
+//   - presentValue 折现到当下的总价值
 //   - description
-func BenefitSummary(payoutDate int64, payoutAmount float64, benefitType string, currentAge, lifeExpectancy, customYears int) map[string]any {
+func BenefitSummary(payoutDate int64, payoutAmount float64, benefitType string, currentAge, lifeExpectancy, customYears int, discountRate float64) map[string]any {
 	res := map[string]any{
 		"payoutDate":   payoutDate,
 		"payoutAmount": payoutAmount,
@@ -234,9 +241,13 @@ func BenefitSummary(payoutDate int64, payoutAmount float64, benefitType string, 
 		case "custom_years":
 			res["description"] = "自定义年限发放"
 		}
+		res["presentValue"] = Round2(payoutAmount)
 		return res
 	}
-	const r = 0.03 // 家庭总财富折现年化（保守 3%）
+	r := discountRate
+	if r <= 0 {
+		r = 0.03 // 未设置投资年收益率时的保守折现率
+	}
 	now := time.Now().Unix()
 	if payoutDate > now {
 		yearsLeft := float64(payoutDate-now) / (365.25 * 24 * 3600.0)
@@ -320,6 +331,9 @@ func BenefitSummary(payoutDate int64, payoutAmount float64, benefitType string, 
 		}
 		res["presentValue"] = pv
 		res["description"] = "自定义发放" + itoa(customYears) + "年"
+	}
+	if pv, ok := res["presentValue"].(float64); ok {
+		res["presentValue"] = Round2(pv)
 	}
 	return res
 }

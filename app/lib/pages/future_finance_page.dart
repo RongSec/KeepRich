@@ -653,6 +653,17 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
   late final TextEditingController _note = TextEditingController(text: widget.initialNote);
   late String _method = widget.initialMethod;
 
+  @override
+  void dispose() {
+    _name.dispose();
+    _total.dispose();
+    _rate.dispose();
+    _months.dispose();
+    _paid.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
   double? _previewMonthly;
 
   void _calcPreview() {
@@ -811,6 +822,15 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
   );
   late String _type = widget.initial?.type ?? BenefitType.lumpSum;
   DateTime? _payoutDate; // 一次性：发放日期；逐月/年/终身/自定义：开始发放日期
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _amount.dispose();
+    _note.dispose();
+    _customYears.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {

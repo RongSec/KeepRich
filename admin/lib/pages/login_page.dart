@@ -15,6 +15,13 @@ class _LoginPageState extends State<LoginPage> {
   String? _err;
   bool _busy = false;
 
+  @override
+  void dispose() {
+    _u.dispose();
+    _p.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
     setState(() {
       _err = null;

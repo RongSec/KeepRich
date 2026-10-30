@@ -29,5 +29,8 @@ type InvestmentRecord struct {
 	Month     int     `gorm:"index" json:"month"`
 	MonthlyRate float64 `gorm:"type:decimal(8,6)" json:"monthlyRate"` // 月收益率
 	Amount    float64 `gorm:"type:decimal(14,2)" json:"amount"`     // 实际收益额（元，可正可负）
+	// 文档 §7 月度结算结果
+	HardSavingTransfer float64 `gorm:"type:decimal(14,2)" json:"hardSavingTransfer"` // 超额 30% 自动转入硬性存储（储蓄桶）金额
+	Deficit            float64 `gorm:"type:decimal(14,2)" json:"deficit"`            // 收益不足额（从下月可消费余额中扣补）
 	Note      string  `gorm:"size:255" json:"note"`
 }

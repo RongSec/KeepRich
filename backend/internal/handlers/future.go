@@ -568,8 +568,8 @@ func FutureFinance(c *gin.Context) {
 	}
 	qFb.Find(&fb)
 	for _, b := range fb {
-		s := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, currentAge, lifeExpectancy, b.CustomYears)
-		resp.FutureBenefits = append(resp.FutureBenefits, BenefitWithSummary{FutureBenefit: b, Summary: s})
+		sm := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, currentAge, lifeExpectancy, b.CustomYears, plan.InvestAnnualRate)
+		resp.FutureBenefits = append(resp.FutureBenefits, BenefitWithSummary{FutureBenefit: b, Summary: sm})
 	}
 
 	// 聚合待还款
@@ -885,7 +885,7 @@ func PutTx(c *gin.Context) {
 		tx.Category = req.Category
 	}
 	if req.Amount > 0 {
-		tx.Amount = req.Amount
+		tx.Amount = utils.Round2(req.Amount)
 	}
 	if req.Note != "" {
 		tx.Note = req.Note

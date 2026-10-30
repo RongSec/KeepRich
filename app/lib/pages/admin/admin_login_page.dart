@@ -17,6 +17,14 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   bool _busy = false;
   String? _err;
 
+  @override
+  void dispose() {
+    _user.dispose();
+    _pwd.dispose();
+    _mfa.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
     setState(() {
       _busy = true;

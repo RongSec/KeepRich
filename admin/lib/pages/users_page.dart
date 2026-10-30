@@ -124,7 +124,13 @@ class _UsersPageState extends State<UsersPage> {
           ],
         ),
       ),
-    );
+    ).then((_) {
+      u.dispose();
+      p.dispose();
+      n.dispose();
+      e.dispose();
+      ph.dispose();
+    });
   }
 
   Future<void> _doCreate(String username, String password, String nickname, String email, String phone, String role) async {
@@ -224,9 +230,14 @@ class _UsersPageState extends State<UsersPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      pwd.dispose();
+      return;
+    }
+    final newPwd = pwd.text;
+    pwd.dispose();
     try {
-      final r = await ApiClient.instance.post('/admin/users/${u['id']}/reset-password', data: {'newPassword': pwd.text});
+      final r = await ApiClient.instance.post('/admin/users/${u['id']}/reset-password', data: {'newPassword': newPwd});
       if (!mounted) return;
       if (r['code'] == 0) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('密码已重置')));

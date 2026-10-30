@@ -27,14 +27,31 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      # 正式签名：仓库配置 Secrets 后自动启用（KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD）
+      # 未配置时回退 debug 签名（fork/贡献者无感）。见 docs/RELEASE.md 第 4 节
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/android/app/upload-keystore.jks
+            cat > app/android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+            echo "release signing: enabled"
+          else
+            echo "release signing: fallback to debug (no KEYSTORE_BASE64 secret)"
+          fi
+
       - name: Build APK (split per ABI)
         working-directory: app
-        run: flutter build apk --release --split-per-abi
-
-      # 正式签名（可选）：把 keystore 以 base64 存入 secret KEYSTORE_BASE64，
-      # 并配置 KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD 后取消下面注释
-      # - name: Decode keystore
-      #   run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/android/app/upload-keystore.jks
+        run: flutter build apk --release --split-per-abi --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://103.236.92.33:28080' }}
 
       - name: Generate checksums
         run: |

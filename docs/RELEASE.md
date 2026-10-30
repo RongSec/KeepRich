@@ -64,20 +64,24 @@ App 启动 ──► GET /api/app/version?platform=android&current=x.y.z&did=设
 - `app-armeabi-v7a-release.apk`（老旧 32 位）
 - `app-x86_64-release.apk`（模拟器）
 
-## 正式签名（发布前必做）
+## 正式签名（已配置 ✓）
 
-debug 签名的 APK 无法覆盖安装正式版。配置方法：
+**2026-10-30 起 CI 自动签名**。当前状态：
 
-1. 生成 keystore：`keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`
-2. `app/android/app/key.properties`（**不入库**）：
-   ```properties
-   storePassword=...
-   keyPassword=...
-   keyAlias=upload
-   storeFile=upload-keystore.jks
-   ```
-3. `app/android/app/build.gradle.kts` 的 `signingConfigs` 指向该文件（Flutter 官方文档 "Build and release an Android app" 有模板）
-4. keystore 转 base64 存入 GitHub secret `KEYSTORE_BASE64`，并取消 `release.yml` 中解码步骤的注释
+| 项 | 位置 | 说明 |
+| --- | --- | --- |
+| keystore | `app/android/app/upload-keystore.jks`（**不入库**） | RSA 2048、有效期 10000 天、别名 `upload` |
+| 本地配置 | `app/android/key.properties`（**不入库**） | Gradle 自动读取 |
+| CI Secrets | `KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` | release.yml 自动解码启用签名 |
+| 服务端地址 | 仓库变量 `API_BASE_URL` | 构建时 `--dart-define` 注入，改服务器只需改这个变量 |
+
+**⚠️ keystore 备份（必做）**：`upload-keystore.jks` + `key.properties` 中的密码务必离线备份
+（如密码管理器/加密 U 盘）。丢失后无法对已安装用户覆盖升级（Android 要求同签名）。
+
+**fork / 贡献者**：无需配置任何签名，Gradle 自动回退 debug 签名，构建照常可用。
+
+更换 keystore（如泄露）：重新 `keytool -genkeypair` 生成 → 更新 `key.properties` →
+`base64 < upload-keystore.jks` 更新 `KEYSTORE_BASE64` secret → 用新签名发新版本（用户需卸载重装一次）。
 
 ## iOS / Web
 

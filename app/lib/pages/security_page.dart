@@ -42,8 +42,13 @@ class _SecurityPageState extends State<SecurityPage> {
         ],
       ),
     );
-    if (ok != true) return;
-    final r = await ApiClient.instance.mfaEnable(code.text.trim());
+    if (ok != true) {
+      code.dispose();
+      return;
+    }
+    final codeText = code.text.trim();
+    code.dispose();
+    final r = await ApiClient.instance.mfaEnable(codeText);
     if (r.ok && mounted) {
       setState(() {
         _otpAuth = null;
@@ -86,8 +91,16 @@ class _SecurityPageState extends State<SecurityPage> {
         ],
       ),
     );
-    if (ok != true) return;
-    final r = await ApiClient.instance.changePassword(old.text, nw.text);
+    if (ok != true) {
+      old.dispose();
+      nw.dispose();
+      return;
+    }
+    final oldText = old.text;
+    final nwText = nw.text;
+    old.dispose();
+    nw.dispose();
+    final r = await ApiClient.instance.changePassword(oldText, nwText);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
     }
@@ -121,22 +134,36 @@ class _SecurityPageState extends State<SecurityPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      nickname.dispose();
+      avatar.dispose();
+      email.dispose();
+      phone.dispose();
+      return;
+    }
+    final nicknameText = nickname.text;
+    final avatarText = avatar.text;
+    final emailText = email.text;
+    final phoneText = phone.text;
+    nickname.dispose();
+    avatar.dispose();
+    email.dispose();
+    phone.dispose();
     final r = await ApiClient.instance.updateProfile({
-      'nickname': nickname.text,
-      'avatar': avatar.text,
-      'email': email.text,
-      'phone': phone.text,
+      'nickname': nicknameText,
+      'avatar': avatarText,
+      'email': emailText,
+      'phone': phoneText,
     });
     if (!mounted) return;
     if (r.ok) {
       context.read<AuthState>().setUser(UserProfile(
             id: u.id,
             username: u.username,
-            nickname: nickname.text,
-            avatar: avatar.text,
-            email: email.text,
-            phone: phone.text,
+            nickname: nicknameText,
+            avatar: avatarText,
+            email: emailText,
+            phone: phoneText,
             role: u.role,
             mfaEnabled: u.mfaEnabled,
           ));
