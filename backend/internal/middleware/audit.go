@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 	"time"
@@ -10,6 +11,33 @@ import (
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/models"
 )
+
+// sensitiveKeys 审计日志中必须脱敏的 JSON 字段（大小写不敏感子串匹配）
+var sensitiveKeys = []string{"password", "secret", "token", "code", "otp", "backup"}
+
+// sanitizeDetail 脱敏审计详情：JSON 中的敏感字段值替换为 "***"
+func sanitizeDetail(raw []byte) string {
+	detail := string(raw)
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err == nil {
+		for k := range m {
+			lk := strings.ToLower(k)
+			for _, s := range sensitiveKeys {
+				if strings.Contains(lk, s) {
+					m[k] = "***"
+					break
+				}
+			}
+		}
+		if b, err := json.Marshal(m); err == nil {
+			detail = string(b)
+		}
+	}
+	if len(detail) > 1000 {
+		detail = detail[:1000]
+	}
+	return detail
+}
 
 // bodyWriter 包装 ResponseWriter 以便在 c.Next() 后读取响应
 type bodyWriter struct {
@@ -61,10 +89,10 @@ var rules = []rule{
 // Audit 通用审计中间件
 func Audit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 读取 body 但不消费下游
+		// 读取 body 但不消费下游（限 1MB，防止超大 body 打爆内存）
 		var bodyBytes []byte
 		if c.Request.Body != nil {
-			bodyBytes, _ = io.ReadAll(c.Request.Body)
+			bodyBytes, _ = io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 
@@ -105,10 +133,7 @@ func Audit() gin.HandlerFunc {
 		}
 		_ = role
 
-		detail := string(bodyBytes)
-		if len(detail) > 1000 {
-			detail = detail[:1000]
-		}
+		detail := sanitizeDetail(bodyBytes)
 
 		entry := models.AuditLog{
 			UID:       uid,

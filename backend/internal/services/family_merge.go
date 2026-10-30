@@ -15,65 +15,13 @@ func NewFamilyMergeService(db *gorm.DB) *FamilyMergeService {
 }
 
 // MergePersonalToFamily 将用户的个人数据合并到家庭空间
-// 去重策略：按关键字段判断是否已存在，有则跳过，无则新增
-// 同步删除：家庭中该用户已同步的账单，如果个人空间已不存在，则从家庭中删除
+//
+// 重要口径：交易流水【不复制】。家庭聚合口径为
+// 「活跃成员的个人流水 + family 空间流水」（见 finance.applyScopeQuery），
+// 复制流水会导致家庭账目双倍计算；同步删除则会误删家庭空间原生记的账。
+// 因此本方法只合并规划/大件/投资/贷款/未来利益等元数据（家庭尚无则创建，不覆盖）。
 func (s *FamilyMergeService) MergePersonalToFamily(uid uint64, familyID uint64) error {
-	mergedTx := 0
-	deletedTx := 0
-
-	// 1. 合并交易记录：按 uid+type+category+amount+occurred_at 去重
-	var personalTxs []models.Transaction
-	s.DB.Where("uid = ? AND scope = ?", uid, models.TxScopePersonal).Find(&personalTxs)
-
-	// 构建个人账单的匹配键集合
-	type txKey struct {
-		Type       string
-		Category   string
-		Amount     float64
-		OccurredAt int64
-	}
-	personalKeys := make(map[txKey]bool)
-	for _, tx := range personalTxs {
-		personalKeys[txKey{tx.Type, tx.Category, tx.Amount, tx.OccurredAt}] = true
-	}
-
-	// 新增：个人有但家庭没有的
-	for _, tx := range personalTxs {
-		var existing models.Transaction
-		err := s.DB.Where("scope = ? AND uid = ? AND type = ? AND category = ? AND amount = ? AND occurred_at = ?",
-			models.TxScopeFamily, uid, tx.Type, tx.Category, tx.Amount, tx.OccurredAt).First(&existing).Error
-		if err == nil {
-			continue
-		}
-		familyTx := models.Transaction{
-			UID:          tx.UID,
-			FamilyID:     &familyID,
-			Scope:        models.TxScopeFamily,
-			Type:         tx.Type,
-			Category:     tx.Category,
-			Amount:       tx.Amount,
-			Note:         tx.Note,
-			OccurredAt:   tx.OccurredAt,
-			LoanRef:      tx.LoanRef,
-			TargetBucket: tx.TargetBucket,
-		}
-		if err := s.DB.Create(&familyTx).Error; err != nil {
-			log.Printf("[family_merge] merge tx uid=%d err: %v", uid, err)
-		} else {
-			mergedTx++
-		}
-	}
-
-	// 删除：家庭有但个人已不存在的（用户删除了个人账单）
-	var familyTxs []models.Transaction
-	s.DB.Where("scope = ? AND uid = ? AND family_id = ?", models.TxScopeFamily, uid, familyID).Find(&familyTxs)
-	for _, tx := range familyTxs {
-		key := txKey{tx.Type, tx.Category, tx.Amount, tx.OccurredAt}
-		if !personalKeys[key] {
-			s.DB.Delete(&tx)
-			deletedTx++
-		}
-	}
+	// 1. 交易流水：不再复制/删除（聚合口径已覆盖成员个人流水）
 
 	// 2. 合并财务规划：如果家庭尚无规划，则复制个人规划（不覆盖已有）
 	var familyPlan models.FinancialPlan
@@ -181,22 +129,10 @@ func (s *FamilyMergeService) MergePersonalToFamily(uid uint64, familyID uint64) 
 	}
 
 	// 7. 通知用户合并完成
-	msg := ""
-	if mergedTx > 0 {
-		msg = "新增 " + itoa(mergedTx) + " 条"
-	}
-	if deletedTx > 0 {
-		if msg != "" {
-			msg += "，"
-		}
-		msg += "删除 " + itoa(deletedTx) + " 条已移除的账单"
-	}
-	if msg != "" {
-		ns := NewNotifyService(s.DB)
-		_ = ns.PushTo(uid, models.NotifyTypeSystem, "数据同步完成", msg, "")
-	}
+	ns := NewNotifyService(s.DB)
+	_ = ns.PushTo(uid, models.NotifyTypeSystem, "数据同步完成", "规划/大件/投资/贷款/未来利益已合并到家庭空间（流水按聚合口径自动计入，无需复制）", "")
 
-	log.Printf("[family_merge] synced uid=%d to family=%d, new=%d, deleted=%d", uid, familyID, mergedTx, deletedTx)
+	log.Printf("[family_merge] synced uid=%d to family=%d", uid, familyID)
 	return nil
 }
 
@@ -278,27 +214,4 @@ func mergeLoans(db *gorm.DB, uid uint64, familyID uint64) {
 		}
 		db.Create(&fl)
 	}
-}
-
-// itoa 整数转字符串
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

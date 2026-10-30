@@ -65,7 +65,7 @@ type OverviewData struct {
 	PensionMonthsLeft   int     `json:"pensionMonthsLeft"`
 
 	// 关键指标
-	WorryFreePerBuy    float64 `json:"worryFreePerBuy"`    // (储蓄桶 + 年收入*20) ÷ 1万，单位：元
+	WorryFreePerBuy    float64 `json:"worryFreePerBuy"`    // 储蓄桶余额 + 年薪×20，单位：元
 	AnnualIncome       float64 `json:"annualIncome"`       // 年薪（工资+公积金年化）
 	MonthlyConsumable  float64 `json:"monthlyConsumable"`  // 本月可消费（累加机制后）
 	MonthConsumableLeft float64 `json:"monthConsumableLeft"` // 本月剩余可消费（= MonthlyConsumable - DailySpent）
@@ -198,24 +198,19 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	var salaryIncome float64
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeSalary, yearAgo, &salaryIncome)
 
-	// 计算实际有工资收入的月数
+	// 计算实际有工资收入的月数（与 salaryIncome 同一聚合口径，否则家庭空间月数缺失导致年薪虚增）
 	var activeMonths int
-	s.DB.Model(&models.Transaction{}).
-		Where("scope = ? AND type = ? AND category = ? AND occurred_at >= ?", scope, models.TxTypeIncome, models.IncomeSalary, yearAgo).
-		Where(func(db *gorm.DB) *gorm.DB {
-			if scope == models.TxScopePersonal {
-				return db.Where("uid = ?", uid)
-			}
-			return db.Where("family_id = ?", *familyID)
-		}).
-		Select("COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(occurred_at), '%Y-%m'))").Scan(&activeMonths)
+	mq := s.DB.Model(&models.Transaction{}).
+		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo)
+	mq = s.applyScopeQuery(mq, scope, uid, familyID)
+	mq.Select("COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(occurred_at), '%Y-%m'))").Scan(&activeMonths)
 	if activeMonths < 1 {
 		activeMonths = 1
 	}
 	annualIncome := salaryIncome / float64(activeMonths) * 12.0
 
-	// 无顾虑单笔（元）= (储蓄桶余额 + 年薪×20) ÷ 1万
-	worryFree := (saving + annualIncome*20) / 10000
+	// 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20（文档公式结果为万元，API 统一返回元）
+	worryFree := saving + annualIncome*20
 
 	plan, err := s.getPlan(scope, uid, familyID)
 	if err != nil {

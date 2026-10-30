@@ -62,14 +62,11 @@ func RemainingPrincipalEqualPayment(P, r float64, paidMonths, totalMonths int) f
 	if r <= 0 {
 		return P * float64(totalMonths-paidMonths) / float64(totalMonths)
 	}
-	monthly := MonthlyEqualPayment(P, r, totalMonths)
-	// 剩余本金 = P * (1+r)^(totalMonths-paidMonths) - monthly*((1+r)^(totalMonths-paidMonths)-1)/r
-	remainingN := totalMonths - paidMonths
-	if remainingN <= 0 {
-		return 0
-	}
-	factor := math.Pow(1+r, float64(remainingN))
-	return P*factor - monthly*(factor-1)/r
+	// 剩余本金 = P × ((1+r)^n − (1+r)^paid) / ((1+r)^n − 1)（文档 §5.4）
+	// 注意：按【已还期数】paidMonths 复利，而非剩余期数
+	paidF := math.Pow(1+r, float64(paidMonths))
+	totalF := math.Pow(1+r, float64(totalMonths))
+	return P * (totalF - paidF) / (totalF - 1)
 }
 
 // EqualCapitalMonthlyPayment 等额本金下，第 i 月的还款额（i 从 1 开始）

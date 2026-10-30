@@ -76,14 +76,14 @@ monthsLeft = ceil( requiredPerMonth / max(worryFreePerBuy / 10, 1) )
 **公式**（**已根据用户反馈修正**）：
 
 ```
-worryFreePerBuy = ( savingBalance + annualIncome × 20 ) / 10000
+worryFreePerBuy = savingBalance + annualIncome × 20
 ```
 
-**单位**：万元
+**单位**：**元**（API 与前端统一口径；以万元表述时为上述结果 ÷ 10000）
 
 **示例**：
 - 储蓄桶 100,000 元 + 年收入 120,000 元
-- 公式：(100,000 + 120,000 × 20) / 10,000 = **2,500,000 / 10,000 = 250 万元**
+- 公式：100,000 + 120,000 × 20 = **2,500,000 元（即 250 万元）**
 
 **为什么是 20 倍年收入**：
 - 金融行业经验法则：年度支出 ≈ 年度收入

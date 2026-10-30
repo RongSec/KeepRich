@@ -337,7 +337,8 @@ func txScopeQuery(scope string, uid uint64, familyID *uint64) func(db *gorm.DB) 
 	}
 }
 
-// computeWorryFreePerBuy 无顾虑单笔（元）= (储蓄桶余额 + 年薪×20) ÷ 1万
+// computeWorryFreePerBuy 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20
+// 文档 §4 公式结果以万元表述，API 与前端统一使用元，故此处不再 ÷10000
 func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 {
 	scopeQ := txScopeQuery(scope, uid, familyID)
 
@@ -376,7 +377,7 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 	}
 	annualIncome := baseIncome / float64(activeMonths) * 12.0
 
-	return (savingBalance + annualIncome*20) / 10000
+	return savingBalance + annualIncome*20
 }
 
 func isValidBucket(b string) bool {
