@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -160,6 +161,7 @@ func ListJoinRequests(c *gin.Context) {
 }
 
 // ApproveJoin 家庭管理员审批
+// 事务内以 status=pending 抢占式更新做并发防护，防止重复审批产生重复成员
 func ApproveJoin(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req ApproveJoinReq
@@ -182,9 +184,39 @@ func ApproveJoin(c *gin.Context) {
 		return
 	}
 	now := time.Now().Unix()
-	if req.Approve {
-		r.Status = models.MemberStatusActive
-		// 创建成员记录
+
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 抢占式更新：仅 pending 状态可处理，重复审批在此被拒
+		newStatus := models.MemberStatusRejected
+		if req.Approve {
+			newStatus = models.MemberStatusActive
+		}
+		res := tx.Model(&models.FamilyJoinRequest{}).
+			Where("id = ? AND status = ?", r.ID, models.MemberStatusPending).
+			Updates(map[string]interface{}{
+				"status":     newStatus,
+				"handled_by": uid,
+				"handled_at": now,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errAlreadyHandled
+		}
+		if !req.Approve {
+			return nil
+		}
+		// 已是活跃成员则不重复创建
+		var cnt int64
+		if err := tx.Model(&models.FamilyMember{}).
+			Where("family_id = ? AND user_id = ? AND status = ?", r.FamilyID, r.UserID, models.MemberStatusActive).
+			Count(&cnt).Error; err != nil {
+			return err
+		}
+		if cnt > 0 {
+			return nil
+		}
 		fm := models.FamilyMember{
 			FamilyID: r.FamilyID,
 			UserID:   r.UserID,
@@ -192,8 +224,18 @@ func ApproveJoin(c *gin.Context) {
 			Status:   models.MemberStatusActive,
 			JoinedAt: now,
 		}
-		database.DB.Create(&fm)
+		return tx.Create(&fm).Error
+	})
+	if err != nil {
+		if err == errAlreadyHandled {
+			utils.Fail(c, http.StatusConflict, utils.CodeConflict, "该申请已处理")
+			return
+		}
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		return
+	}
 
+	if req.Approve {
 		// 异步合并个人数据到家庭空间
 		go func(userID uint64, famID uint64) {
 			merger := services.NewFamilyMergeService(database.DB)
@@ -201,19 +243,19 @@ func ApproveJoin(c *gin.Context) {
 				log.Printf("[family] merge failed uid=%d family=%d: %v", userID, famID, err)
 			}
 		}(r.UserID, r.FamilyID)
-	} else {
-		r.Status = models.MemberStatusRejected
 	}
-	handledBy := uid
-	r.HandledBy = &handledBy
+	r.Status = map[bool]string{true: models.MemberStatusActive, false: models.MemberStatusRejected}[req.Approve]
+	r.HandledBy = &uid
 	r.HandledAt = &now
-	database.DB.Save(&r)
 
 	ns := services.NewNotifyService(database.DB)
 	_ = ns.PushTo(r.UserID, models.NotifyTypeFamilyResult, "家庭加入结果", map[bool]string{true: "已通过", false: "已拒绝"}[req.Approve], "")
 
 	utils.OK(c, r)
 }
+
+// errAlreadyHandled 申请已被处理（并发审批冲突）
+var errAlreadyHandled = errors.New("request already handled")
 
 // TransferAdmin 家庭管理员移交
 func TransferAdmin(c *gin.Context) {
@@ -239,11 +281,14 @@ func TransferAdmin(c *gin.Context) {
 	utils.OK(c, gin.H{"ok": true})
 }
 
-// RequestDeleteFamily 发起家庭删除请求（成员投票制）
+// RequestDeleteFamily 发起家庭删除请求（成员投票制 + 7 天冷静期，文档 §11）
 func RequestDeleteFamily(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req RequestDeleteFamilyReq
-	_ = c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		return
+	}
 
 	var m models.FamilyMember
 	if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m).Error; err != nil {
@@ -251,20 +296,25 @@ func RequestDeleteFamily(c *gin.Context) {
 		return
 	}
 
-	// 检查是否有待处理的删除请求
+	// 检查是否有待处理的删除请求（pending 或 approved 均视为进行中）
 	var existing models.DeleteFamilyRequest
-	if err := database.DB.Where("family_id = ? AND status = ?", m.FamilyID, "pending").First(&existing).Error; err == nil {
+	if err := database.DB.Where("family_id = ? AND status IN ?", m.FamilyID, []string{"pending", "approved"}).First(&existing).Error; err == nil {
 		utils.Fail(c, http.StatusConflict, utils.CodeConflict, "已有待处理的删除请求")
 		return
 	}
 
+	now := time.Now()
 	r := models.DeleteFamilyRequest{
 		FamilyID:  m.FamilyID,
 		RequestBy: uid,
 		Status:    "pending",
 		Reason:    req.Reason,
+		ExecuteAt: now.Add(7 * 24 * time.Hour).Unix(), // 冷静期 7 天
 	}
-	database.DB.Create(&r)
+	if err := database.DB.Create(&r).Error; err != nil {
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		return
+	}
 
 	// 发起者自动投同意票
 	vote := models.DeleteFamilyVote{
@@ -275,15 +325,25 @@ func RequestDeleteFamily(c *gin.Context) {
 	}
 	database.DB.Create(&vote)
 
-	// 通知其他家庭成员
-	var members []models.FamilyMember
-	database.DB.Where("family_id = ? AND status = ? AND user_id != ?", m.FamilyID, models.MemberStatusActive, uid).Find(&members)
-	ns := services.NewNotifyService(database.DB)
-	for _, member := range members {
-		_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, "家庭删除投票", "有成员发起了解散家庭的请求，请前往家庭管理页面投票", "")
+	// 单人家庭：一票即全体同意，直接进入 approved（冷静期仍生效）
+	var totalMembers int64
+	database.DB.Model(&models.FamilyMember{}).Where("family_id = ? AND status = ?", m.FamilyID, models.MemberStatusActive).Count(&totalMembers)
+	if totalMembers <= 1 {
+		approvedAt := now.Unix()
+		database.DB.Model(&r).Updates(map[string]interface{}{"status": "approved", "approved_at": approvedAt})
+		r.Status = "approved"
+		r.ApprovedAt = &approvedAt
+	} else {
+		// 通知其他家庭成员
+		var members []models.FamilyMember
+		database.DB.Where("family_id = ? AND status = ? AND user_id != ?", m.FamilyID, models.MemberStatusActive, uid).Find(&members)
+		ns := services.NewNotifyService(database.DB)
+		for _, member := range members {
+			_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, "家庭删除投票", "有成员发起了解散家庭的请求，请前往家庭管理页面投票", "")
+		}
 	}
 
-	utils.OK(c, gin.H{"request": r, "message": "已发起删除投票，需要所有成员同意才能执行"})
+	utils.OK(c, gin.H{"request": r, "message": "已发起删除投票，全体成员同意后进入 7 天冷静期，冷静期结束后可执行解散"})
 }
 
 // VoteDeleteFamily 对家庭删除请求投票
@@ -351,27 +411,23 @@ func VoteDeleteFamily(c *gin.Context) {
 	}
 
 	if voteCount >= totalMembers && agreeCount == totalMembers {
-		// 所有成员同意，执行删除
-		err := database.DB.Transaction(func(tx *gorm.DB) error {
-			// 标记请求执行完成
-			if err := tx.Model(&request).Update("status", "executed").Error; err != nil {
-				return err
-			}
-			// 软删除所有家庭成员
-			if err := tx.Model(&models.FamilyMember{}).Where("family_id = ?", request.FamilyID).Update("status", models.MemberStatusLeft).Error; err != nil {
-				return err
-			}
-			// 软删除家庭
-			if err := tx.Delete(&models.Family{}, request.FamilyID).Error; err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
+		// 所有成员同意 → 进入冷静期（不立即删除，到期后由管理员执行 ForceDelete）
+		now := time.Now().Unix()
+		if err := database.DB.Model(&request).Updates(map[string]interface{}{
+			"status":      "approved",
+			"approved_at": now,
+		}).Error; err != nil {
 			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 			return
 		}
-		utils.OK(c, gin.H{"message": "所有成员同意，家庭已解散", "status": "executed"})
+		// 通知全体成员
+		var members []models.FamilyMember
+		database.DB.Where("family_id = ? AND status = ?", request.FamilyID, models.MemberStatusActive).Find(&members)
+		ns := services.NewNotifyService(database.DB)
+		for _, member := range members {
+			_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, "家庭删除已通过", "全体成员已同意解散家庭，7 天冷静期结束后可执行；期间可取消", "")
+		}
+		utils.OK(c, gin.H{"message": "所有成员同意，已进入 7 天冷静期", "status": "approved", "executeAt": request.ExecuteAt})
 		return
 	}
 
@@ -417,7 +473,7 @@ func ListDeleteVotes(c *gin.Context) {
 	})
 }
 
-// CancelDeleteFamily 取消家庭删除
+// CancelDeleteFamily 取消家庭删除（冷静期内：发起人或家庭管理员可取消）
 func CancelDeleteFamily(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	id := c.Param("id")
@@ -426,11 +482,17 @@ func CancelDeleteFamily(c *gin.Context) {
 		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "request not found")
 		return
 	}
-	if r.RequestBy != uid {
+	// 发起人或家庭管理员可取消
+	isAdmin := false
+	var m models.FamilyMember
+	if err := database.DB.Where("user_id = ? AND family_id = ? AND is_admin = ? AND status = ?", uid, r.FamilyID, true, models.MemberStatusActive).First(&m).Error; err == nil {
+		isAdmin = true
+	}
+	if r.RequestBy != uid && !isAdmin {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权操作")
 		return
 	}
-	if r.Status != "pending" {
+	if r.Status != "pending" && r.Status != "approved" {
 		utils.Fail(c, http.StatusConflict, utils.CodeConflict, "状态不允许取消")
 		return
 	}

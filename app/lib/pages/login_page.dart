@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -47,28 +48,26 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             _user.text.trim(),
             _pwd.text,
             mfaCode: _mfa.text.trim().isEmpty ? null : _mfa.text.trim(),
-          ).timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              if (mounted) {
-                setState(() {
-                  _err = '登录超时，请检查网络连接';
-                  _busy = false;
-                });
-              }
-              return false;
-            },
-          );
+          ).timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (ok) {
         // 登录成功，保存凭据供生物识别使用
         final biometric = context.read<BiometricService>();
         await biometric.updateCredentials(_user.text.trim(), _pwd.text);
         context.go('/overview');
-      } else {
-        setState(() => _err = '登录失败，请检查账号、密码或 MFA');
+        return;
       }
-      setState(() => _busy = false);
+      setState(() {
+        _err = '登录失败，请检查账号、密码或 MFA';
+        _busy = false;
+      });
+    } on TimeoutException {
+      // 超时后不再等待迟到的登录结果，避免状态被覆盖（竞态）
+      if (!mounted) return;
+      setState(() {
+        _err = '登录超时，请检查网络连接';
+        _busy = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {

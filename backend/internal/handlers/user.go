@@ -8,6 +8,7 @@ import (
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
 type CreateUserReq struct {
@@ -20,10 +21,11 @@ type CreateUserReq struct {
 }
 
 type UpdateProfileReq struct {
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	// 指针语义：nil=不修改，非 nil（含空串）=设置该值
+	Nickname *string `json:"nickname"`
+	Avatar   *string `json:"avatar"`
+	Email    *string `json:"email"`
+	Phone    *string `json:"phone"`
 }
 
 type ChangePasswordReq struct {
@@ -119,14 +121,24 @@ func UpdateProfile(c *gin.Context) {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
 		return
 	}
-	if err := database.DB.Model(&models.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
-		"nickname": req.Nickname,
-		"avatar":   req.Avatar,
-		"email":    req.Email,
-		"phone":    req.Phone,
-	}).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
-		return
+	updates := map[string]interface{}{}
+	if req.Nickname != nil {
+		updates["nickname"] = *req.Nickname
+	}
+	if req.Avatar != nil {
+		updates["avatar"] = *req.Avatar
+	}
+	if req.Email != nil {
+		updates["email"] = *req.Email
+	}
+	if req.Phone != nil {
+		updates["phone"] = *req.Phone
+	}
+	if len(updates) > 0 {
+		if err := database.DB.Model(&models.User{}).Where("id = ?", uid).Updates(updates).Error; err != nil {
+			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+			return
+		}
 	}
 	utils.OK(c, gin.H{"ok": true})
 }
@@ -149,6 +161,13 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 	hash, _ := utils.HashPassword(req.NewPassword)
-	database.DB.Model(&u).Update("password_hash", hash)
+	// 改密后递增 token 版本，使旧 access/refresh token 全部失效
+	if err := database.DB.Model(&u).Updates(map[string]interface{}{
+		"password_hash": hash,
+		"token_version": gorm.Expr("token_version + 1"),
+	}).Error; err != nil {
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }

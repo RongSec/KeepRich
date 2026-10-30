@@ -15,21 +15,31 @@ const (
 )
 
 // JWT 鉴权中间件
+// WebSocket 端点（/ws）额外支持 ?token= 查询参数（浏览器 WebSocket 无法设置 Authorization 头）
 func JWT() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
+		tokenStr := ""
 		if auth == "" {
-			utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "missing authorization")
-			c.Abort()
-			return
+			// 仅对 WS 端点允许 query token，避免 token 进 URL 被日志记录的面扩大
+			if strings.HasSuffix(c.Request.URL.Path, "/ws") {
+				tokenStr = c.Query("token")
+			}
+			if tokenStr == "" {
+				utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "missing authorization")
+				c.Abort()
+				return
+			}
+		} else {
+			parts := strings.SplitN(auth, " ", 2)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+				utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "invalid authorization format")
+				c.Abort()
+				return
+			}
+			tokenStr = parts[1]
 		}
-		parts := strings.SplitN(auth, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "invalid authorization format")
-			c.Abort()
-			return
-		}
-		claims, err := utils.ParseToken(parts[1], config.C.JWT.AccessSecret)
+		claims, err := utils.ParseToken(tokenStr, config.C.JWT.AccessSecret)
 		if err != nil {
 			utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "invalid or expired token")
 			c.Abort()

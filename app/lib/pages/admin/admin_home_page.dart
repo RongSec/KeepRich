@@ -6,6 +6,21 @@ import 'package:provider/provider.dart';
 import '../../services/api.dart';
 import '../../services/auth.dart';
 
+/// 解析后端时间字段：兼容 Unix 秒(num) 与 ISO8601 字符串（time.Time 序列化）
+DateTime _parseTime(dynamic v) {
+  if (v == null) return DateTime.fromMillisecondsSinceEpoch(0);
+  if (v is num) {
+    // 小于 1e12 视为秒，否则毫秒
+    final n = v.toInt();
+    return DateTime.fromMillisecondsSinceEpoch(n < 100000000000 ? n * 1000 : n);
+  }
+  if (v is String && v.isNotEmpty) {
+    final d = DateTime.tryParse(v);
+    if (d != null) return d.toLocal();
+  }
+  return DateTime.fromMillisecondsSinceEpoch(0);
+}
+
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
 
@@ -381,7 +396,7 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
                     final e = filtered[i];
                     return ExpansionTile(
                       title: Text('${e['platform']} / ${e['app']} · ${e['message']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.fromMillisecondsSinceEpoch(((e['createdAt'] ?? 0) as num).toInt() * 1000))),
+                      subtitle: Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(_parseTime(e['createdAt']))),
                       children: [
                         Padding(
                           padding: const EdgeInsets.all(12),
@@ -474,7 +489,7 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
                     ),
                     title: Text('${l['action']}  · ${l['username'] ?? ''}'),
                     subtitle: Text(
-                      '${l['target']}  ·  ${l['ip'] ?? ''}\n${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.fromMillisecondsSinceEpoch(((l['createdAt'] ?? 0) as num).toInt() * 1000))}',
+                      '${l['target']}  ·  ${l['ip'] ?? ''}\n${DateFormat('yyyy-MM-dd HH:mm:ss').format(_parseTime(l['createdAt']))}',
                     ),
                     isThreeLine: true,
                   );

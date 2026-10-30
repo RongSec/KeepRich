@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/yourname/family-finance/backend/internal/handlers"
 	"github.com/yourname/family-finance/backend/internal/middleware"
@@ -14,9 +16,10 @@ func Register(r *gin.Engine) {
 
 	api := r.Group("/api")
 	{
-		// 公开
-		api.POST("/auth/login", handlers.Login)
-		api.POST("/auth/refresh", handlers.Refresh)
+		// 公开（登录/刷新限流：单 IP 5 分钟 30 次）
+		authLimiter := middleware.RateLimit(5*time.Minute, 30, "auth-ip")
+		api.POST("/auth/login", authLimiter, handlers.Login)
+		api.POST("/auth/refresh", authLimiter, handlers.Refresh)
 		api.GET("/app/version", handlers.GetAppVersion) // 在线更新版本检查
 
 		// 需要登录

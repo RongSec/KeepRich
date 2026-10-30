@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
@@ -21,13 +22,37 @@ class ApiClient {
         }
         handler.next(options);
       },
+      onError: (e, handler) async {
+        // 401 → 尝试用 refresh token 换新后重试一次（解决 access 过期后全 App 报错）
+        if (e.response?.statusCode == 401 &&
+            _refreshToken != null &&
+            e.requestOptions.extra['retried'] != true) {
+          try {
+            final refreshed = await _refreshAccessToken();
+            if (refreshed) {
+              e.requestOptions.extra['retried'] = true;
+              e.requestOptions.headers['Authorization'] = 'Bearer $_accessToken';
+              final clone = await _dio.fetch(e.requestOptions);
+              return handler.resolve(clone);
+            }
+          } catch (_) {
+            // 刷新失败则走原错误
+          }
+          await clearPersisted();
+          clearTokens();
+        }
+        handler.next(e);
+      },
     ));
   }
   static final ApiClient instance = ApiClient._();
 
+  static const _secure = FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true));
+
   late final Dio _dio;
   String? _accessToken;
   String? _refreshToken;
+  bool _refreshing = false;
 
   void setTokens({String? access, String? refresh}) {
     if (access != null) _accessToken = access;
@@ -41,22 +66,58 @@ class ApiClient {
 
   bool get hasToken => _accessToken != null;
 
+  /// 当前 access token（WS 握手等场景用）
+  String? get accessToken => _accessToken;
+
+  /// 用 refresh token 换取新 access token
+  Future<bool> _refreshAccessToken() async {
+    if (_refreshing) return false;
+    _refreshing = true;
+    try {
+      final r = await Dio(BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+      )).post('/auth/refresh', data: {'refreshToken': _refreshToken});
+      final data = r.data as Map<String, dynamic>?;
+      if (data != null && data['ok'] == true && data['data'] != null) {
+        final d = data['data'] as Map<String, dynamic>;
+        _accessToken = d['accessToken'] as String?;
+        await persistTokens();
+        return _accessToken != null;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      _refreshing = false;
+    }
+  }
+
   Future<void> loadTokens() async {
+    _accessToken = await _secure.read(key: 'access_token');
+    _refreshToken = await _secure.read(key: 'refresh_token');
+    // 迁移：旧版本 token 存 SharedPreferences 的搬进安全存储
     final p = await SharedPreferences.getInstance();
-    _accessToken = p.getString('access_token');
-    _refreshToken = p.getString('refresh_token');
+    final legacyAccess = p.getString('access_token');
+    final legacyRefresh = p.getString('refresh_token');
+    if (legacyAccess != null || legacyRefresh != null) {
+      _accessToken ??= legacyAccess;
+      _refreshToken ??= legacyRefresh;
+      await persistTokens();
+      await p.remove('access_token');
+      await p.remove('refresh_token');
+    }
   }
 
   Future<void> persistTokens() async {
-    final p = await SharedPreferences.getInstance();
-    if (_accessToken != null) await p.setString('access_token', _accessToken!);
-    if (_refreshToken != null) await p.setString('refresh_token', _refreshToken!);
+    if (_accessToken != null) await _secure.write(key: 'access_token', value: _accessToken!);
+    if (_refreshToken != null) await _secure.write(key: 'refresh_token', value: _refreshToken!);
   }
 
   Future<void> clearPersisted() async {
-    final p = await SharedPreferences.getInstance();
-    await p.remove('access_token');
-    await p.remove('refresh_token');
+    await _secure.delete(key: 'access_token');
+    await _secure.delete(key: 'refresh_token');
   }
 
   Future<ApiResponse<LoginResult>> login(String username, String password, {String? mfaCode}) async {
@@ -327,7 +388,8 @@ class ApiClient {
 
   Future<ApiResponse<List<dynamic>>> adminListErrors() async {
     final r = await _dio.get('/admin/errors');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
+    // 后端返回 {list:[...], total:...}，取 list 字段
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d['list'] as List<dynamic>?) ?? []);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> adminDeleteError(int id) async {

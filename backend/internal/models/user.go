@@ -26,4 +26,7 @@ type User struct {
 
 	Disabled bool `gorm:"default:false" json:"disabled"`
 	LastLoginAt *time.Time `json:"lastLoginAt"`
+
+	// TokenVersion 令牌版本号：改密/重置密码后 +1，使旧 access/refresh token 全部失效
+	TokenVersion int `gorm:"default:0" json:"-"`
 }

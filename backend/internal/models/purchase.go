@@ -13,8 +13,9 @@ type PurchasePlan struct {
 	Priority    int     `gorm:"default:0" json:"priority"` // 数字越小优先级越高
 	TargetDate  int64   `json:"targetDate"`                // 期望购买时间
 	Note        string  `gorm:"size:255" json:"note"`
-	Achieved    bool    `gorm:"default:false" json:"achieved"`
+	Achieved    bool    `gorm:"default:false" json:"achieved"`   // 已购买（用户手动标记）
 	AchievedAt  *int64  `json:"achievedAt,omitempty"`
+	NotifiedAt  *int64  `json:"notifiedAt,omitempty"`            // 上次"可购买"通知时间（7 天去重）
 }
 
 // InvestmentRecord 投资月度收益记录

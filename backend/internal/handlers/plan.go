@@ -101,6 +101,27 @@ func SavePlan(c *gin.Context) {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "收入占比合计必须等于 1")
 		return
 	}
+	// 单项范围校验：比例均须落在 [0,1]，拒绝负值/超限
+	for name, r := range map[string]float64{
+		"贷款": req.LoanRatio, "储蓄": req.SavingRatio, "投资": req.InvestmentRatio,
+		"应急": req.EmergencyRatio, "养老": req.PensionRatio, "消费": req.ConsumptionRatio,
+	} {
+		if r < 0 || r > 1 {
+			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, name+"占比必须在 0~1 之间")
+			return
+		}
+	}
+	if req.BigPurchaseRatio < 0 || req.BigPurchaseRatio > 1 {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "大件可占用比例必须在 0~1 之间")
+		return
+	}
+	if req.BigPurchaseRatio == 0 {
+		req.BigPurchaseRatio = 0.5 // 未设置时回退默认值
+	}
+	if req.InvestAnnualRate < 0 || req.InvestAnnualRate > 1 {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "投资年收益率必须在 0~1 之间（0.05 表示 5%）")
+		return
+	}
 
 	var p models.FinancialPlan
 	err := database.DB.Where("scope = ? AND target_id = ?", req.Scope, targetID).First(&p).Error

@@ -31,6 +31,14 @@ class AuthState extends ChangeNotifier {
     final r = await ApiClient.instance.login(username, password, mfaCode: mfaCode);
     if (r.ok && r.data != null) {
       final me = await ApiClient.instance.me();
+      if (!me.ok || me.data == null) {
+        // me() 失败不能算登录成功（否则"登录成功又闪回"）
+        ApiClient.instance.clearTokens();
+        await ApiClient.instance.clearPersisted();
+        _user = null;
+        notifyListeners();
+        return false;
+      }
       _user = me.data;
       notifyListeners();
       return true;

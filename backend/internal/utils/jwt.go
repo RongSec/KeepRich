@@ -13,17 +13,19 @@ const (
 )
 
 type Claims struct {
-	UID       uint64 `json:"uid"`
-	Role      string `json:"role"`
-	TokenType string `json:"tokenType"`
+	UID          uint64 `json:"uid"`
+	Role         string `json:"role"`
+	TokenType    string `json:"tokenType"`
+	TokenVersion int    `json:"tokenVersion"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(uid uint64, role, tokenType, secret string, ttl int) (string, error) {
+func GenerateToken(uid uint64, role, tokenType, secret string, ttl int, tokenVersion int) (string, error) {
 	claims := Claims{
-		UID:       uid,
-		Role:      role,
-		TokenType: tokenType,
+		UID:          uid,
+		Role:         role,
+		TokenType:    tokenType,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(ttl) * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

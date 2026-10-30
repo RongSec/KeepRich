@@ -174,7 +174,10 @@ func AdminResetPassword(c *gin.Context) {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
 	}
-	if err := database.DB.Model(&u).Update("password_hash", hash).Error; err != nil {
+	if err := database.DB.Model(&u).Updates(map[string]interface{}{
+		"password_hash": hash,
+		"token_version": gorm.Expr("token_version + 1"),
+	}).Error; err != nil {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
 	}

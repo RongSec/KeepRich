@@ -47,6 +47,7 @@ type Transaction struct {
 	TargetBucket string  `gorm:"size:32;index" json:"targetBucket,omitempty"` // 收入目标桶：saving/investment/emergency/pension
 	SourceBucket  string  `gorm:"size:32;index" json:"sourceBucket,omitempty"`  // 支出来源桶（单来源兼容）
 	SourceDetails string  `gorm:"type:text" json:"sourceDetails,omitempty"`    // 多来源 JSON: [{"bucket":"cash","amount":60},{"bucket":"saving","amount":40}]
+	SourceRef     string  `gorm:"size:64;index" json:"sourceRef,omitempty"`    // 自动流水幂等关联键，如 "inv:personal:1:2026:10"（投资月度入账）
 }
 
 // CategoryLabel 分类显示名

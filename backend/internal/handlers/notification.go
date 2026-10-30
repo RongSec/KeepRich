@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -15,25 +16,37 @@ import (
 )
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// 只允许同源 / 无 Origin（原生 App 不发 Origin），防跨站 WebSocket 劫持（CSWSH）
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // 原生客户端
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host
+	},
 }
 
-// WS WebSocket 入口
+// WS WebSocket 入口（支持 ?token= 查询参数鉴权，浏览器 WS 无法带 Authorization 头）
 func WS(c *gin.Context) {
 	if !config.C.Notify.WSEnabled {
 		utils.Fail(c, http.StatusServiceUnavailable, utils.CodeServer, "ws disabled")
 		return
 	}
 	uid := middleware.MustUID(c)
+	if uid == 0 {
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "unauthorized")
+		return
+	}
 	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
-	services.Hub.Register(uid, conn)
-	defer func() {
-		services.Hub.Unregister(uid, conn)
-		_ = conn.Close()
-	}()
+	client := services.Hub.Register(uid, conn)
+	defer services.Hub.Unregister(uid, client)
 	// 阻塞保持连接；客户端断开后退出
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {

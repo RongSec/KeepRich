@@ -189,7 +189,7 @@ class _ErrorTile extends StatelessWidget {
     final message = error['message'] ?? '-';
     final url = error['url'] ?? '';
     final stack = error['stack'] ?? '';
-    final time = error['created_at'] ?? '';
+    final time = error['createdAt'] ?? error['created_at'] ?? '';
 
     IconData platformIcon;
     Color platformColor;

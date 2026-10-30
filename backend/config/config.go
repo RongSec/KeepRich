@@ -95,5 +95,26 @@ func Load() error {
 	if err := viper.Unmarshal(C); err != nil {
 		return fmt.Errorf("unmarshal config: %w", err)
 	}
+	return C.Validate()
+}
+
+// Validate 启动校验：生产环境禁止使用默认/空 JWT 密钥（防止 token 伪造）
+func (c *Config) Validate() error {
+	devSecrets := map[string]string{
+		"dev-access-secret":  c.JWT.AccessSecret,
+		"dev-refresh-secret": c.JWT.RefreshSecret,
+	}
+	isDevDefault := false
+	for def, actual := range devSecrets {
+		if actual == def || actual == "" {
+			isDevDefault = true
+		}
+	}
+	if isDevDefault {
+		if c.App.Env == "production" {
+			return fmt.Errorf("jwt 密钥仍为默认开发值，生产环境必须通过 JWT_ACCESS_SECRET / JWT_REFRESH_SECRET 环境变量注入强随机密钥")
+		}
+		fmt.Println("[config][WARN] JWT 密钥为开发默认值，仅限本地开发使用；部署生产前必须更换")
+	}
 	return nil
 }

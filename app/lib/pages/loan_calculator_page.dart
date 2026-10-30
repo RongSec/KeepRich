@@ -96,7 +96,8 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
       _totalPayment = total;
       _totalInterest = total - P;
       _canAfford = monthly <= maxMonthly;
-      _debtRatio = monthly / widget.monthlyIncome;
+      // 月收入为 0 时避免除零得到 Infinity/NaN
+      _debtRatio = widget.monthlyIncome > 0 ? monthly / widget.monthlyIncome : 1.0;
       _calculated = true;
     });
   }

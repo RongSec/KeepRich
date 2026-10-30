@@ -40,13 +40,15 @@ type FamilyJoinRequest struct {
 	HandledAt *int64  `json:"handledAt,omitempty"`
 }
 
-// DeleteFamilyRequest 家庭删除请求（成员投票制）
+// DeleteFamilyRequest 家庭删除请求（成员投票制 + 7 天冷静期）
 type DeleteFamilyRequest struct {
 	Base
 	FamilyID  uint64 `gorm:"index;not null" json:"familyId"`
 	RequestBy uint64 `gorm:"index;not null" json:"requestBy"`
-	Status    string `gorm:"size:16;default:pending" json:"status"` // pending/canceled/executed
+	Status    string `gorm:"size:16;default:pending" json:"status"` // pending/approved/canceled/executed
 	Reason    string `gorm:"size:255" json:"reason"`
+	ExecuteAt int64  `json:"executeAt"`             // 冷静期到期时间（发起 + 7 天），到期后方可执行删除
+	ApprovedAt *int64 `json:"approvedAt,omitempty"` // 全体成员同意时间
 }
 
 // DeleteFamilyVote 家庭删除投票

@@ -16,6 +16,7 @@ class NotifyService extends ChangeNotifier {
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   bool _connected = false;
+  int _failCount = 0;
   int _unreadCount = 0;
   final List<NotificationItem> _recentNotifications = [];
 
@@ -51,12 +52,19 @@ class NotifyService extends ChangeNotifier {
     );
   }
 
-  /// 连接 WebSocket
+  /// 连接 WebSocket（?token= 携带 access token 鉴权，浏览器 WS 无法带 Authorization 头）
   void connect() {
     if (_connected || !ApiClient.instance.hasToken) return;
     try {
-      final wsUrl = AppConfig.wsUrl;
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      final token = ApiClient.instance.accessToken;
+      if (token == null || token.isEmpty) return;
+      final wsUrl = Uri.parse(AppConfig.wsUrl).replace(
+        queryParameters: {
+          ...Uri.parse(AppConfig.wsUrl).queryParameters,
+          'token': token,
+        },
+      );
+      _channel = WebSocketChannel.connect(wsUrl);
 
       _sub = _channel!.stream.listen(
         _onMessage,
@@ -65,6 +73,7 @@ class NotifyService extends ChangeNotifier {
       );
 
       _connected = true;
+      _failCount = 0;
       _startHeartbeat();
       notifyListeners();
     } catch (e) {
@@ -146,7 +155,10 @@ class NotifyService extends ChangeNotifier {
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 5), () {
+    // 指数退避：5s → 10s → 20s → 40s → 上限 60s，避免无效 token 时 5 秒死循环重连
+    _failCount = (_failCount + 1).clamp(0, 5);
+    final delay = Duration(seconds: (5 * (1 << (_failCount - 1))).clamp(5, 60));
+    _reconnectTimer = Timer(delay, () {
       if (!_connected && ApiClient.instance.hasToken) {
         connect();
       }

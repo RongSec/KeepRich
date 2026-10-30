@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -191,49 +192,34 @@ func UpsertInvestment(c *gin.Context) {
 	var old models.InvestmentRecord
 	hasOld := database.DB.Where("scope = ? AND target_id = ? AND year = ? AND month = ?", req.Scope, targetID, req.Year, req.Month).First(&old).Error == nil
 
-	// 累计收益（含历史收益）用于判断本次 amount 实际应用
-	if hasOld {
-		// 已有记录：从历史 income 中减去旧 amount 得到本应值，再差
-		// 简单做法：直接按 req.Amount 入账一条 transaction，覆盖旧 transaction 净额
-		// 风险点：若用户多次编辑当月记录，会产生多条 transaction
-	}
+	// 幂等关联键：同一 scope+target+年月 的自动入账流水唯一
+	sourceRef := fmt.Sprintf("inv:%s:%d:%d:%d", req.Scope, targetID, req.Year, req.Month)
 
-	if req.Amount != 0 {
-		// 计算此月份应入账净额（新 amount 减去旧 amount，避免重复入账）
-		net := req.Amount
-		if hasOld {
-			// 查找上月同日附近的 investment_income 记录，记为旧值
-			// 简单：用 created_at 在 (req.Year, req.Month) 范围内的累加
-			monthStart := time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.Local).Unix()
-			monthEnd := time.Date(req.Year, time.Month(req.Month)+1, 1, 0, 0, 0, 0, time.Local).Unix()
-			var monthInv float64
-			database.DB.Model(&models.Transaction{}).
-				Where("scope = ? AND type = ? AND category = ? AND note = ? AND occurred_at >= ? AND occurred_at < ?",
-					req.Scope, models.TxTypeIncome, models.IncomeInvestment, "投资月度收益自动入账", monthStart, monthEnd).
-				Where(func(db *gorm.DB) *gorm.DB {
-					if req.Scope == models.TxScopePersonal {
-						return db.Where("uid = ?", uid)
-					}
-					return db.Where("family_id = ?", targetID)
-				}).
-				Select("COALESCE(SUM(amount),0)").Scan(&monthInv)
-			net = req.Amount - monthInv
-		}
-		if net != 0 {
-			tx := models.Transaction{
+	if req.Amount != 0 || hasOld {
+		// 事务内「删旧插新」：以 SourceRef 定位旧自动流水，改备注/多次编辑都不会重复入账
+		err := database.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("source_ref = ?", sourceRef).Delete(&models.Transaction{}).Error; err != nil {
+				return err
+			}
+			if req.Amount == 0 {
+				return nil // 清零：只删旧流水，不入新账（冲销）
+			}
+			txNew := models.Transaction{
 				UID:        uid,
 				FamilyID:   familyID,
 				Scope:      req.Scope,
 				Type:       models.TxTypeIncome,
 				Category:   models.IncomeInvestment,
-				Amount:     net, // 净差额，可正可负
+				Amount:     req.Amount,
 				Note:       "投资月度收益自动入账",
 				OccurredAt: time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.Local).Unix(),
+				SourceRef:  sourceRef,
 			}
-			if err := database.DB.Create(&tx).Error; err != nil {
-				utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
-				return
-			}
+			return tx.Create(&txNew).Error
+		})
+		if err != nil {
+			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+			return
 		}
 	}
 
@@ -396,7 +382,7 @@ func InvestmentSettlement(c *gin.Context) {
 	})
 }
 
-// CheckBigPurchase 按当前可承担现金判定可购买项，触发通知
+// CheckBigPurchase 按当前可承担现金判定可购买项，触发通知（不代替用户标记"已购买"）
 func CheckBigPurchase(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
@@ -421,22 +407,40 @@ func CheckBigPurchase(c *gin.Context) {
 	} else {
 		targetID = *familyID
 	}
+	// 大件可占用比例（来自规划，默认 0.5）：可购买阈值 = 现金 × 比例
+	ratio := 1.0
+	var plan models.FinancialPlan
+	if err := database.DB.Where("scope = ? AND target_id = ?", scope, targetID).First(&plan).Error; err == nil && plan.BigPurchaseRatio > 0 && plan.BigPurchaseRatio <= 1 {
+		ratio = plan.BigPurchaseRatio
+	}
 	var plans []models.PurchasePlan
 	database.DB.Where("scope = ? AND target_id = ? AND achieved = ?", scope, targetID, false).Order("priority ASC").Find(&plans)
 
 	ns := services.NewNotifyService(database.DB)
-	// 简化判断：可购买阈值 = 当前现金 * 大件可占用比例
-	limit := ov.TotalCash
+	limit := ov.TotalCash * ratio
 	triggered := []string{}
 	now := time.Now().Unix()
 	for i := range plans {
-		if plans[i].Price <= limit {
-			plans[i].Achieved = true
-			plans[i].AchievedAt = &now
-			database.DB.Save(&plans[i])
-			_ = ns.PushTo(uid, models.NotifyTypeBigPurchase, "大件可购买", "已可购买："+plans[i].Name, "")
-			triggered = append(triggered, plans[i].Name)
+		if plans[i].Price > limit {
+			continue
 		}
+		// 可购买通知 7 天去重；Achieved 仅代表"已购买"，由用户在计划上手动标记
+		if plans[i].NotifiedAt != nil && now-*plans[i].NotifiedAt < 7*24*3600 {
+			continue
+		}
+		plans[i].NotifiedAt = &now
+		database.DB.Save(&plans[i])
+		// 通知全体相关成员（家庭 scope 广播）
+		if scope == models.TxScopeFamily && familyID != nil {
+			var members []models.FamilyMember
+			database.DB.Where("family_id = ? AND status = ?", *familyID, models.MemberStatusActive).Find(&members)
+			for _, mem := range members {
+				_ = ns.PushTo(mem.UserID, models.NotifyTypeBigPurchase, "大件可购买", "已可购买："+plans[i].Name, "")
+			}
+		} else {
+			_ = ns.PushTo(uid, models.NotifyTypeBigPurchase, "大件可购买", "已可购买："+plans[i].Name, "")
+		}
+		triggered = append(triggered, plans[i].Name)
 	}
 	utils.OK(c, gin.H{"triggered": triggered, "cashAvailable": limit})
 }

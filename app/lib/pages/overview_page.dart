@@ -542,9 +542,12 @@ class _OverviewPageState extends State<OverviewPage> {
                         getTitlesWidget: (v, _) {
                           final i = v.toInt();
                           if (i < 0 || i >= w.length) return const SizedBox.shrink();
+                          final label = w[i].month;
+                          // month 格式 "YYYY-MM"（月视图）或 "YYYY"（年视图），按长度安全截取
+                          final text = label.length > 5 ? label.substring(5) : label;
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: Text(w[i].month.substring(5),
+                            child: Text(text,
                                 style: const TextStyle(fontSize: 10)),
                           );
                         },

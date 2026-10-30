@@ -1,9 +1,15 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 生物识别服务
+/// 凭据安全存储：密码只进 flutter_secure_storage（Keychain/Keystore），不落明文
 class BiometricService extends ChangeNotifier {
+  static const _secure = FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true));
+  static const _kPassword = 'biometric_password';
+  static const _kLegacyPassword = 'biometric_password'; // SharedPreferences 旧键（迁移用）
+
   final LocalAuthentication _auth = LocalAuthentication();
   bool _canCheckBiometrics = false;
   bool _hasEnrolledBiometrics = false;
@@ -20,24 +26,30 @@ class BiometricService extends ChangeNotifier {
   /// 初始化：检查设备是否支持生物识别
   Future<void> init() async {
     try {
-      // 检查设备是否支持生物识别
       _canCheckBiometrics = await _auth.canCheckBiometrics;
       debugPrint('[biometric] canCheckBiometrics: $_canCheckBiometrics');
 
       if (_canCheckBiometrics) {
-        // 检查是否有已注册的生物识别
         final availableBiometrics = await _auth.getAvailableBiometrics();
         debugPrint('[biometric] availableBiometrics: $availableBiometrics');
         _hasEnrolledBiometrics = availableBiometrics.isNotEmpty;
       }
 
-      // 读取已保存的设置
       final prefs = await SharedPreferences.getInstance();
       _isBiometricEnabled = prefs.getBool('biometric_enabled') ?? false;
       _lastUsername = prefs.getString('biometric_username') ?? '';
-      _lastPassword = prefs.getString('biometric_password') ?? '';
+      _lastPassword = await _secure.read(key: _kPassword) ?? '';
 
-      // 如果设备不支持生物识别但之前启用了，自动禁用
+      // 迁移：旧版本明文密码从 SharedPreferences 搬进安全存储并删除
+      final legacy = prefs.getString(_kLegacyPassword);
+      if (legacy != null && legacy.isNotEmpty) {
+        if (_lastPassword.isEmpty) {
+          await _secure.write(key: _kPassword, value: legacy);
+          _lastPassword = legacy;
+        }
+        await prefs.remove(_kLegacyPassword);
+      }
+
       if (!canCheckBiometrics && _isBiometricEnabled) {
         _isBiometricEnabled = false;
         await prefs.setBool('biometric_enabled', false);
@@ -55,7 +67,6 @@ class BiometricService extends ChangeNotifier {
     try {
       _errorMessage = '';
 
-      // 先检查设备是否支持
       if (!_canCheckBiometrics) {
         _errorMessage = '设备不支持生物识别';
         notifyListeners();
@@ -68,12 +79,11 @@ class BiometricService extends ChangeNotifier {
         return false;
       }
 
-      // 调用系统验证
       final didAuthenticate = await _auth.authenticate(
         localizedReason: '验证身份以启用生物识别登录',
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: false, // 允许 PIN 作为备选
+          biometricOnly: false,
         ),
       );
 
@@ -81,7 +91,7 @@ class BiometricService extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('biometric_enabled', true);
         await prefs.setString('biometric_username', username);
-        await prefs.setString('biometric_password', password);
+        await _secure.write(key: _kPassword, value: password);
         _isBiometricEnabled = true;
         _lastUsername = username;
         _lastPassword = password;
@@ -105,7 +115,8 @@ class BiometricService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('biometric_enabled', false);
     await prefs.remove('biometric_username');
-    await prefs.remove('biometric_password');
+    await prefs.remove(_kLegacyPassword);
+    await _secure.delete(key: _kPassword);
     _isBiometricEnabled = false;
     _lastUsername = '';
     _lastPassword = '';
@@ -122,7 +133,7 @@ class BiometricService extends ChangeNotifier {
         localizedReason: '使用指纹或人脸登录',
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: false, // 允许 PIN 作为备选
+          biometricOnly: false,
         ),
       );
       if (didAuthenticate) {
@@ -144,7 +155,7 @@ class BiometricService extends ChangeNotifier {
     if (_isBiometricEnabled) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('biometric_username', username);
-      await prefs.setString('biometric_password', password);
+      await _secure.write(key: _kPassword, value: password);
       _lastUsername = username;
       _lastPassword = password;
     }

@@ -12,6 +12,7 @@ import (
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/services"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
 // ====== 通用 scope 解析 ======
@@ -488,14 +489,16 @@ func FutureFinance(c *gin.Context) {
 			scope = models.TxScopePersonal
 		}
 	}
-	// 读取用户规划（用于未来利益折现）
+	// 读取用户规划（用于未来利益折现）——必须按 scope+target_id 查询，家庭成员共享家庭规划
 	var plan models.FinancialPlan
-	planScope := scope
-	if planScope == models.TxScopeFamily {
-		// 家庭 scope 暂用 family id 1 作为聚合 key
-		planScope = "family"
+	planTarget := uid
+	if scope == models.TxScopeFamily {
+		var m models.FamilyMember
+		if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m).Error; err == nil {
+			planTarget = m.FamilyID
+		}
 	}
-	_ = database.DB.Where("uid = ? AND scope = ?", uid, planScope).First(&plan).Error
+	_ = database.DB.Where("scope = ? AND target_id = ?", scope, planTarget).First(&plan).Error
 	currentAge := plan.CurrentAge
 	lifeExpectancy := plan.LifeExpectancy
 	if lifeExpectancy <= 0 {
@@ -508,13 +511,21 @@ func FutureFinance(c *gin.Context) {
 		FutureBenefits:   []BenefitWithSummary{},
 	}
 
+	// 公积金/商业/借款/未来利益：家庭 scope 聚合全家（family_id），个人按 uid
+	var famID uint64
+	if scope == models.TxScopeFamily {
+		var fm models.FamilyMember
+		if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&fm).Error; err == nil {
+			famID = fm.FamilyID
+		}
+	}
 	// 公积金
 	var hfl []models.HousingFundLoan
 	qHf := database.DB.Where("scope = ?", scope)
 	if scope == models.TxScopePersonal {
 		qHf = qHf.Where("uid = ?", uid)
 	} else {
-		qHf = qHf.Where("uid = ?", uid)
+		qHf = qHf.Where("family_id = ?", famID)
 	}
 	qHf.Find(&hfl)
 	for _, l := range hfl {
@@ -527,7 +538,7 @@ func FutureFinance(c *gin.Context) {
 	if scope == models.TxScopePersonal {
 		qCl = qCl.Where("uid = ?", uid)
 	} else {
-		qCl = qCl.Where("uid = ?", uid)
+		qCl = qCl.Where("family_id = ?", famID)
 	}
 	qCl.Find(&cl)
 	for _, l := range cl {
@@ -540,7 +551,7 @@ func FutureFinance(c *gin.Context) {
 	if scope == models.TxScopePersonal {
 		qBm = qBm.Where("uid = ?", uid)
 	} else {
-		qBm = qBm.Where("uid = ?", uid)
+		qBm = qBm.Where("family_id = ?", famID)
 	}
 	qBm.Find(&bm)
 	for _, l := range bm {
@@ -553,7 +564,7 @@ func FutureFinance(c *gin.Context) {
 	if scope == models.TxScopePersonal {
 		qFb = qFb.Where("uid = ?", uid)
 	} else {
-		qFb = qFb.Where("uid = ?", uid)
+		qFb = qFb.Where("family_id = ?", famID)
 	}
 	qFb.Find(&fb)
 	for _, b := range fb {
@@ -737,7 +748,8 @@ func RemoveFamilyMember(c *gin.Context) {
 
 // ============== 立即删除家庭（绕过冷静期） ==============
 
-// ForceDeleteFamily 立即执行家庭删除（仅在冷静期到期后由管理员触发）
+// ForceDeleteFamily 冷静期到期后执行家庭删除（文档 §11）
+// 前置条件：存在全体同意（approved）的删除请求且 executeAt（发起+7天）已到期
 func ForceDeleteFamily(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var m models.FamilyMember
@@ -751,18 +763,50 @@ func ForceDeleteFamily(c *gin.Context) {
 	}
 	familyID := m.FamilyID
 
-	// 检查是否有待处理的删除请求（投票制，自动执行，此接口用于手动触发清理）
-	var pending []models.DeleteFamilyRequest
-	database.DB.Where("family_id = ? AND status = ?", familyID, "pending").Find(&pending)
-	if len(pending) > 0 {
-		utils.Fail(c, http.StatusConflict, utils.CodeConflict, "有正在进行的删除投票，请等待所有成员投票")
+	// 必须有已批准的删除请求，且冷静期（executeAt = 发起 + 7 天）已到期
+	var req models.DeleteFamilyRequest
+	if err := database.DB.Where("family_id = ? AND status = ?", familyID, "approved").First(&req).Error; err != nil {
+		utils.Fail(c, http.StatusConflict, utils.CodeConflict, "不存在已通过投票的删除请求")
 		return
 	}
-	// 软删除所有家庭成员
-	database.DB.Model(&models.FamilyMember{}).Where("family_id = ?", familyID).Update("status", models.MemberStatusLeft)
-	// 软删除家庭
-	database.DB.Delete(&models.Family{}, familyID)
-	utils.OK(c, gin.H{"ok": true})
+	now := time.Now().Unix()
+	if req.ExecuteAt > now {
+		remaining := (req.ExecuteAt - now + 3599) / 3600
+		utils.Fail(c, http.StatusConflict, utils.CodeConflict, "冷静期未到期，剩余约 "+strconv.FormatInt(remaining, 10)+" 小时")
+		return
+	}
+
+	// 事务内级联软删：成员、家庭、家庭范围的规划/大件/投资/贷款/未来利益
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&req).Update("status", "executed").Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.FamilyMember{}).Where("family_id = ?", familyID).Update("status", models.MemberStatusLeft).Error; err != nil {
+			return err
+		}
+		// 家庭空间的规划类数据一并软删（流水保留为历史，不再随家庭展示）
+		if err := tx.Where("scope = ? AND target_id = ?", models.TxScopeFamily, familyID).Delete(&models.FinancialPlan{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("scope = ? AND target_id = ?", models.TxScopeFamily, familyID).Delete(&models.PurchasePlan{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("scope = ? AND target_id = ?", models.TxScopeFamily, familyID).Delete(&models.InvestmentRecord{}).Error; err != nil {
+			return err
+		}
+		// 贷款/借款/未来利益按 family_id 关联
+		for _, mdl := range []any{&models.HousingFundLoan{}, &models.CommercialLoan{}, &models.BorrowedMoney{}, &models.FutureBenefit{}} {
+			if err := tx.Where("scope = ? AND family_id = ?", models.TxScopeFamily, familyID).Delete(mdl).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Delete(&models.Family{}, familyID).Error
+	})
+	if err != nil {
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		return
+	}
+	utils.OK(c, gin.H{"ok": true, "message": "家庭已解散"})
 }
 
 // ============== 投资通知（月初1号） ==============
