@@ -7,6 +7,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/biometric.dart';
 import '../services/notify.dart';
+import '../services/updater.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -108,6 +109,24 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('修改密码、MFA 多因子认证'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/security'),
+          ),
+          // 在线更新
+          ListTile(
+            leading: const Icon(Icons.system_update, color: Colors.teal),
+            title: const Text('检查更新'),
+            subtitle: const Text('查看新版本并在线升级'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final info = await UpdaterService.check();
+              if (!context.mounted) return;
+              if (info != null) {
+                UpdaterService.checkAndPrompt(context);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('当前已是最新版本')),
+                );
+              }
+            },
           ),
           // 生物识别设置
           Consumer<BiometricService>(

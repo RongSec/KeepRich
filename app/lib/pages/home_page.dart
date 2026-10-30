@@ -8,6 +8,7 @@ import 'overview_page.dart';
 import 'settings_page.dart';
 import '../services/api.dart';
 import '../services/notify.dart';
+import '../services/updater.dart';
 
 class HomePage extends StatefulWidget {
   final int tab;
@@ -26,6 +27,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadWorryFree();
+    // 启动静默检查在线更新（延迟 2s 让首屏先渲染）
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) UpdaterService.checkAndPrompt(context);
+    });
   }
 
   @override

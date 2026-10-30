@@ -78,6 +78,20 @@ class ApiClient {
     return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => UserProfile.fromJson(d as Map<String, dynamic>));
   }
 
+  /// 在线更新：版本检查（公开接口）
+  Future<ApiResponse<Map<String, dynamic>>> checkAppVersion({
+    required String platform,
+    required String current,
+    String? did,
+  }) async {
+    final r = await _dio.get('/app/version', queryParameters: {
+      'platform': platform,
+      'current': current,
+      if (did != null) 'did': did,
+    });
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  }
+
   Future<ApiResponse<OverviewData>> overview({String scope = 'personal'}) async {
     final r = await _dio.get('/overview', queryParameters: {'scope': scope});
     return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => OverviewData.fromJson(d as Map<String, dynamic>));

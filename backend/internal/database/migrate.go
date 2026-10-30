@@ -25,6 +25,7 @@ func Migrate() error {
 		&models.CommercialLoan{},
 		&models.BorrowedMoney{},
 		&models.FutureBenefit{},
+		&models.AppVersion{},
 	); err != nil {
 		return err
 	}

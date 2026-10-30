@@ -23,6 +23,11 @@ dependencies:
   google_fonts: ^6.1.0
   local_auth: ^2.2.0
   flutter_local_notifications: ^17.0.0
+  # 在线更新
+  package_info_plus: ^6.0.0
+  path_provider: ^2.1.0
+  open_filex: ^4.3.0
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:

@@ -17,6 +17,7 @@ func Register(r *gin.Engine) {
 		// 公开
 		api.POST("/auth/login", handlers.Login)
 		api.POST("/auth/refresh", handlers.Refresh)
+		api.GET("/app/version", handlers.GetAppVersion) // 在线更新版本检查
 
 		// 需要登录
 		auth := api.Group("")
@@ -114,6 +115,12 @@ func Register(r *gin.Engine) {
 			admin.GET("/errors", handlers.AdminListErrors)
 			admin.DELETE("/errors/:id", handlers.AdminDeleteError)
 			admin.DELETE("/errors", handlers.AdminClearErrors)
+
+			// 应用版本管理（在线更新）
+			admin.GET("/app-versions", handlers.AdminListAppVersions)
+			admin.POST("/app-versions", handlers.AdminCreateAppVersion)
+			admin.PUT("/app-versions/:id", handlers.AdminUpdateAppVersion)
+			admin.DELETE("/app-versions/:id", handlers.AdminDeleteAppVersion)
 		}
 	}
 }

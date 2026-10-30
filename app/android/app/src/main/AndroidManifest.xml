@@ -5,10 +5,14 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+    <!-- 在线更新：允许安装 APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="永远富裕"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <!-- usesCleartextTraffic: 开发期直连 http://10.0.2.2（Android 9+ 默认禁明文流量）；正式发布建议改用 HTTPS + networkSecurityConfig -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

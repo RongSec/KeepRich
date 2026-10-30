@@ -1,0 +1,51 @@
+name: release
+
+# 打 v* tag 自动构建 APK 并发布到 GitHub Release（在线更新的分发源）
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  apk:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.5'
+
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build APK (split per ABI)
+        working-directory: app
+        run: flutter build apk --release --split-per-abi
+
+      # 正式签名（可选）：把 keystore 以 base64 存入 secret KEYSTORE_BASE64，
+      # 并配置 KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD 后取消下面注释
+      # - name: Decode keystore
+      #   run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/android/app/upload-keystore.jks
+
+      - name: Generate checksums
+        run: |
+          cd app/build/app/outputs/flutter-apk
+          sha256sum *.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            app/build/app/outputs/flutter-apk/*.apk
+            app/build/app/outputs/flutter-apk/SHA256SUMS.txt
