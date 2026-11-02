@@ -1,7 +1,7 @@
 name: family_finance_app
 description: 家庭与个人财务管理系统客户端
 publish_to: 'none'
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -29,6 +29,8 @@ dependencies:
   path_provider: ^2.1.0
   open_filex: ^4.3.0
   crypto: ^3.0.3
+  sensors_plus: ^7.1.1
+  web: ^0.5.1
 
 dev_dependencies:
   flutter_test:
@@ -40,7 +42,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/images/icon.ico"
+  image_path: "assets/images/icon.png"
 
 flutter:
   uses-material-design: true

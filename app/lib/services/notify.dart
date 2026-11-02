@@ -20,15 +20,18 @@ class NotifyService extends ChangeNotifier {
   int _unreadCount = 0;
   final List<NotificationItem> _recentNotifications = [];
 
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
 
   bool get connected => _connected;
   int get unreadCount => _unreadCount;
-  List<NotificationItem> get recentNotifications => List.unmodifiable(_recentNotifications);
+  List<NotificationItem> get recentNotifications =>
+      List.unmodifiable(_recentNotifications);
 
   /// 初始化本地通知
   Future<void> initLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     await _localNotifications.initialize(initSettings);
   }
@@ -133,7 +136,9 @@ class NotifyService extends ChangeNotifier {
       notifyListeners();
 
       // 显示本地通知
-      final title = notification.title.isNotEmpty ? notification.title : NotifyType.labelOf(notification.type);
+      final title = notification.title.isNotEmpty
+          ? notification.title
+          : NotifyType.labelOf(notification.type);
       _showLocalNotification(title, notification.content);
     } catch (e) {
       debugPrint('[notify] parse error: $e');

@@ -27,8 +27,10 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login(String username, String password, {String? mfaCode}) async {
-    final r = await ApiClient.instance.login(username, password, mfaCode: mfaCode);
+  Future<bool> login(String username, String password,
+      {String? mfaCode}) async {
+    final r =
+        await ApiClient.instance.login(username, password, mfaCode: mfaCode);
     if (r.ok && r.data != null) {
       final me = await ApiClient.instance.me();
       if (!me.ok || me.data == null) {

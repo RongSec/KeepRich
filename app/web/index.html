@@ -3,55 +3,77 @@
 <head>
   <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
-  <meta name="description" content="家庭与个人财务管理系统">
-  <meta name="theme-color" content="#5B6CFF">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="家庭与个人财务管理系统 · 永远富裕">
+  <meta name="theme-color" content="#07070B">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="家庭财务">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="永远富裕">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <title>家庭财务</title>
+  <title>永远富裕</title>
+  <style>
+    /* 首屏兜底：Flutter 引擎就绪前先铺一层深色 + 金色标语，避免白屏闪烁 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: radial-gradient(120% 80% at 50% 100%, #1c1509 0%, #0d0d13 55%, #07070b 100%);
+      overflow: hidden;
+    }
+    #boot {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      color: #ffc65c;
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      transition: opacity .45s ease;
+    }
+    #boot .coin {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 34% 30%, #fff6d2, #f6ce6f 42%, #dca331 82%, #a9741a);
+      box-shadow: 0 0 30px rgba(255, 198, 92, .45);
+      animation: spin 3.2s ease-in-out infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      font-weight: 900;
+      color: #8e6012;
+    }
+    #boot .txt { font-size: 15px; letter-spacing: 6px; color: #ffe3a3; }
+    #boot .sub { font-size: 11px; letter-spacing: 3px; color: rgba(169, 164, 152, .8); }
+    @keyframes spin {
+      0%, 100% { transform: rotateY(0deg) }
+      50% { transform: rotateY(180deg) }
+    }
+    .hidden { opacity: 0; pointer-events: none; }
+  </style>
 </head>
 <body>
+  <div id="boot">
+    <div class="coin">¥</div>
+    <div class="txt">永远富裕</div>
+    <div class="sub">FAMILY FINANCE</div>
+  </div>
+
+  <script src="flutter_bootstrap.js" async></script>
   <script>
-    var serviceWorkerVersion = null;
-    var scriptLoaded = false;
-    function loadMainDartJs() {
-      if (scriptLoaded) return;
-      scriptLoaded = true;
-      var scriptTag = document.createElement('script');
-      scriptTag.src = 'main.dart.js';
-      scriptTag.type = 'application/javascript';
-      document.body.append(scriptTag);
-    }
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        var serviceWorkerUrl = 'flutter_service_worker.js?v=' + serviceWorkerVersion;
-        navigator.serviceWorker.register(serviceWorkerUrl)
-          .then((reg) => {
-            function waitForActivation(serviceWorker) {
-              serviceWorker.addEventListener('statechange', () => {
-                if (serviceWorker.state == 'activated') {
-                  console.log('Installed new service worker.');
-                  loadMainDartJs();
-                }
-              });
-            }
-            if (!reg.active && (reg.installing || reg.waiting)) {
-              waitForActivation(reg.installing || reg.waiting);
-            } else if (!reg.active.scriptURL.endsWith(serviceWorkerVersion)) {
-              console.log('New service worker available.');
-              reg.update();
-              waitForActivation(reg.installing);
-            } else {
-              console.log('Loading app from service worker.');
-              loadMainDartJs();
-            }
-          });
-      });
-    } else {
-      loadMainDartJs();
-    }
+    // Flutter 首帧渲染后移除兜底层
+    window.addEventListener('flutter-first-frame', function () {
+      var boot = document.getElementById('boot');
+      if (!boot) return;
+      boot.classList.add('hidden');
+      setTimeout(function () { boot.remove(); }, 500);
+    });
   </script>
 </body>
 </html>

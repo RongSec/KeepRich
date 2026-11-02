@@ -35,10 +35,16 @@ class _SecurityPageState extends State<SecurityPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('输入验证码'),
-        content: TextField(controller: code, decoration: const InputDecoration(labelText: '6 位验证码')),
+        content: TextField(
+            controller: code,
+            decoration: const InputDecoration(labelText: '6 位验证码')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('启用')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('启用')),
         ],
       ),
     );
@@ -67,7 +73,9 @@ class _SecurityPageState extends State<SecurityPage> {
               mfaEnabled: true,
             ));
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('MFA 已启用')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('MFA 已启用')));
     }
   }
 
@@ -81,13 +89,23 @@ class _SecurityPageState extends State<SecurityPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: old, obscureText: true, decoration: const InputDecoration(labelText: '原密码')),
-            TextField(controller: nw, obscureText: true, decoration: const InputDecoration(labelText: '新密码（至少 8 位）')),
+            TextField(
+                controller: old,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '原密码')),
+            TextField(
+                controller: nw,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '新密码（至少 8 位）')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存')),
         ],
       ),
     );
@@ -102,7 +120,8 @@ class _SecurityPageState extends State<SecurityPage> {
     nw.dispose();
     final r = await ApiClient.instance.changePassword(oldText, nwText);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -119,18 +138,30 @@ class _SecurityPageState extends State<SecurityPage> {
         title: const Text('编辑资料'),
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: nickname, decoration: const InputDecoration(labelText: '昵称')),
+            TextField(
+                controller: nickname,
+                decoration: const InputDecoration(labelText: '昵称')),
             const SizedBox(height: 8),
-            TextField(controller: avatar, decoration: const InputDecoration(labelText: '头像 URL')),
+            TextField(
+                controller: avatar,
+                decoration: const InputDecoration(labelText: '头像 URL')),
             const SizedBox(height: 8),
-            TextField(controller: email, decoration: const InputDecoration(labelText: '邮箱')),
+            TextField(
+                controller: email,
+                decoration: const InputDecoration(labelText: '邮箱')),
             const SizedBox(height: 8),
-            TextField(controller: phone, decoration: const InputDecoration(labelText: '手机')),
+            TextField(
+                controller: phone,
+                decoration: const InputDecoration(labelText: '手机')),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存')),
         ],
       ),
     );
@@ -167,9 +198,11 @@ class _SecurityPageState extends State<SecurityPage> {
             role: u.role,
             mfaEnabled: u.mfaEnabled,
           ));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已保存')));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -197,10 +230,13 @@ class _SecurityPageState extends State<SecurityPage> {
           ListTile(
             leading: const Icon(Icons.security),
             title: Text(mfaEnabled ? '已启用 MFA' : '启用 MFA 多因子认证'),
-            subtitle: Text(mfaEnabled ? '登录与敏感操作需输入一次性验证码' : '使用 Authenticator 等 App 扫码'),
+            subtitle: Text(
+                mfaEnabled ? '登录与敏感操作需输入一次性验证码' : '使用 Authenticator 等 App 扫码'),
             trailing: mfaEnabled
                 ? const Icon(Icons.check_circle, color: Colors.green)
-                : FilledButton(onPressed: _busy ? null : _enableMfa, child: const Text('设置')),
+                : FilledButton(
+                    onPressed: _busy ? null : _enableMfa,
+                    child: const Text('设置')),
           ),
           if (_otpAuth != null) ...[
             const Divider(),
@@ -210,9 +246,11 @@ class _SecurityPageState extends State<SecurityPage> {
                 children: [
                   QrImageView(data: _otpAuth!, size: 200),
                   const SizedBox(height: 12),
-                  SelectableText('密钥：$_secret', style: const TextStyle(fontFamily: 'monospace')),
+                  SelectableText('密钥：$_secret',
+                      style: const TextStyle(fontFamily: 'monospace')),
                   const SizedBox(height: 12),
-                  FilledButton(onPressed: _confirmMfa, child: const Text('下一步：输入验证码')),
+                  FilledButton(
+                      onPressed: _confirmMfa, child: const Text('下一步：输入验证码')),
                 ],
               ),
             ),

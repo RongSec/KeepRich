@@ -64,25 +64,49 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.admin_panel_settings, size: 56, color: theme.colorScheme.primary),
+                  Icon(Icons.admin_panel_settings,
+                      size: 56, color: theme.colorScheme.primary),
                   const SizedBox(height: 16),
-                  Text('管理页面', textAlign: TextAlign.center, style: theme.textTheme.headlineMedium),
+                  Text('管理页面',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineMedium),
                   const SizedBox(height: 8),
-                  Text('系统管理员登录', textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+                  Text('系统管理员登录',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium),
                   const SizedBox(height: 32),
-                  TextField(controller: _user, decoration: const InputDecoration(labelText: '管理员账号', prefixIcon: Icon(Icons.person_outline))),
+                  TextField(
+                      controller: _user,
+                      decoration: const InputDecoration(
+                          labelText: '管理员账号',
+                          prefixIcon: Icon(Icons.person_outline))),
                   const SizedBox(height: 12),
-                  TextField(controller: _pwd, obscureText: true, decoration: const InputDecoration(labelText: '密码', prefixIcon: Icon(Icons.lock_outline))),
+                  TextField(
+                      controller: _pwd,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                          labelText: '密码',
+                          prefixIcon: Icon(Icons.lock_outline))),
                   const SizedBox(height: 12),
-                  TextField(controller: _mfa, decoration: const InputDecoration(labelText: 'MFA 验证码（可选）', prefixIcon: Icon(Icons.security))),
+                  TextField(
+                      controller: _mfa,
+                      decoration: const InputDecoration(
+                          labelText: 'MFA 验证码（可选）',
+                          prefixIcon: Icon(Icons.security))),
                   if (_err != null) ...[
                     const SizedBox(height: 12),
-                    Text(_err!, style: TextStyle(color: theme.colorScheme.error)),
+                    Text(_err!,
+                        style: TextStyle(color: theme.colorScheme.error)),
                   ],
                   const SizedBox(height: 24),
                   FilledButton(
                     onPressed: _busy ? null : _submit,
-                    child: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('登录'),
+                    child: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('登录'),
                   ),
                   const SizedBox(height: 12),
                   TextButton(

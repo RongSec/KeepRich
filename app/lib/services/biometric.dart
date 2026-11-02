@@ -6,9 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 生物识别服务
 /// 凭据安全存储：密码只进 flutter_secure_storage（Keychain/Keystore），不落明文
 class BiometricService extends ChangeNotifier {
-  static const _secure = FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true));
+  static const _secure = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true));
   static const _kPassword = 'biometric_password';
-  static const _kLegacyPassword = 'biometric_password'; // SharedPreferences 旧键（迁移用）
+  static const _kLegacyPassword =
+      'biometric_password'; // SharedPreferences 旧键（迁移用）
 
   final LocalAuthentication _auth = LocalAuthentication();
   bool _canCheckBiometrics = false;
@@ -20,7 +22,8 @@ class BiometricService extends ChangeNotifier {
 
   bool get canCheckBiometrics => _canCheckBiometrics && _hasEnrolledBiometrics;
   bool get isBiometricEnabled => _isBiometricEnabled;
-  bool get hasSavedCredentials => _lastUsername.isNotEmpty && _lastPassword.isNotEmpty;
+  bool get hasSavedCredentials =>
+      _lastUsername.isNotEmpty && _lastPassword.isNotEmpty;
   String get errorMessage => _errorMessage;
 
   /// 初始化：检查设备是否支持生物识别

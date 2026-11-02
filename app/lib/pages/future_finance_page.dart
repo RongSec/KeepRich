@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../services/api.dart';
 import 'loan_calculator_page.dart';
+import '../theme.dart';
 
 class FutureFinancePage extends StatefulWidget {
   const FutureFinancePage({super.key});
@@ -109,7 +110,8 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                               : '已还 ${(_data!.commercialLoans.first.summary.progressPct * 100).toStringAsFixed(1)}%',
                         ),
                       ),
-                      if (_data!.housingFundLoans.isNotEmpty || _data!.commercialLoans.isNotEmpty) ...[
+                      if (_data!.housingFundLoans.isNotEmpty ||
+                          _data!.commercialLoans.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         _loanListToggle(
                           showHousing: _data!.housingFundLoans,
@@ -143,14 +145,19 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                       // 贷款计算器入口
                       const SizedBox(height: 12),
                       Card(
-                        color: Colors.teal.shade50,
+                        color: Colors.teal.withValues(alpha: 0.14),
                         child: ListTile(
-                          leading: Icon(Icons.calculate, color: Colors.teal.shade700),
-                          title: Text('贷款计算器', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.teal.shade700)),
+                          leading: const Icon(Icons.calculate,
+                              color: Color(0xFF6FD9CE)),
+                          title: const Text('贷款计算器',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF6FD9CE))),
                           subtitle: const Text('评估是否可以承担某笔贷款'),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
-                            final monthlyIncome = _overview?.allocation.monthlyIncome ?? 10000;
+                            final monthlyIncome =
+                                _overview?.allocation.monthlyIncome ?? 10000;
                             final loanRatio = 0.4; // 默认贷款比例
                             Navigator.push(
                               context,
@@ -164,7 +171,8 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                           },
                         ),
                       ),
-                      if (_data!.borrowedMoneys.isNotEmpty || _data!.futureBenefits.isNotEmpty) ...[
+                      if (_data!.borrowedMoneys.isNotEmpty ||
+                          _data!.futureBenefits.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         _mixListToggle(
                           borroweds: _data!.borrowedMoneys,
@@ -188,10 +196,11 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
     final pct100 = (d.totalProgressPct * 100).clamp(0, 100).toStringAsFixed(1);
     final months = d.totalRemainingMonths;
     final monthsText = months > 0 ? '约 $months 个月' : '已全部还清';
-    final payoff = DateTime.fromMillisecondsSinceEpoch(d.estimatedPayoffAt * 1000);
+    final payoff =
+        DateTime.fromMillisecondsSinceEpoch(d.estimatedPayoffAt * 1000);
     final payoffText = months > 0 ? DateFormat('yyyy-MM').format(payoff) : '—';
     return Card(
-      color: Colors.amber.shade50,
+      color: Colors.amber.withValues(alpha: 0.10),
       child: InkWell(
         onTap: () => _showPendingDetail(),
         child: Padding(
@@ -202,29 +211,37 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
               Row(children: [
                 const Icon(Icons.receipt_long, color: Colors.amber),
                 const SizedBox(width: 8),
-                const Text('待还款总额', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const Text('待还款总额',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                Text('$pct100%', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text('$pct100%',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, color: Colors.black45),
+                const Icon(Icons.chevron_right, color: AppTheme.textDim),
               ]),
               const SizedBox(height: 8),
-              Text('${f.format(d.totalPending)} 元', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+              Text('${f.format(d.totalPending)} 元',
+                  style: const TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: d.totalProgressPct.clamp(0.0, 1.0),
                   minHeight: 10,
-                  backgroundColor: Colors.amber.shade100,
+                  backgroundColor: Colors.amber.withValues(alpha: 0.22),
                   valueColor: const AlwaysStoppedAnimation(Colors.amber),
                 ),
               ),
               const SizedBox(height: 8),
               Row(children: [
-                const Icon(Icons.schedule, size: 14, color: Colors.black54),
+                const Icon(Icons.schedule, size: 14, color: AppTheme.textDim),
                 const SizedBox(width: 4),
-                Text('预估还清：$monthsText（$payoffText）', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                Text('预估还清：$monthsText（$payoffText）',
+                    style:
+                        const TextStyle(fontSize: 12, color: AppTheme.textDim)),
               ]),
             ],
           ),
@@ -263,14 +280,22 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
               Row(children: [
                 Icon(icon, color: color, size: 18),
                 const SizedBox(width: 4),
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                Text('$count', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                Text('$count',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textDim)),
               ]),
               const SizedBox(height: 4),
-              Text(summary, style: TextStyle(fontSize: 11, color: color), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(summary,
+                  style: TextStyle(fontSize: 11, color: color),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
-              TextButton(onPressed: onAdd, child: const Text('+ 新增', style: TextStyle(fontSize: 12))),
+              TextButton(
+                  onPressed: onAdd,
+                  child: const Text('+ 新增', style: TextStyle(fontSize: 12))),
             ],
           ),
         ),
@@ -292,16 +317,26 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                const Icon(Icons.savings_outlined, color: Colors.teal, size: 18),
+                const Icon(Icons.savings_outlined,
+                    color: Colors.teal, size: 18),
                 const SizedBox(width: 4),
-                const Text('未来利益', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const Text('未来利益',
+                    style:
+                        TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                Text('$count', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                Text('$count',
+                    style:
+                        const TextStyle(fontSize: 12, color: AppTheme.textDim)),
               ]),
               const SizedBox(height: 4),
-              Text(summary, style: const TextStyle(fontSize: 11, color: Colors.teal), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(summary,
+                  style: const TextStyle(fontSize: 11, color: Colors.teal),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
-              TextButton(onPressed: onAdd, child: const Text('+ 新增', style: TextStyle(fontSize: 12))),
+              TextButton(
+                  onPressed: onAdd,
+                  child: const Text('+ 新增', style: TextStyle(fontSize: 12))),
             ],
           ),
         ),
@@ -323,8 +358,30 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Column(
           children: [
-            for (final l in showHousing) _loanItem('公积金', l.name, l.total, l.annualRate, l.summary, l.method, l.id, () => onEditHousing(l), () => onDeleteHousing(l.id), Colors.indigo),
-            for (final l in showCommercial) _loanItem('商业', l.name, l.total, l.annualRate, l.summary, l.method, l.id, () => onEditCommercial(l), () => onDeleteCommercial(l.id), Colors.purple),
+            for (final l in showHousing)
+              _loanItem(
+                  '公积金',
+                  l.name,
+                  l.total,
+                  l.annualRate,
+                  l.summary,
+                  l.method,
+                  l.id,
+                  () => onEditHousing(l),
+                  () => onDeleteHousing(l.id),
+                  Colors.indigo),
+            for (final l in showCommercial)
+              _loanItem(
+                  '商业',
+                  l.name,
+                  l.total,
+                  l.annualRate,
+                  l.summary,
+                  l.method,
+                  l.id,
+                  () => onEditCommercial(l),
+                  () => onDeleteCommercial(l.id),
+                  Colors.purple),
           ],
         ),
       ),
@@ -344,15 +401,38 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Column(
           children: [
-            for (final b in borroweds) _loanItem('借款', b.name, b.total, b.annualRate, b.summary, b.method, b.id, () => onEditBorrowed(b), () => onDeleteBorrowed(b.id), Colors.deepOrange),
-            for (final b in benefits) _benefitItem(b, () => onEditBenefit(b), () => onDeleteBenefit(b.id)),
+            for (final b in borroweds)
+              _loanItem(
+                  '借款',
+                  b.name,
+                  b.total,
+                  b.annualRate,
+                  b.summary,
+                  b.method,
+                  b.id,
+                  () => onEditBorrowed(b),
+                  () => onDeleteBorrowed(b.id),
+                  Colors.deepOrange),
+            for (final b in benefits)
+              _benefitItem(
+                  b, () => onEditBenefit(b), () => onDeleteBenefit(b.id)),
           ],
         ),
       ),
     );
   }
 
-  Widget _loanItem(String category, String name, double total, double rate, LoanSummary sm, String method, int id, VoidCallback onEdit, VoidCallback onDelete, Color color) {
+  Widget _loanItem(
+      String category,
+      String name,
+      double total,
+      double rate,
+      LoanSummary sm,
+      String method,
+      int id,
+      VoidCallback onEdit,
+      VoidCallback onDelete,
+      Color color) {
     final f = NumberFormat('#,##0.00');
     final pct100 = (sm.progressPct * 100).clamp(0, 100).toStringAsFixed(1);
     return InkWell(
@@ -363,33 +443,63 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)), child: Text(category, style: TextStyle(fontSize: 11, color: color))),
+              Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4)),
+                  child: Text(category,
+                      style: TextStyle(fontSize: 11, color: color))),
               const SizedBox(width: 6),
-              Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
-              Text('${f.format(sm.remainingAmount)} 元 / ${f.format(sm.monthlyPayment)}/月', style: const TextStyle(fontSize: 11, color: Colors.black54)),
-              IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red), onPressed: onDelete),
+              Expanded(
+                  child: Text(name,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis)),
+              Text(
+                  '${f.format(sm.remainingAmount)} 元 / ${f.format(sm.monthlyPayment)}/月',
+                  style:
+                      const TextStyle(fontSize: 11, color: AppTheme.textDim)),
+              IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.delete_outline,
+                      size: 16, color: Colors.red),
+                  onPressed: onDelete),
             ]),
             Row(children: [
-              Text(LoanMethod.labels[method] ?? method, style: TextStyle(fontSize: 11, color: color)),
+              Text(LoanMethod.labels[method] ?? method,
+                  style: TextStyle(fontSize: 11, color: color)),
               const SizedBox(width: 6),
-              Text('年利率 ${rate.toStringAsFixed(2)}%', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+              Text('年利率 ${rate.toStringAsFixed(2)}%',
+                  style:
+                      const TextStyle(fontSize: 11, color: AppTheme.textDim)),
               const SizedBox(width: 6),
-              Text('已还 ${sm.paidAmount.toStringAsFixed(0)}/${sm.totalPayment.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+              Text(
+                  '已还 ${sm.paidAmount.toStringAsFixed(0)}/${sm.totalPayment.toStringAsFixed(0)}',
+                  style:
+                      const TextStyle(fontSize: 11, color: AppTheme.textDim)),
             ]),
             const SizedBox(height: 2),
             ClipRRect(
               borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(value: sm.progressPct.clamp(0.0, 1.0), minHeight: 4, backgroundColor: color.withValues(alpha: 0.15), valueColor: AlwaysStoppedAnimation(color)),
+              child: LinearProgressIndicator(
+                  value: sm.progressPct.clamp(0.0, 1.0),
+                  minHeight: 4,
+                  backgroundColor: color.withValues(alpha: 0.15),
+                  valueColor: AlwaysStoppedAnimation(color)),
             ),
             const SizedBox(height: 2),
-            Text('进度 $pct100% · 剩余 ${sm.remainingMonths} 个月', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+            Text('进度 $pct100% · 剩余 ${sm.remainingMonths} 个月',
+                style: const TextStyle(fontSize: 10, color: AppTheme.textDim)),
           ],
         ),
       ),
     );
   }
 
-  Widget _benefitItem(FutureBenefit b, VoidCallback onEdit, VoidCallback onDelete) {
+  Widget _benefitItem(
+      FutureBenefit b, VoidCallback onEdit, VoidCallback onDelete) {
     final f = NumberFormat('#,##0.00');
     return InkWell(
       onTap: onEdit,
@@ -399,19 +509,37 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)), child: const Text('未来利益', style: TextStyle(fontSize: 11, color: Colors.teal))),
+              Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4)),
+                  child: const Text('未来利益',
+                      style: TextStyle(fontSize: 11, color: Colors.teal))),
               const SizedBox(width: 6),
-              Expanded(child: Text(b.name, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
-              Text('现值 ${f.format(b.summary.presentValue)} 元', style: const TextStyle(fontSize: 11, color: Colors.teal)),
-              IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red), onPressed: onDelete),
+              Expanded(
+                  child: Text(b.name,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis)),
+              Text('现值 ${f.format(b.summary.presentValue)} 元',
+                  style: const TextStyle(fontSize: 11, color: Colors.teal)),
+              IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.delete_outline,
+                      size: 16, color: Colors.red),
+                  onPressed: onDelete),
             ]),
-            Text('${BenefitType.labels[b.type] ?? b.type} · 发放额 ${f.format(b.payoutAmount)} 元', style: const TextStyle(fontSize: 11, color: Colors.black54), overflow: TextOverflow.ellipsis),
+            Text(
+                '${BenefitType.labels[b.type] ?? b.type} · 发放额 ${f.format(b.payoutAmount)} 元',
+                style: const TextStyle(fontSize: 11, color: AppTheme.textDim),
+                overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
     );
   }
-
 
   // ===== 弹窗 =====
   Future<void> _showPendingDetail() async {
@@ -427,33 +555,45 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final l in d.housingFundLoans)
-                _detailRow('公积金·${l.name}', l.summary.remainingAmount, l.summary.monthlyPayment, Colors.indigo, f),
+                _detailRow('公积金·${l.name}', l.summary.remainingAmount,
+                    l.summary.monthlyPayment, Colors.indigo, f),
               for (final l in d.commercialLoans)
-                _detailRow('商业·${l.name}', l.summary.remainingAmount, l.summary.monthlyPayment, Colors.purple, f),
+                _detailRow('商业·${l.name}', l.summary.remainingAmount,
+                    l.summary.monthlyPayment, Colors.purple, f),
               for (final l in d.borrowedMoneys)
-                _detailRow('借款·${l.name}', l.summary.remainingAmount, l.summary.monthlyPayment, Colors.deepOrange, f),
+                _detailRow('借款·${l.name}', l.summary.remainingAmount,
+                    l.summary.monthlyPayment, Colors.deepOrange, f),
               const Divider(),
               Row(children: [
                 const Text('合计', style: TextStyle(fontWeight: FontWeight.w700)),
                 const Spacer(),
-                Text('${f.format(d.totalPending)} 元', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('${f.format(d.totalPending)} 元',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
               ]),
             ],
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('关闭'))
+        ],
       ),
     );
   }
 
-  Widget _detailRow(String label, double remain, double monthly, Color color, NumberFormat f) {
+  Widget _detailRow(String label, double remain, double monthly, Color color,
+      NumberFormat f) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
-        Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 6),
         Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
-        Text('${f.format(remain)} / 月 ${f.format(monthly)}', style: const TextStyle(fontSize: 12)),
+        Text('${f.format(remain)} / 月 ${f.format(monthly)}',
+            style: const TextStyle(fontSize: 12)),
       ]),
     );
   }
@@ -587,14 +727,15 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
     _load();
   }
 
-
   Future<bool> _confirm(String msg) async {
     final r = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         content: Text(msg),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -610,7 +751,9 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
     if (!mounted) return;
     final ok = (resp.ok == true);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? '操作成功' : (resp.message ?? '失败')), duration: const Duration(seconds: 2)),
+      SnackBar(
+          content: Text(ok ? '操作成功' : (resp.message ?? '失败')),
+          duration: const Duration(seconds: 2)),
     );
   }
 }
@@ -645,12 +788,18 @@ class _LoanEditDialog extends StatefulWidget {
 }
 
 class _LoanEditDialogState extends State<_LoanEditDialog> {
-  late final TextEditingController _name = TextEditingController(text: widget.initialName);
-  late final TextEditingController _total = TextEditingController(text: widget.initialTotal.toStringAsFixed(0));
-  late final TextEditingController _rate = TextEditingController(text: widget.initialRate.toStringAsFixed(2));
-  late final TextEditingController _months = TextEditingController(text: widget.initialMonths.toString());
-  late final TextEditingController _paid = TextEditingController(text: widget.initialPaid.toString());
-  late final TextEditingController _note = TextEditingController(text: widget.initialNote);
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initialName);
+  late final TextEditingController _total =
+      TextEditingController(text: widget.initialTotal.toStringAsFixed(0));
+  late final TextEditingController _rate =
+      TextEditingController(text: widget.initialRate.toStringAsFixed(2));
+  late final TextEditingController _months =
+      TextEditingController(text: widget.initialMonths.toString());
+  late final TextEditingController _paid =
+      TextEditingController(text: widget.initialPaid.toString());
+  late final TextEditingController _note =
+      TextEditingController(text: widget.initialNote);
   late String _method = widget.initialMethod;
 
   @override
@@ -714,20 +863,28 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: _name, decoration: const InputDecoration(labelText: '名称')),
+              TextField(
+                  controller: _name,
+                  decoration: const InputDecoration(labelText: '名称')),
               const SizedBox(height: 8),
               TextField(
                 controller: _total,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                ],
                 onChanged: (_) => _calcPreview(),
                 decoration: const InputDecoration(labelText: '贷款总额 (元)'),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _rate,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                ],
                 onChanged: (_) => _calcPreview(),
                 decoration: const InputDecoration(labelText: '年利率 (%)'),
               ),
@@ -744,7 +901,8 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
                 initialValue: _method,
                 items: [
                   for (final m in methodOptions)
-                    DropdownMenuItem(value: m, child: Text(LoanMethod.labels[m] ?? m)),
+                    DropdownMenuItem(
+                        value: m, child: Text(LoanMethod.labels[m] ?? m)),
                 ],
                 onChanged: (v) {
                   setState(() => _method = v ?? _method);
@@ -760,13 +918,18 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
                 decoration: const InputDecoration(labelText: '已还期数 (月)'),
               ),
               const SizedBox(height: 8),
-              TextField(controller: _note, decoration: const InputDecoration(labelText: '备注')),
+              TextField(
+                  controller: _note,
+                  decoration: const InputDecoration(labelText: '备注')),
               if (_previewMonthly != null) ...[
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                  child: Text('首月应还：${_previewMonthly!.toStringAsFixed(2)} 元', style: const TextStyle(fontSize: 12)),
+                  decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.20),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: Text('首月应还：${_previewMonthly!.toStringAsFixed(2)} 元',
+                      style: const TextStyle(fontSize: 12)),
                 ),
               ],
             ],
@@ -774,7 +937,8 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(
           onPressed: () {
             final m = {
@@ -802,19 +966,22 @@ class _BenefitEditDialog extends StatefulWidget {
   final String title;
   final FutureBenefit? initial;
   final String scope;
-  const _BenefitEditDialog({required this.title, required this.initial, required this.scope});
+  const _BenefitEditDialog(
+      {required this.title, required this.initial, required this.scope});
   @override
   State<_BenefitEditDialog> createState() => _BenefitEditDialogState();
 }
 
 class _BenefitEditDialogState extends State<_BenefitEditDialog> {
-  late final TextEditingController _name = TextEditingController(text: widget.initial?.name ?? '');
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initial?.name ?? '');
   late final TextEditingController _amount = TextEditingController(
     text: widget.initial != null && widget.initial!.payoutAmount > 0
         ? widget.initial!.payoutAmount.toStringAsFixed(0)
         : '',
   );
-  late final TextEditingController _note = TextEditingController(text: widget.initial?.note ?? '');
+  late final TextEditingController _note =
+      TextEditingController(text: widget.initial?.note ?? '');
   late final TextEditingController _customYears = TextEditingController(
     text: widget.initial != null && widget.initial!.customYears > 0
         ? widget.initial!.customYears.toString()
@@ -836,7 +1003,8 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
   void initState() {
     super.initState();
     if (widget.initial != null && widget.initial!.payoutDate > 0) {
-      _payoutDate = DateTime.fromMillisecondsSinceEpoch(widget.initial!.payoutDate * 1000);
+      _payoutDate = DateTime.fromMillisecondsSinceEpoch(
+          widget.initial!.payoutDate * 1000);
     }
   }
 
@@ -874,13 +1042,16 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: _name, decoration: const InputDecoration(labelText: '名称')),
+              TextField(
+                  controller: _name,
+                  decoration: const InputDecoration(labelText: '名称')),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 initialValue: _type,
                 items: [
                   for (final t in BenefitType.labels.keys)
-                    DropdownMenuItem(value: t, child: Text(BenefitType.labels[t] ?? t)),
+                    DropdownMenuItem(
+                        value: t, child: Text(BenefitType.labels[t] ?? t)),
                 ],
                 onChanged: (v) => setState(() => _type = v ?? _type),
                 decoration: const InputDecoration(labelText: '发放方式'),
@@ -901,8 +1072,11 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
               // 金额
               TextField(
                 controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                ],
                 decoration: InputDecoration(
                   labelText: isLump ? '发放额 (元)' : '每月发放金额 (元)',
                   prefixText: '¥ ',
@@ -932,9 +1106,12 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.20),
+                      borderRadius: BorderRadius.circular(8)),
                   child: Row(children: [
-                    const Icon(Icons.info_outline, size: 14, color: Colors.blue),
+                    const Icon(Icons.info_outline,
+                        size: 14, color: Colors.blue),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -943,32 +1120,41 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
                             : _type == BenefitType.customYears
                                 ? '按自定义年限逐月发放（折现计算）'
                                 : '按月/按年发放至预期寿命（折现计算）',
-                        style: const TextStyle(fontSize: 11, color: Colors.blue),
+                        style:
+                            const TextStyle(fontSize: 11, color: Colors.blue),
                       ),
                     ),
                   ]),
                 ),
               ],
               const SizedBox(height: 8),
-              TextField(controller: _note, decoration: const InputDecoration(labelText: '备注')),
+              TextField(
+                  controller: _note,
+                  decoration: const InputDecoration(labelText: '备注')),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(
           onPressed: () {
             if (_payoutDate == null) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择发放时间')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('请选择发放时间')));
               return;
             }
             final amt = double.tryParse(_amount.text) ?? 0;
             if (amt <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写有效金额')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('请填写有效金额')));
               return;
             }
-            final ts = DateTime(_payoutDate!.year, _payoutDate!.month, _payoutDate!.day, 0, 0, 0).millisecondsSinceEpoch ~/ 1000;
+            final ts = DateTime(_payoutDate!.year, _payoutDate!.month,
+                        _payoutDate!.day, 0, 0, 0)
+                    .millisecondsSinceEpoch ~/
+                1000;
             final m = {
               'scope': widget.scope,
               'name': _name.text,

@@ -86,4 +86,34 @@ App 启动 ──► GET /api/app/version?platform=android&current=x.y.z&did=设
 ## iOS / Web
 
 - **iOS**：受 App Store 政策限制不支持自更新，走商店发版
-- **Web**：刷新即最新，无需更新机制
+- **Web**：见下节，已实现主动更新提示
+
+## Web 端在线更新
+
+Web 不能像 APK 那样"替换安装包"，所以更新链条是：**部署新构建 → 服务端告知版本 → 页面提示刷新 → 清缓存重载**。
+
+1. 构建（版本号取自 `app/pubspec.yaml` 的 `version: X.Y.Z+N`）：
+
+   ```bash
+   ./scripts/build_web.sh --deploy
+   ```
+
+   脚本会带上 `--dart-define=APP_VERSION=X.Y.Z --dart-define=APP_BUILD_NUMBER=N`，
+   生成 `version.json`，并把产物复制到 `deploy/nginx/html/app`（nginx 已配置 `/app/` 路由）。
+
+2. 让服务端知道"当前部署的是哪个版本"（二选一）：
+
+   - 后台新增一条 `platform=web` 的版本记录（`/api/app/version` 同款表，可写更新说明、控制发布）；
+   - 或启动后端时注入环境变量：`WEB_VERSION=0.3.0 WEB_BUILD=3 WEB_NOTES="..."`。
+
+3. 客户端行为：页面启动、每 10 分钟、切回前台时请求 `GET /api/app/web-version?build=N`，
+   若服务端版本更高，登录页 / 首页顶部出现「新版本 vX.Y.Z 已发布 → 立即刷新」。
+   点击后清空 CacheStorage、注销 Service Worker，再带时间戳重载，确保拿到新构建。
+
+> 缓存策略：`/app/index.html`、`flutter_bootstrap.js`、`main.dart.js` 全部 `no-cache`，
+> 静态资源（canvaskit / assets）可长缓存。构建时使用 `--pwa-strategy=none`，
+> 不再注册 Flutter 的 Service Worker，避免"发布了但用户永远拿旧包"。
+
+后端也可以直接托管 Web 产物：把 `build/web` 放到后端工作目录的 `web/`（或用 `WEB_DIST` 指定），
+访问 `http://后端地址/` 即是 App Web 版，路由未命中会回退到 `index.html`（SPA）。
+

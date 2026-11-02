@@ -8,7 +8,8 @@ class ApiResponse<T> {
 
   bool get ok => code == 0;
 
-  factory ApiResponse.fromJson(Map<String, dynamic> json, T Function(dynamic) parse) {
+  factory ApiResponse.fromJson(
+      Map<String, dynamic> json, T Function(dynamic) parse) {
     return ApiResponse(
       code: (json['code'] ?? -1) as int,
       message: (json['message'] ?? '') as String,
@@ -61,7 +62,8 @@ class LoginResult {
         role: json['role'] as String,
         nickname: json['nickname'] as String? ?? '',
         avatar: json['avatar'] as String? ?? '',
-        familyId: json['familyId'] == null ? null : (json['familyId'] as num).toInt(),
+        familyId:
+            json['familyId'] == null ? null : (json['familyId'] as num).toInt(),
       );
 }
 
@@ -109,13 +111,20 @@ class FamilyInfo {
   final bool? bound;
   final String? description;
 
-  FamilyInfo({this.id, this.name, this.code, this.adminId, this.bound, this.description});
+  FamilyInfo(
+      {this.id,
+      this.name,
+      this.code,
+      this.adminId,
+      this.bound,
+      this.description});
 
   factory FamilyInfo.fromJson(Map<String, dynamic> json) => FamilyInfo(
         id: json['id'] == null ? null : (json['id'] as num).toInt(),
         name: json['name'] as String?,
         code: json['code'] as String?,
-        adminId: json['adminId'] == null ? null : (json['adminId'] as num).toInt(),
+        adminId:
+            json['adminId'] == null ? null : (json['adminId'] as num).toInt(),
         bound: json['bound'] as bool?,
         description: json['description'] as String?,
       );
@@ -239,7 +248,8 @@ class OverviewData {
   factory OverviewData.fromJson(Map<String, dynamic> json) => OverviewData(
         totalCash: (json['totalCash'] as num? ?? 0).toDouble(),
         totalHousingFund: (json['totalHousingFund'] as num? ?? 0).toDouble(),
-        totalWealthProduct: (json['totalWealthProduct'] as num? ?? 0).toDouble(),
+        totalWealthProduct:
+            (json['totalWealthProduct'] as num? ?? 0).toDouble(),
         savingBalance: (json['savingBalance'] as num? ?? 0).toDouble(),
         investmentBalance: (json['investmentBalance'] as num? ?? 0).toDouble(),
         emergencyBalance: (json['emergencyBalance'] as num? ?? 0).toDouble(),
@@ -254,11 +264,13 @@ class OverviewData {
         worryFreePerBuy: (json['worryFreePerBuy'] as num? ?? 0).toDouble(),
         annualIncome: (json['annualIncome'] as num? ?? 0).toDouble(),
         monthlyConsumable: (json['monthlyConsumable'] as num? ?? 0).toDouble(),
-        monthConsumableLeft: (json['monthConsumableLeft'] as num? ?? 0).toDouble(),
+        monthConsumableLeft:
+            (json['monthConsumableLeft'] as num? ?? 0).toDouble(),
         savingCarryOver: (json['savingCarryOver'] as num? ?? 0).toDouble(),
         remainingBudget: (json['remainingBudget'] as num? ?? 0).toDouble(),
         futureWealth: (json['futureWealth'] as num? ?? 0).toDouble(),
-        allocation: Allocation.fromJson(json['allocation'] as Map<String, dynamic>? ?? {}),
+        allocation: Allocation.fromJson(
+            json['allocation'] as Map<String, dynamic>? ?? {}),
         topPurchases: ((json['topPurchases'] as List?) ?? [])
             .map((e) => PurchaseProjection.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -267,7 +279,8 @@ class OverviewData {
         cumulativeDaily: (json['cumulativeDaily'] as num? ?? 0).toDouble(),
         totalPending: (json['totalPending'] as num? ?? 0).toDouble(),
         totalProgressPct: (json['totalProgressPct'] as num? ?? 0).toDouble(),
-        totalRemainingMonths: (json['totalRemainingMonths'] as num? ?? 0).toInt(),
+        totalRemainingMonths:
+            (json['totalRemainingMonths'] as num? ?? 0).toInt(),
         estimatedPayoffAt: (json['estimatedPayoffAt'] as num? ?? 0).toInt(),
       );
 }
@@ -329,10 +342,13 @@ class Allocation {
         investmentGap: (json['investmentGap'] as num? ?? 0).toDouble(),
         investmentExcess: (json['investmentExcess'] as num? ?? 0).toDouble(),
         savingThisMonth: (json['savingThisMonth'] as num? ?? 0).toDouble(),
-        investmentThisMonth: (json['investmentThisMonth'] as num? ?? 0).toDouble(),
-        emergencyThisMonth: (json['emergencyThisMonth'] as num? ?? 0).toDouble(),
+        investmentThisMonth:
+            (json['investmentThisMonth'] as num? ?? 0).toDouble(),
+        emergencyThisMonth:
+            (json['emergencyThisMonth'] as num? ?? 0).toDouble(),
         pensionThisMonth: (json['pensionThisMonth'] as num? ?? 0).toDouble(),
-        consumptionThisMonth: (json['consumptionThisMonth'] as num? ?? 0).toDouble(),
+        consumptionThisMonth:
+            (json['consumptionThisMonth'] as num? ?? 0).toDouble(),
         savingTarget: (json['savingTarget'] as num? ?? 0).toDouble(),
         investmentTarget: (json['investmentTarget'] as num? ?? 0).toDouble(),
         emergencyTarget: (json['emergencyTarget'] as num? ?? 0).toDouble(),
@@ -358,7 +374,8 @@ class PurchaseProjection {
     required this.achievable,
   });
 
-  factory PurchaseProjection.fromJson(Map<String, dynamic> json) => PurchaseProjection(
+  factory PurchaseProjection.fromJson(Map<String, dynamic> json) =>
+      PurchaseProjection(
         id: (json['id'] as num).toInt(),
         name: json['name'] as String? ?? '',
         price: (json['price'] as num? ?? 0).toDouble(),
@@ -423,7 +440,8 @@ class CategorySlice {
   final String label;
   final double amount;
 
-  CategorySlice({required this.category, required this.label, required this.amount});
+  CategorySlice(
+      {required this.category, required this.label, required this.amount});
 
   factory CategorySlice.fromJson(Map<String, dynamic> json) => CategorySlice(
         category: json['category'] as String? ?? '',
@@ -445,10 +463,10 @@ class TxRecord {
   final String username;
   final String nickname;
   final bool overWorry;
-  final String loanRef;            // 偿还贷款关联
-  final String targetBucket;       // 收入目标桶
-  final String sourceBucket;       // 支出来源桶（单来源兼容）
-  final String sourceDetails;      // 多来源 JSON
+  final String loanRef; // 偿还贷款关联
+  final String targetBucket; // 收入目标桶
+  final String sourceBucket; // 支出来源桶（单来源兼容）
+  final String sourceDetails; // 多来源 JSON
 
   TxRecord({
     required this.id,
@@ -541,7 +559,8 @@ class InvestmentRecord {
     required this.note,
   });
 
-  factory InvestmentRecord.fromJson(Map<String, dynamic> json) => InvestmentRecord(
+  factory InvestmentRecord.fromJson(Map<String, dynamic> json) =>
+      InvestmentRecord(
         id: (json['id'] as num).toInt(),
         scope: json['scope'] as String? ?? 'personal',
         year: (json['year'] as num? ?? 0).toInt(),
@@ -626,11 +645,11 @@ class TxCategory {
 
   // 各支出类别允许的来源桶
   static const Map<String, List<String>> allowedSourceBuckets = {
-    expenseDaily: ['cash'],                                // 日常消费：仅现金
-    expenseBigPurchase: ['cash', 'saving'],                // 大件购物：现金、储蓄桶
-    expensePension: ['pension'],                           // 养老：仅养老桶
-    expenseEmergency: ['emergency'],                       // 应急：仅应急桶
-    expenseLoanRepay: ['cash', 'saving', 'housing_fund'],  // 偿还贷款：现金、储蓄桶、公积金
+    expenseDaily: ['cash'], // 日常消费：仅现金
+    expenseBigPurchase: ['cash', 'saving'], // 大件购物：现金、储蓄桶
+    expensePension: ['pension'], // 养老：仅养老桶
+    expenseEmergency: ['emergency'], // 应急：仅应急桶
+    expenseLoanRepay: ['cash', 'saving', 'housing_fund'], // 偿还贷款：现金、储蓄桶、公积金
   };
 
   // 来源桶显示名
@@ -714,7 +733,8 @@ class HousingFundLoan {
     required this.note,
     required this.summary,
   });
-  factory HousingFundLoan.fromJson(Map<String, dynamic> json) => HousingFundLoan(
+  factory HousingFundLoan.fromJson(Map<String, dynamic> json) =>
+      HousingFundLoan(
         id: (json['id'] as num).toInt(),
         scope: json['scope'] as String? ?? 'personal',
         name: json['name'] as String? ?? '',
@@ -725,7 +745,8 @@ class HousingFundLoan {
         startMonth: (json['startMonth'] as num? ?? 0).toInt(),
         paidMonths: (json['paidMonths'] as num? ?? 0).toInt(),
         note: json['note'] as String? ?? '',
-        summary: LoanSummary.fromJson(json['summary'] as Map<String, dynamic>? ?? {}),
+        summary: LoanSummary.fromJson(
+            json['summary'] as Map<String, dynamic>? ?? {}),
       );
 }
 
@@ -765,7 +786,8 @@ class CommercialLoan {
         startMonth: (json['startMonth'] as num? ?? 0).toInt(),
         paidMonths: (json['paidMonths'] as num? ?? 0).toInt(),
         note: json['note'] as String? ?? '',
-        summary: LoanSummary.fromJson(json['summary'] as Map<String, dynamic>? ?? {}),
+        summary: LoanSummary.fromJson(
+            json['summary'] as Map<String, dynamic>? ?? {}),
       );
 }
 
@@ -805,15 +827,16 @@ class BorrowedMoney {
         startMonth: (json['startMonth'] as num? ?? 0).toInt(),
         paidMonths: (json['paidMonths'] as num? ?? 0).toInt(),
         note: json['note'] as String? ?? '',
-        summary: LoanSummary.fromJson(json['summary'] as Map<String, dynamic>? ?? {}),
+        summary: LoanSummary.fromJson(
+            json['summary'] as Map<String, dynamic>? ?? {}),
       );
 }
 
 class BenefitSummary {
-  final int payoutDate;        // 一次性：发放日期；逐月/年/终身/自定义：开始发放时间
-  final double payoutAmount;   // 一次性：发放额；逐月：每月发放额；按年：每年发放额；终身/自定义：每月发放额
+  final int payoutDate; // 一次性：发放日期；逐月/年/终身/自定义：开始发放时间
+  final double payoutAmount; // 一次性：发放额；逐月：每月发放额；按年：每年发放额；终身/自定义：每月发放额
   final double yearsLeft;
-  final double presentValue;    // 折现到当下的总价值
+  final double presentValue; // 折现到当下的总价值
   final String description;
   BenefitSummary({
     required this.payoutDate,
@@ -838,7 +861,7 @@ class FutureBenefit {
   final String type; // monthly/yearly/lump_sum/lifetime/custom_years
   final int payoutDate;
   final double payoutAmount;
-  final int customYears;     // 自定义年限（仅 type=custom_years 用）
+  final int customYears; // 自定义年限（仅 type=custom_years 用）
   final String note;
   final BenefitSummary summary;
   FutureBenefit({
@@ -861,7 +884,8 @@ class FutureBenefit {
         payoutAmount: (json['payoutAmount'] as num? ?? 0).toDouble(),
         customYears: (json['customYears'] as num? ?? 0).toInt(),
         note: json['note'] as String? ?? '',
-        summary: BenefitSummary.fromJson(json['summary'] as Map<String, dynamic>? ?? {}),
+        summary: BenefitSummary.fromJson(
+            json['summary'] as Map<String, dynamic>? ?? {}),
       );
 }
 
@@ -882,13 +906,15 @@ class InvestmentSummary {
     required this.hardSavingTransfer,
     required this.deficit,
   });
-  factory InvestmentSummary.fromJson(Map<String, dynamic> json) => InvestmentSummary(
+  factory InvestmentSummary.fromJson(Map<String, dynamic> json) =>
+      InvestmentSummary(
         currentMonthRate: (json['currentMonthRate'] as num? ?? 0).toDouble(),
         currentYear: (json['currentYear'] as num? ?? 0).toInt(),
         currentMonth: (json['currentMonth'] as num? ?? 0).toInt(),
         targetRate: (json['targetRate'] as num? ?? 0).toDouble(),
         excess: (json['excess'] as num? ?? 0).toDouble(),
-        hardSavingTransfer: (json['hardSavingTransfer'] as num? ?? 0).toDouble(),
+        hardSavingTransfer:
+            (json['hardSavingTransfer'] as num? ?? 0).toDouble(),
         deficit: (json['deficit'] as num? ?? 0).toDouble(),
       );
 }
@@ -914,10 +940,12 @@ class FutureFinanceData {
     required this.futureBenefits,
     required this.investment,
   });
-  factory FutureFinanceData.fromJson(Map<String, dynamic> json) => FutureFinanceData(
+  factory FutureFinanceData.fromJson(Map<String, dynamic> json) =>
+      FutureFinanceData(
         totalPending: (json['totalPending'] as num? ?? 0).toDouble(),
         totalProgressPct: (json['totalProgressPct'] as num? ?? 0).toDouble(),
-        totalRemainingMonths: (json['totalRemainingMonths'] as num? ?? 0).toInt(),
+        totalRemainingMonths:
+            (json['totalRemainingMonths'] as num? ?? 0).toInt(),
         estimatedPayoffAt: (json['estimatedPayoffAt'] as num? ?? 0).toInt(),
         housingFundLoans: ((json['housingFundLoans'] as List?) ?? [])
             .map((e) => HousingFundLoan.fromJson(e as Map<String, dynamic>))
@@ -931,7 +959,8 @@ class FutureFinanceData {
         futureBenefits: ((json['futureBenefits'] as List?) ?? [])
             .map((e) => FutureBenefit.fromJson(e as Map<String, dynamic>))
             .toList(),
-        investment: InvestmentSummary.fromJson(json['investment'] as Map<String, dynamic>? ?? {}),
+        investment: InvestmentSummary.fromJson(
+            json['investment'] as Map<String, dynamic>? ?? {}),
       );
 }
 
@@ -947,11 +976,11 @@ class LoanMethod {
 }
 
 class BenefitType {
-  static const String monthly = 'monthly';           // 按月发放至预期寿命
-  static const String yearly = 'yearly';             // 按年发放至预期寿命
-  static const String lumpSum = 'lump_sum';          // 一次性发放
-  static const String lifetime = 'lifetime';         // 终身按月
-  static const String customYears = 'custom_years';  // 自定义年限
+  static const String monthly = 'monthly'; // 按月发放至预期寿命
+  static const String yearly = 'yearly'; // 按年发放至预期寿命
+  static const String lumpSum = 'lump_sum'; // 一次性发放
+  static const String lifetime = 'lifetime'; // 终身按月
+  static const String customYears = 'custom_years'; // 自定义年限
   static const Map<String, String> labels = {
     monthly: '按月发放',
     yearly: '按年发放',
@@ -965,12 +994,12 @@ class BenefitType {
 class NotificationItem {
   final int id;
   final int uid;
-  final String type;     // overspend/big_purchase/family_apply/family_result/system
+  final String type; // overspend/big_purchase/family_apply/family_result/system
   final String title;
   final String content;
   final String data;
   final bool read;
-  final int createdAt;   // unix 秒
+  final int createdAt; // unix 秒
 
   NotificationItem({
     required this.id,
@@ -983,7 +1012,8 @@ class NotificationItem {
     required this.createdAt,
   });
 
-  factory NotificationItem.fromJson(Map<String, dynamic> json) => NotificationItem(
+  factory NotificationItem.fromJson(Map<String, dynamic> json) =>
+      NotificationItem(
         id: _parseNum(json['id']).toInt(),
         uid: _parseNum(json['uid']).toInt(),
         type: json['type'] as String? ?? 'system',

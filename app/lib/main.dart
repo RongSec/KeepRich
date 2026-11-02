@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import 'config.dart';
 import 'pages/admin/admin_home_page.dart';
 import 'pages/admin/admin_login_page.dart';
 import 'pages/big_purchase_page.dart';
@@ -15,10 +16,14 @@ import 'pages/splash_page.dart';
 import 'services/auth.dart';
 import 'services/biometric.dart';
 import 'services/notify.dart';
+import 'services/web_updater.dart';
 import 'theme.dart';
+import 'widgets/coin_pool.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 先读本地保存的服务端地址，再建连接（否则会先连到默认地址）
+  await AppConfig.init();
   runApp(const AppRoot());
 }
 
@@ -41,6 +46,8 @@ class _AppRootState extends State<AppRoot> {
     _biometric.init();
     _notify.initLocalNotifications();
     _auth.addListener(_onAuthChanged);
+    // Web 端：检查是否有新的前端构建，有则提示刷新
+    WebUpdater.instance.start();
   }
 
   void _onAuthChanged() {
@@ -100,15 +107,18 @@ class _AppShell extends StatelessWidget {
       routes: [
         GoRoute(path: '/splash', builder: (_, __) => const SplashPage()),
         GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
-        GoRoute(path: '/admin/login', builder: (_, __) => const AdminLoginPage()),
+        GoRoute(
+            path: '/admin/login', builder: (_, __) => const AdminLoginPage()),
         GoRoute(path: '/admin', builder: (_, __) => const AdminShell()),
         GoRoute(path: '/overview', builder: (_, __) => const HomePage(tab: 0)),
         GoRoute(path: '/future', builder: (_, __) => const HomePage(tab: 1)),
-        GoRoute(path: '/bookkeeping', builder: (_, __) => const HomePage(tab: 2)),
+        GoRoute(
+            path: '/bookkeeping', builder: (_, __) => const HomePage(tab: 2)),
         GoRoute(path: '/settings', builder: (_, __) => const HomePage(tab: 3)),
         GoRoute(path: '/family', builder: (_, __) => const FamilyManagePage()),
         GoRoute(path: '/plan', builder: (_, __) => const PlanPage()),
-        GoRoute(path: '/big-purchase', builder: (_, __) => const BigPurchasePage()),
+        GoRoute(
+            path: '/big-purchase', builder: (_, __) => const BigPurchasePage()),
         GoRoute(path: '/security', builder: (_, __) => const SecurityPage()),
         GoRoute(path: '/users', builder: (_, __) => const UserManagementPage()),
       ],
@@ -117,10 +127,19 @@ class _AppShell extends StatelessWidget {
     return MaterialApp.router(
       title: '永远富裕',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
-      theme: AppTheme.light(),
+      // 全程深色（不跟随系统亮度，避免与金币池背景冲突）
+      themeMode: ThemeMode.dark,
+      theme: AppTheme.dark(),
       darkTheme: AppTheme.dark(),
       routerConfig: router,
+      // 金币池背景铺在最底层：登录前饱满、登录后变淡
+      builder: (ctx, child) => Stack(
+        fit: StackFit.expand,
+        children: [
+          CoinPoolBackground(dimmed: auth.isLoggedIn),
+          if (child != null) child,
+        ],
+      ),
     );
   }
 }

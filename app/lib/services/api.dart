@@ -8,14 +8,33 @@ import '../models.dart';
 /// API 客户端
 class ApiClient {
   ApiClient._() {
-    _dio = Dio(BaseOptions(
+    _dio = _buildDio();
+  }
+  static final ApiClient instance = ApiClient._();
+
+  static const _secure = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true));
+
+  late Dio _dio;
+  String? _accessToken;
+  String? _refreshToken;
+  bool _refreshing = false;
+
+  /// 服务端地址变更后重建连接（保留 token）
+  void rebuild() {
+    _dio = _buildDio();
+  }
+
+  Dio _buildDio() {
+    final dio = Dio(BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
       headers: {'Content-Type': 'application/json'},
       validateStatus: (s) => s != null && s < 500,
     ));
-    _dio.interceptors.add(InterceptorsWrapper(
+    // 注意：这里必须用局部变量 dio，不能用 _dio（构造期 _dio 还没赋值）
+    dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         if (_accessToken != null) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
@@ -31,8 +50,9 @@ class ApiClient {
             final refreshed = await _refreshAccessToken();
             if (refreshed) {
               e.requestOptions.extra['retried'] = true;
-              e.requestOptions.headers['Authorization'] = 'Bearer $_accessToken';
-              final clone = await _dio.fetch(e.requestOptions);
+              e.requestOptions.headers['Authorization'] =
+                  'Bearer $_accessToken';
+              final clone = await dio.fetch(e.requestOptions);
               return handler.resolve(clone);
             }
           } catch (_) {
@@ -44,15 +64,8 @@ class ApiClient {
         handler.next(e);
       },
     ));
+    return dio;
   }
-  static final ApiClient instance = ApiClient._();
-
-  static const _secure = FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true));
-
-  late final Dio _dio;
-  String? _accessToken;
-  String? _refreshToken;
-  bool _refreshing = false;
 
   void setTokens({String? access, String? refresh}) {
     if (access != null) _accessToken = access;
@@ -111,8 +124,10 @@ class ApiClient {
   }
 
   Future<void> persistTokens() async {
-    if (_accessToken != null) await _secure.write(key: 'access_token', value: _accessToken!);
-    if (_refreshToken != null) await _secure.write(key: 'refresh_token', value: _refreshToken!);
+    if (_accessToken != null)
+      await _secure.write(key: 'access_token', value: _accessToken!);
+    if (_refreshToken != null)
+      await _secure.write(key: 'refresh_token', value: _refreshToken!);
   }
 
   Future<void> clearPersisted() async {
@@ -120,15 +135,18 @@ class ApiClient {
     await _secure.delete(key: 'refresh_token');
   }
 
-  Future<ApiResponse<LoginResult>> login(String username, String password, {String? mfaCode}) async {
+  Future<ApiResponse<LoginResult>> login(String username, String password,
+      {String? mfaCode}) async {
     final r = await _dio.post('/auth/login', data: {
       'username': username,
       'password': password,
       if (mfaCode != null) 'mfaCode': mfaCode,
     });
-    final resp = ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => LoginResult.fromJson(d as Map<String, dynamic>));
+    final resp = ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => LoginResult.fromJson(d as Map<String, dynamic>));
     if (resp.ok && resp.data != null) {
-      setTokens(access: resp.data!.accessToken, refresh: resp.data!.refreshToken);
+      setTokens(
+          access: resp.data!.accessToken, refresh: resp.data!.refreshToken);
       await persistTokens();
     }
     return resp;
@@ -136,7 +154,8 @@ class ApiClient {
 
   Future<ApiResponse<UserProfile>> me() async {
     final r = await _dio.get('/auth/me');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => UserProfile.fromJson(d as Map<String, dynamic>));
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => UserProfile.fromJson(d as Map<String, dynamic>));
   }
 
   /// 在线更新：版本检查（公开接口）
@@ -150,17 +169,33 @@ class ApiClient {
       'current': current,
       if (did != null) 'did': did,
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<OverviewData>> overview({String scope = 'personal'}) async {
+  /// Web 端版本检查（不需要登录）
+  Future<ApiResponse<Map<String, dynamic>>> checkWebVersion(
+      {required int buildNumber}) async {
+    final r = await _dio.get('/app/web-version', queryParameters: {
+      'build': buildNumber,
+    });
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  }
+
+  Future<ApiResponse<OverviewData>> overview(
+      {String scope = 'personal'}) async {
     final r = await _dio.get('/overview', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => OverviewData.fromJson(d as Map<String, dynamic>));
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => OverviewData.fromJson(d as Map<String, dynamic>));
   }
 
-  Future<ApiResponse<ChartData>> overviewChart({String scope = 'personal', String period = 'month'}) async {
-    final r = await _dio.get('/overview/chart', queryParameters: {'scope': scope, 'period': period});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => ChartData.fromJson(d as Map<String, dynamic>));
+  Future<ApiResponse<ChartData>> overviewChart(
+      {String scope = 'personal', String period = 'month'}) async {
+    final r = await _dio.get('/overview/chart',
+        queryParameters: {'scope': scope, 'period': period});
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => ChartData.fromJson(d as Map<String, dynamic>));
   }
 
   Future<ApiResponse<Map<String, dynamic>>> txPage({
@@ -185,118 +220,160 @@ class ApiClient {
       'page': page,
       'size': size,
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createTx(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createTx(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/transactions', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<List<PurchaseItem>>> purchaseList({String scope = 'personal'}) async {
-    final r = await _dio.get('/purchase-plans', queryParameters: {'scope': scope});
+  Future<ApiResponse<List<PurchaseItem>>> purchaseList(
+      {String scope = 'personal'}) async {
+    final r =
+        await _dio.get('/purchase-plans', queryParameters: {'scope': scope});
     return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) {
       final list = d as List<dynamic>;
-      return list.map((e) => PurchaseItem.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => PurchaseItem.fromJson(e as Map<String, dynamic>))
+          .toList();
     });
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createPurchase(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createPurchase(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/purchase-plans', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> checkPurchase({String scope = 'personal'}) async {
-    final r = await _dio.post('/purchase-plans/check', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> checkPurchase(
+      {String scope = 'personal'}) async {
+    final r = await _dio
+        .post('/purchase-plans/check', queryParameters: {'scope': scope});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> getPlan({String scope = 'personal'}) async {
+  Future<ApiResponse<Map<String, dynamic>>> getPlan(
+      {String scope = 'personal'}) async {
     final r = await _dio.get('/plan', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> savePlan(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> savePlan(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/plan', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> getFamily() async {
     final r = await _dio.get('/family');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createFamily(String name, String description) async {
-    final r = await _dio.post('/family', data: {'name': name, 'description': description});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> createFamily(
+      String name, String description) async {
+    final r = await _dio
+        .post('/family', data: {'name': name, 'description': description});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> applyJoin(String code, String message) async {
-    final r = await _dio.post('/family/join', data: {'code': code, 'message': message});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> applyJoin(
+      String code, String message) async {
+    final r = await _dio
+        .post('/family/join', data: {'code': code, 'message': message});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<List<dynamic>>> listJoinRequests() async {
     final r = await _dio.get('/family/requests');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> approveJoin(int requestId, bool approve) async {
-    final r = await _dio.post('/family/approve', data: {'requestId': requestId, 'approve': approve});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> approveJoin(
+      int requestId, bool approve) async {
+    final r = await _dio.post('/family/approve',
+        data: {'requestId': requestId, 'approve': approve});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> bindForever() async {
     final r = await _dio.post('/family/bind-forever');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> syncPersonalData() async {
     final r = await _dio.post('/family/sync');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> requestDeleteFamily({String reason = ''}) async {
+  Future<ApiResponse<Map<String, dynamic>>> requestDeleteFamily(
+      {String reason = ''}) async {
     final r = await _dio.post('/family/delete', data: {
       'reason': reason,
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> voteDeleteFamily(int requestId, bool vote) async {
+  Future<ApiResponse<Map<String, dynamic>>> voteDeleteFamily(
+      int requestId, bool vote) async {
     final r = await _dio.post('/family/delete/vote', data: {
       'requestId': requestId,
       'vote': vote,
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> listDeleteVotes() async {
     final r = await _dio.get('/family/delete/votes');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> updateProfile(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateProfile(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/profile', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> changePassword(String oldPwd, String newPwd) async {
-    final r = await _dio.post('/profile/password', data: {'oldPassword': oldPwd, 'newPassword': newPwd});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> changePassword(
+      String oldPwd, String newPwd) async {
+    final r = await _dio.post('/profile/password',
+        data: {'oldPassword': oldPwd, 'newPassword': newPwd});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> mfaSetup() async {
     final r = await _dio.post('/mfa/setup');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> mfaEnable(String code) async {
     final r = await _dio.post('/mfa/enable', data: {'code': code});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<List<InvestmentRecord>>> investmentList({String scope = 'personal', int? year, int limit = 36}) async {
+  Future<ApiResponse<List<InvestmentRecord>>> investmentList(
+      {String scope = 'personal', int? year, int limit = 36}) async {
     final r = await _dio.get('/investments', queryParameters: {
       'scope': scope,
       if (year != null) 'year': year,
@@ -304,30 +381,42 @@ class ApiClient {
     });
     return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) {
       final list = (d as List<dynamic>?) ?? [];
-      return list.map((e) => InvestmentRecord.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => InvestmentRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
     });
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> investmentCurrent({String scope = 'personal'}) async {
-    final r = await _dio.get('/investments/current', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> investmentCurrent(
+      {String scope = 'personal'}) async {
+    final r = await _dio
+        .get('/investments/current', queryParameters: {'scope': scope});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> investmentSettlement({String scope = 'personal'}) async {
-    final r = await _dio.get('/investments/settlement', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> investmentSettlement(
+      {String scope = 'personal'}) async {
+    final r = await _dio
+        .get('/investments/settlement', queryParameters: {'scope': scope});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> investmentUpsert(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> investmentUpsert(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/investments', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<List<FamilyMember>>> familyMembers() async {
     final r = await _dio.get('/family/members');
     return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) {
       final list = (d as List<dynamic>?) ?? [];
-      return list.map((e) => FamilyMember.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => FamilyMember.fromJson(e as Map<String, dynamic>))
+          .toList();
     });
   }
 
@@ -347,62 +436,82 @@ class ApiClient {
       'app': app ?? 'client',
       'version': version ?? '',
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== Admin APIs =====
   Future<ApiResponse<List<dynamic>>> adminListUsers() async {
     final r = await _dio.get('/admin/users');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> adminToggleUser(int id, bool disabled) async {
-    final r = await _dio.post('/admin/users/$id/toggle', data: {'disabled': disabled});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> adminToggleUser(
+      int id, bool disabled) async {
+    final r = await _dio
+        .post('/admin/users/$id/toggle', data: {'disabled': disabled});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> adminResetPassword(int id, String newPassword) async {
-    final r = await _dio.post('/admin/users/$id/reset-password', data: {'newPassword': newPassword});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+  Future<ApiResponse<Map<String, dynamic>>> adminResetPassword(
+      int id, String newPassword) async {
+    final r = await _dio.post('/admin/users/$id/reset-password',
+        data: {'newPassword': newPassword});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> adminResetMfa(int id) async {
     final r = await _dio.post('/admin/users/$id/reset-mfa');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<List<dynamic>>> adminListFamilies() async {
     final r = await _dio.get('/admin/families');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> adminFamilyStats(int id) async {
     final r = await _dio.get('/admin/families/$id/stats');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> adminDeleteFamily(int id) async {
     final r = await _dio.delete('/admin/families/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<List<dynamic>>> adminListErrors() async {
     final r = await _dio.get('/admin/errors');
     // 后端返回 {list:[...], total:...}，取 list 字段
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d['list'] as List<dynamic>?) ?? []);
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => (d['list'] as List<dynamic>?) ?? []);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> adminDeleteError(int id) async {
     final r = await _dio.delete('/admin/errors/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> adminClearErrors() async {
     final r = await _dio.delete('/admin/errors');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<List<dynamic>>> adminListAudit({String? keyword, String? action, String? status, int page = 1, int size = 100}) async {
+  Future<ApiResponse<List<dynamic>>> adminListAudit(
+      {String? keyword,
+      String? action,
+      String? status,
+      int page = 1,
+      int size = 100}) async {
     final r = await _dio.get('/admin/audit', queryParameters: {
       if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
       if (action != null) 'action': action,
@@ -410,152 +519,197 @@ class ApiClient {
       'page': page,
       'size': size,
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d['list'] as List<dynamic>?) ?? []);
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => (d['list'] as List<dynamic>?) ?? []);
   }
 
   // ===== 未来财务 =====
-  Future<ApiResponse<FutureFinanceData>> futureFinance({String scope = 'personal'}) async {
+  Future<ApiResponse<FutureFinanceData>> futureFinance(
+      {String scope = 'personal'}) async {
     final r = await _dio.get('/future', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => FutureFinanceData.fromJson(d as Map<String, dynamic>));
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => FutureFinanceData.fromJson(d as Map<String, dynamic>));
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createHousingLoan(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createHousingLoan(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/future/housing-loans', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> updateHousingLoan(int id, Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateHousingLoan(
+      int id, Map<String, dynamic> body) async {
     final r = await _dio.put('/future/housing-loans/$id', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> deleteHousingLoan(int id) async {
     final r = await _dio.delete('/future/housing-loans/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createCommercialLoan(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createCommercialLoan(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/future/commercial-loans', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> updateCommercialLoan(int id, Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateCommercialLoan(
+      int id, Map<String, dynamic> body) async {
     final r = await _dio.put('/future/commercial-loans/$id', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> deleteCommercialLoan(int id) async {
     final r = await _dio.delete('/future/commercial-loans/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createBorrowedMoney(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createBorrowedMoney(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/future/borrowed', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> updateBorrowedMoney(int id, Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateBorrowedMoney(
+      int id, Map<String, dynamic> body) async {
     final r = await _dio.put('/future/borrowed/$id', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> deleteBorrowedMoney(int id) async {
     final r = await _dio.delete('/future/borrowed/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createBenefit(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createBenefit(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/future/benefits', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> updateBenefit(int id, Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateBenefit(
+      int id, Map<String, dynamic> body) async {
     final r = await _dio.put('/future/benefits/$id', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> deleteBenefit(int id) async {
     final r = await _dio.delete('/future/benefits/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> investmentCheck() async {
     final r = await _dio.get('/future/investment-check');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== 家庭成员管理 =====
-  Future<ApiResponse<Map<String, dynamic>>> updateFamilyMember(int id, bool isAdmin) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateFamilyMember(
+      int id, bool isAdmin) async {
     final r = await _dio.put('/family/members/$id', data: {'isAdmin': isAdmin});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> removeFamilyMember(int id) async {
     final r = await _dio.delete('/family/members/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== 家庭立即删除 =====
   Future<ApiResponse<Map<String, dynamic>>> forceDeleteFamily() async {
     final r = await _dio.post('/family/force-delete');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== 账单编辑 =====
-  Future<ApiResponse<Map<String, dynamic>>> updateTx(int id, Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateTx(
+      int id, Map<String, dynamic> body) async {
     final r = await _dio.put('/transactions/$id', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> deleteTxFallback(int id) async {
     final r = await _dio.delete('/transactions/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== 投资桶 =====
-  Future<ApiResponse<Map<String, dynamic>>> investmentUpsertFuture(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> investmentUpsertFuture(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/investments', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== 大件规划 =====
-  Future<ApiResponse<List<dynamic>>> listPurchasePlans({String scope = 'personal'}) async {
-    final r = await _dio.get('/purchase-plans', queryParameters: {'scope': scope});
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
+  Future<ApiResponse<List<dynamic>>> listPurchasePlans(
+      {String scope = 'personal'}) async {
+    final r =
+        await _dio.get('/purchase-plans', queryParameters: {'scope': scope});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => (d as List<dynamic>?) ?? []);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> createPurchasePlan(Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> createPurchasePlan(
+      Map<String, dynamic> body) async {
     final r = await _dio.post('/purchase-plans', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
-  Future<ApiResponse<Map<String, dynamic>>> updatePurchasePlan(int id, Map<String, dynamic> body) async {
+  Future<ApiResponse<Map<String, dynamic>>> updatePurchasePlan(
+      int id, Map<String, dynamic> body) async {
     final r = await _dio.put('/purchase-plans/$id', data: body);
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> deletePurchasePlan(int id) async {
     final r = await _dio.delete('/purchase-plans/$id');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   // ===== 通知 =====
-  Future<ApiResponse<Map<String, dynamic>>> listNotifications({int page = 1, int size = 50, bool unreadOnly = false}) async {
+  Future<ApiResponse<Map<String, dynamic>>> listNotifications(
+      {int page = 1, int size = 50, bool unreadOnly = false}) async {
     final r = await _dio.get('/notifications', queryParameters: {
       'page': page,
       'size': size,
       if (unreadOnly) 'unread': '1',
     });
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> markNotificationRead(int id) async {
     final r = await _dio.post('/notifications/$id/read');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 
   Future<ApiResponse<Map<String, dynamic>>> markAllNotificationsRead() async {
     final r = await _dio.post('/notifications/read-all');
-    return ApiResponse.fromJson(r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
 }

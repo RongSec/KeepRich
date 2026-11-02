@@ -71,7 +71,8 @@ class _PlanPageState extends State<PlanPage> {
   Future<void> _save() async {
     final sum = _sum();
     if ((sum - 1).abs() > 0.001) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('收入占比合计必须等于 1，当前=${sum.toStringAsFixed(2)}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('收入占比合计必须等于 1，当前=${sum.toStringAsFixed(2)}')));
       return;
     }
     setState(() => _loading = true);
@@ -93,9 +94,11 @@ class _PlanPageState extends State<PlanPage> {
     });
     setState(() => _loading = false);
     if (r.ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已保存')));
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -190,7 +193,8 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  Widget _field(TextEditingController c, String label, {String? suffix, String? hint}) {
+  Widget _field(TextEditingController c, String label,
+      {String? suffix, String? hint}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(

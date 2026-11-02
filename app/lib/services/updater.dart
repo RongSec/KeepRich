@@ -94,7 +94,8 @@ class UpdaterService {
         ),
         actions: [
           if (!info.forceUpdate)
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('稍后')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('稍后')),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -108,7 +109,8 @@ class UpdaterService {
   }
 
   /// 下载 APK → 校验 sha256 → 调起系统安装
-  static Future<void> _downloadAndInstall(BuildContext context, AppUpdateInfo info) async {
+  static Future<void> _downloadAndInstall(
+      BuildContext context, AppUpdateInfo info) async {
     if (info.apkUrl.isEmpty) {
       _toast(context, '下载地址为空，请稍后再试');
       return;
@@ -164,7 +166,8 @@ class UpdaterService {
         }
       }
 
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // 关进度框
+      if (context.mounted)
+        Navigator.of(context, rootNavigator: true).pop(); // 关进度框
       final result = await OpenFilex.open(savePath);
       if (result.type != ResultType.done) {
         throw Exception('调起安装失败: ${result.message}');

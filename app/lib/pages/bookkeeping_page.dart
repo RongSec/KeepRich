@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/api.dart';
+import '../theme.dart';
 
 class BookkeepingPage extends StatefulWidget {
   const BookkeepingPage({super.key});
@@ -42,13 +43,20 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     TxType.transfer: Colors.indigo,
   };
 
-  static IconData iconOf(String t) => _typeIcons[t] ?? Icons.account_balance_wallet;
-  static Color colorOf(String t) => _typeColors[t] ?? Colors.black54;
+  static IconData iconOf(String t) =>
+      _typeIcons[t] ?? Icons.account_balance_wallet;
+  static Color colorOf(String t) => _typeColors[t] ?? AppTheme.textDim;
 
   String get _filterLabel {
     if (_startAt == null && _endAt == null) return '全部时间';
-    final start = _startAt == null ? '' : DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_startAt! * 1000));
-    final end = _endAt == null ? '' : DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_endAt! * 1000));
+    final start = _startAt == null
+        ? ''
+        : DateFormat('MM-dd')
+            .format(DateTime.fromMillisecondsSinceEpoch(_startAt! * 1000));
+    final end = _endAt == null
+        ? ''
+        : DateFormat('MM-dd')
+            .format(DateTime.fromMillisecondsSinceEpoch(_endAt! * 1000));
     if (start.isNotEmpty && end.isNotEmpty) return '$start 至 $end';
     if (start.isNotEmpty) return '从 $start';
     return '至 $end';
@@ -82,7 +90,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     if (!mounted) return;
     if (r.ok && r.data != null) {
       final raw = r.data!['list'] as List;
-      final list = raw.map((e) => TxRecord.fromJson(e as Map<String, dynamic>)).toList();
+      final list =
+          raw.map((e) => TxRecord.fromJson(e as Map<String, dynamic>)).toList();
       setState(() {
         _list.addAll(list);
         _total = (r.data!['total'] as num).toInt();
@@ -109,7 +118,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _AddTxSheet(scope: _scope, type: type, currentUid: _currentUid),
+      builder: (_) =>
+          _AddTxSheet(scope: _scope, type: type, currentUid: _currentUid),
     );
     if (created == true) _load();
   }
@@ -131,7 +141,10 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       appBar: AppBar(
         title: const Text('记账'),
         actions: [
-          IconButton(icon: const Icon(Icons.filter_list), tooltip: '筛选', onPressed: _showFilter),
+          IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: '筛选',
+              onPressed: _showFilter),
         ],
       ),
       body: Column(
@@ -162,20 +175,26 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Wrap(spacing: 6, runSpacing: 4, children: [
                 if (_category != null)
-                  Chip(label: Text(TxCategory.labelOf(_category!)), onDeleted: () {
-                    setState(() => _category = null);
-                    _load();
-                  }),
+                  Chip(
+                      label: Text(TxCategory.labelOf(_category!)),
+                      onDeleted: () {
+                        setState(() => _category = null);
+                        _load();
+                      }),
                 if (_recorder != null && _recorder != 'all')
-                  Chip(label: Text('记账人 $_recorder'), onDeleted: () {
-                    setState(() => _recorder = null);
-                    _load();
-                  }),
+                  Chip(
+                      label: Text('记账人 $_recorder'),
+                      onDeleted: () {
+                        setState(() => _recorder = null);
+                        _load();
+                      }),
                 if (_exceedWorry != null)
-                  Chip(label: Text(_exceedWorry == '1' ? '超无顾虑单笔' : '未超无顾虑单笔'), onDeleted: () {
-                    setState(() => _exceedWorry = null);
-                    _load();
-                  }),
+                  Chip(
+                      label: Text(_exceedWorry == '1' ? '超无顾虑单笔' : '未超无顾虑单笔'),
+                      onDeleted: () {
+                        setState(() => _exceedWorry = null);
+                        _load();
+                      }),
               ]),
             ),
           // 当前 tab 的小头部
@@ -201,8 +220,10 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
+          color: const Color(0xF20C0C12),
+          border: Border(
+              top: BorderSide(
+                  color: AppTheme.gold.withValues(alpha: 0.16), width: 1)),
         ),
         child: Row(children: [
           _navItem(TxType.income, Colors.green, Icons.south_west, '收入'),
@@ -241,12 +262,13 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
               ),
               const SizedBox(height: 4),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(icon, color: selected ? color : Colors.black45, size: 18),
+                Icon(icon,
+                    color: selected ? color : AppTheme.textDim, size: 18),
                 const SizedBox(width: 4),
                 Text(
                   label,
                   style: TextStyle(
-                    color: selected ? color : Colors.black54,
+                    color: selected ? color : AppTheme.textDim,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     fontSize: 13,
                   ),
@@ -269,7 +291,10 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color.withValues(alpha: 0.12), color.withValues(alpha: 0.04)],
+          colors: [
+            color.withValues(alpha: 0.12),
+            color.withValues(alpha: 0.04)
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -278,27 +303,35 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       ),
       child: Row(children: [
         Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
-          child: Icon(_BookkeepingPageState.iconOf(type), color: Colors.white, size: 18),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+              color: color, borderRadius: BorderRadius.circular(8)),
+          child: Icon(_BookkeepingPageState.iconOf(type),
+              color: Colors.white, size: 18),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('$label · $count 笔', style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$label · $count 笔',
+                style: TextStyle(
+                    fontSize: 12, color: color, fontWeight: FontWeight.w600)),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.bottomLeft,
               child: Text(
                 '${type == TxType.expense ? '-' : '+'}${f.format(amount)} 元',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color),
+                style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w800, color: color),
               ),
             ),
           ]),
         ),
         FilledButton.tonalIcon(
           onPressed: () => _add(type),
-          style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
+          style: FilledButton.styleFrom(
+              backgroundColor: color, foregroundColor: Colors.white),
           icon: const Icon(Icons.add, size: 18),
           label: Text('记$label'),
         ),
@@ -314,8 +347,10 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           const SizedBox(height: 60),
           Center(
             child: Text(
-              type == TxType.transfer ? '暂无存钱记录（不影响家庭总财富）' : '暂无${TxType.labels[type]}记录',
-              style: const TextStyle(color: Colors.black45, fontSize: 12),
+              type == TxType.transfer
+                  ? '暂无存钱记录（不影响家庭总财富）'
+                  : '暂无${TxType.labels[type]}记录',
+              style: const TextStyle(color: AppTheme.textDim, fontSize: 12),
             ),
           ),
         ],
@@ -357,29 +392,46 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.indigo.shade50, Colors.blue.shade50],
+          colors: [
+            Colors.indigo.withValues(alpha: 0.18),
+            Colors.blue.withValues(alpha: 0.14)
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.indigo.shade100),
+        border: Border.all(color: Colors.indigo.withValues(alpha: 0.35)),
       ),
       child: Column(
         children: [
           Row(children: [
-            Expanded(child: _statItem('收入', f.format(_sumIncome), Colors.green, Icons.south_west)),
-            Container(width: 1, height: 32, color: Colors.indigo.shade100),
-            Expanded(child: _statItem('支出', f.format(_sumExpense), Colors.redAccent, Icons.north_east)),
-            Container(width: 1, height: 32, color: Colors.indigo.shade100),
-            Expanded(child: _statItem('存钱', f.format(_sumTransfer), Colors.indigo, Icons.savings)),
+            Expanded(
+                child: _statItem('收入', f.format(_sumIncome), Colors.green,
+                    Icons.south_west)),
+            Container(
+                width: 1,
+                height: 32,
+                color: Colors.white.withValues(alpha: 0.10)),
+            Expanded(
+                child: _statItem('支出', f.format(_sumExpense), Colors.redAccent,
+                    Icons.north_east)),
+            Container(
+                width: 1,
+                height: 32,
+                color: Colors.white.withValues(alpha: 0.10)),
+            Expanded(
+                child: _statItem('存钱', f.format(_sumTransfer), Colors.indigo,
+                    Icons.savings)),
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            const Icon(Icons.event, size: 14, color: Colors.black54),
+            const Icon(Icons.event, size: 14, color: AppTheme.textDim),
             const SizedBox(width: 4),
-            Text(_filterLabel, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            Text(_filterLabel,
+                style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
             const Spacer(),
-            Text('共 $_total 条', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            Text('共 $_total 条',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
           ]),
         ],
       ),
@@ -396,7 +448,11 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           Text(label, style: TextStyle(fontSize: 12, color: color)),
         ]),
         const SizedBox(height: 2),
-        FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color))),
+        FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(value,
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700, color: color))),
       ],
     );
   }
@@ -434,7 +490,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     final updated = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _AddTxSheet(scope: _scope, type: tx.type, currentUid: _currentUid, existing: tx),
+      builder: (_) => _AddTxSheet(
+          scope: _scope, type: tx.type, currentUid: _currentUid, existing: tx),
     );
     if (updated == true) _load();
   }
@@ -444,9 +501,12 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除账单'),
-        content: Text('确认删除 ${TxCategory.labelOf(tx.category)} ${tx.amount.toStringAsFixed(2)} 元？'),
+        content: Text(
+            '确认删除 ${TxCategory.labelOf(tx.category)} ${tx.amount.toStringAsFixed(2)} 元？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -458,7 +518,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     if (ok != true) return;
     final r = await ApiClient.instance.deleteTxFallback(tx.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
     if (r.ok) _load();
   }
 }
@@ -470,7 +531,13 @@ class _FilterResult {
   int? startAt;
   int? endAt;
   String? exceedWorry;
-  _FilterResult({this.type, this.category, this.recorder, this.startAt, this.endAt, this.exceedWorry});
+  _FilterResult(
+      {this.type,
+      this.category,
+      this.recorder,
+      this.startAt,
+      this.endAt,
+      this.exceedWorry});
 }
 
 class _FilterSheet extends StatefulWidget {
@@ -522,8 +589,10 @@ class _FilterSheetState extends State<_FilterSheet> {
   int _inferDateRange(int? s, int? e) {
     if (s == null && e == null) return 0;
     final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1).millisecondsSinceEpoch ~/ 1000;
-    final days30 = now.subtract(const Duration(days: 30)).millisecondsSinceEpoch ~/ 1000;
+    final monthStart =
+        DateTime(now.year, now.month, 1).millisecondsSinceEpoch ~/ 1000;
+    final days30 =
+        now.subtract(const Duration(days: 30)).millisecondsSinceEpoch ~/ 1000;
     if (s == monthStart) return 1;
     if (s == days30) return 2;
     return 3;
@@ -531,8 +600,12 @@ class _FilterSheetState extends State<_FilterSheet> {
 
   void _pickCustomRange() async {
     final now = DateTime.now();
-    final initStart = _startAt == null ? now : DateTime.fromMillisecondsSinceEpoch(_startAt! * 1000);
-    final initEnd = _endAt == null ? now : DateTime.fromMillisecondsSinceEpoch(_endAt! * 1000);
+    final initStart = _startAt == null
+        ? now
+        : DateTime.fromMillisecondsSinceEpoch(_startAt! * 1000);
+    final initEnd = _endAt == null
+        ? now
+        : DateTime.fromMillisecondsSinceEpoch(_endAt! * 1000);
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(now.year - 5),
@@ -542,8 +615,14 @@ class _FilterSheetState extends State<_FilterSheet> {
     if (picked == null) return;
     setState(() {
       _dateRange = 3;
-      _startAt = DateTime(picked.start.year, picked.start.month, picked.start.day).millisecondsSinceEpoch ~/ 1000;
-      _endAt = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59).millisecondsSinceEpoch ~/ 1000;
+      _startAt =
+          DateTime(picked.start.year, picked.start.month, picked.start.day)
+                  .millisecondsSinceEpoch ~/
+              1000;
+      _endAt = DateTime(
+                  picked.end.year, picked.end.month, picked.end.day, 23, 59, 59)
+              .millisecondsSinceEpoch ~/
+          1000;
     });
   }
 
@@ -555,21 +634,32 @@ class _FilterSheetState extends State<_FilterSheet> {
             ? TxCategory.expenseCategories
             : TxCategory.transferCategories;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(2)))),
+            Center(
+                child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 12),
-            Text('高级筛选 · ${TxType.labels[widget.currentType] ?? ""}', style: Theme.of(context).textTheme.titleMedium),
+            Text('高级筛选 · ${TxType.labels[widget.currentType] ?? ""}',
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             Text('分类', style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 4),
             Wrap(spacing: 8, runSpacing: 4, children: [
-              ChoiceChip(label: const Text('全部'), selected: _category == null, onSelected: (_) => setState(() => _category = null)),
+              ChoiceChip(
+                  label: const Text('全部'),
+                  selected: _category == null,
+                  onSelected: (_) => setState(() => _category = null)),
               ...cats.map((c) => ChoiceChip(
                     label: Text(TxCategory.labelOf(c)),
                     selected: _category == c,
@@ -581,11 +671,16 @@ class _FilterSheetState extends State<_FilterSheet> {
               Text('记账人', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 4),
               Wrap(spacing: 8, runSpacing: 4, children: [
-                ChoiceChip(label: const Text('全部'), selected: _recorder == null, onSelected: (_) => setState(() => _recorder = null)),
+                ChoiceChip(
+                    label: const Text('全部'),
+                    selected: _recorder == null,
+                    onSelected: (_) => setState(() => _recorder = null)),
                 ...widget.members.map((m) => ChoiceChip(
-                      label: Text(m.nickname.isNotEmpty ? m.nickname : m.username),
+                      label:
+                          Text(m.nickname.isNotEmpty ? m.nickname : m.username),
                       selected: _recorder == m.userId.toString(),
-                      onSelected: (_) => setState(() => _recorder = m.userId.toString()),
+                      onSelected: (_) =>
+                          setState(() => _recorder = m.userId.toString()),
                     )),
               ]),
               const SizedBox(height: 12),
@@ -593,9 +688,37 @@ class _FilterSheetState extends State<_FilterSheet> {
             Text('时间范围', style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 4),
             Wrap(spacing: 8, runSpacing: 4, children: [
-              ChoiceChip(label: const Text('全部时间'), selected: _dateRange == 0, onSelected: (_) => setState(() { _dateRange = 0; _startAt = null; _endAt = null; })),
-              ChoiceChip(label: const Text('本月'), selected: _dateRange == 1, onSelected: (_) => setState(() { _dateRange = 1; final now = DateTime.now(); _startAt = DateTime(now.year, now.month, 1).millisecondsSinceEpoch ~/ 1000; _endAt = null; })),
-              ChoiceChip(label: const Text('近 30 天'), selected: _dateRange == 2, onSelected: (_) => setState(() { _dateRange = 2; final now = DateTime.now(); _startAt = now.subtract(const Duration(days: 30)).millisecondsSinceEpoch ~/ 1000; _endAt = null; })),
+              ChoiceChip(
+                  label: const Text('全部时间'),
+                  selected: _dateRange == 0,
+                  onSelected: (_) => setState(() {
+                        _dateRange = 0;
+                        _startAt = null;
+                        _endAt = null;
+                      })),
+              ChoiceChip(
+                  label: const Text('本月'),
+                  selected: _dateRange == 1,
+                  onSelected: (_) => setState(() {
+                        _dateRange = 1;
+                        final now = DateTime.now();
+                        _startAt = DateTime(now.year, now.month, 1)
+                                .millisecondsSinceEpoch ~/
+                            1000;
+                        _endAt = null;
+                      })),
+              ChoiceChip(
+                  label: const Text('近 30 天'),
+                  selected: _dateRange == 2,
+                  onSelected: (_) => setState(() {
+                        _dateRange = 2;
+                        final now = DateTime.now();
+                        _startAt = now
+                                .subtract(const Duration(days: 30))
+                                .millisecondsSinceEpoch ~/
+                            1000;
+                        _endAt = null;
+                      })),
               ChoiceChip(
                 label: Text(_dateRange == 3 && _startAt != null
                     ? '${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_startAt! * 1000))} ~ ${_endAt == null ? '' : DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_endAt! * 1000))}'
@@ -610,20 +733,26 @@ class _FilterSheetState extends State<_FilterSheet> {
             if (_dateRange == 3 && _startAt != null) ...[
               const SizedBox(height: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                    color: Colors.indigo.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Row(children: [
-                  const Icon(Icons.calendar_today, size: 14, color: Colors.indigo),
+                  const Icon(Icons.calendar_today,
+                      size: 14, color: Colors.indigo),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       '${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_startAt! * 1000))}'
                       ' 至 '
                       '${_endAt == null ? '今天' : DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_endAt! * 1000))}',
-                      style: const TextStyle(fontSize: 12, color: Colors.indigo),
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.indigo),
                     ),
                   ),
-                  TextButton(onPressed: _pickCustomRange, child: const Text('修改')),
+                  TextButton(
+                      onPressed: _pickCustomRange, child: const Text('修改')),
                 ]),
               ),
             ],
@@ -631,9 +760,18 @@ class _FilterSheetState extends State<_FilterSheet> {
             Text('无顾虑单笔', style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 4),
             Wrap(spacing: 8, children: [
-              ChoiceChip(label: const Text('全部'), selected: _exceedWorry == null, onSelected: (_) => setState(() => _exceedWorry = null)),
-              ChoiceChip(label: const Text('未超过'), selected: _exceedWorry == '0', onSelected: (_) => setState(() => _exceedWorry = '0')),
-              ChoiceChip(label: const Text('已超过'), selected: _exceedWorry == '1', onSelected: (_) => setState(() => _exceedWorry = '1')),
+              ChoiceChip(
+                  label: const Text('全部'),
+                  selected: _exceedWorry == null,
+                  onSelected: (_) => setState(() => _exceedWorry = null)),
+              ChoiceChip(
+                  label: const Text('未超过'),
+                  selected: _exceedWorry == '0',
+                  onSelected: (_) => setState(() => _exceedWorry = '0')),
+              ChoiceChip(
+                  label: const Text('已超过'),
+                  selected: _exceedWorry == '1',
+                  onSelected: (_) => setState(() => _exceedWorry = '1')),
             ]),
             const SizedBox(height: 16),
             Row(children: [
@@ -641,8 +779,11 @@ class _FilterSheetState extends State<_FilterSheet> {
                 child: OutlinedButton(
                   onPressed: () {
                     setState(() {
-                      _category = null; _recorder = null;
-                      _startAt = null; _endAt = null; _exceedWorry = null;
+                      _category = null;
+                      _recorder = null;
+                      _startAt = null;
+                      _endAt = null;
+                      _exceedWorry = null;
                       _dateRange = 0;
                     });
                   },
@@ -680,7 +821,11 @@ class _TxTile extends StatelessWidget {
   final double worryPerBuy;
   final VoidCallback onTap;
   final VoidCallback onDelete;
-  const _TxTile({required this.tx, required this.worryPerBuy, required this.onTap, required this.onDelete});
+  const _TxTile(
+      {required this.tx,
+      required this.worryPerBuy,
+      required this.onTap,
+      required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -697,39 +842,51 @@ class _TxTile extends StatelessWidget {
       ),
       title: Row(children: [
         Flexible(
-          child: Text(TxCategory.labelOf(tx.category), style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+          child: Text(TxCategory.labelOf(tx.category),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis),
         ),
         if (tx.targetBucket.isNotEmpty) ...[
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(4)),
-            child: Text('→${_bucketShort(tx.targetBucket)}', style: const TextStyle(fontSize: 10, color: Colors.brown)),
+            decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(4)),
+            child: Text('→${_bucketShort(tx.targetBucket)}',
+                style: const TextStyle(fontSize: 10, color: Colors.brown)),
           ),
         ],
         if (tx.type == TxType.expense && tx.sourceBucket.isNotEmpty) ...[
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
-            child: Text('←${TxCategory.sourceBucketLabels[tx.sourceBucket] ?? tx.sourceBucket}', style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
+            decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(4)),
+            child: Text(
+                '←${TxCategory.sourceBucketLabels[tx.sourceBucket] ?? tx.sourceBucket}',
+                style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
           ),
         ],
         if (tx.overWorry && tx.type == TxType.expense) ...[
           const SizedBox(width: 6),
           Tooltip(
             message: '超过无顾虑单笔 (${f.format(worryPerBuy)} 元)',
-            child: const Icon(Icons.warning_amber_rounded, size: 16, color: Colors.deepOrange),
+            child: const Icon(Icons.warning_amber_rounded,
+                size: 16, color: Colors.deepOrange),
           ),
         ],
       ]),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Row(children: [
-          const Icon(Icons.access_time, size: 12, color: Colors.black45),
+          const Icon(Icons.access_time, size: 12, color: AppTheme.textDim),
           const SizedBox(width: 3),
-          Text(DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(tx.occurredAt * 1000)),
-              style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(
+              DateFormat('MM-dd HH:mm').format(
+                  DateTime.fromMillisecondsSinceEpoch(tx.occurredAt * 1000)),
+              style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -737,15 +894,22 @@ class _TxTile extends StatelessWidget {
               color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text(typeLabel, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+            child: Text(typeLabel,
+                style: TextStyle(
+                    fontSize: 11, color: color, fontWeight: FontWeight.w600)),
           ),
           if (recorder.isNotEmpty) ...[
             const SizedBox(width: 6),
-            Text('·$recorder', style: const TextStyle(fontSize: 12, color: Colors.black45)),
+            Text('·$recorder',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
           ],
           if (tx.note.isNotEmpty) ...[
             const SizedBox(width: 6),
-            Flexible(child: Text('·${tx.note}', style: const TextStyle(fontSize: 12, color: Colors.black45), overflow: TextOverflow.ellipsis)),
+            Flexible(
+                child: Text('·${tx.note}',
+                    style:
+                        const TextStyle(fontSize: 12, color: AppTheme.textDim),
+                    overflow: TextOverflow.ellipsis)),
           ],
         ]),
       ),
@@ -765,10 +929,14 @@ class _TxTile extends StatelessWidget {
 
   String _bucketShort(String b) {
     switch (b) {
-      case 'saving': return '储蓄';
-      case 'investment': return '投资';
-      case 'emergency': return '应急';
-      case 'pension': return '养老';
+      case 'saving':
+        return '储蓄';
+      case 'investment':
+        return '投资';
+      case 'emergency':
+        return '应急';
+      case 'pension':
+        return '养老';
     }
     return b;
   }
@@ -779,7 +947,11 @@ class _AddTxSheet extends StatefulWidget {
   final String type; // income/expense/transfer
   final int? currentUid;
   final TxRecord? existing;
-  const _AddTxSheet({required this.scope, required this.type, this.currentUid, this.existing});
+  const _AddTxSheet(
+      {required this.scope,
+      required this.type,
+      this.currentUid,
+      this.existing});
   @override
   State<_AddTxSheet> createState() => _AddTxSheetState();
 }
@@ -807,14 +979,16 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       _amount = TextEditingController(text: widget.existing!.amount.toString());
       _note = TextEditingController(text: widget.existing!.note);
       _loanRef = widget.existing!.loanRef;
-      _targetBucket = widget.existing!.targetBucket.isNotEmpty ? widget.existing!.targetBucket : null;
+      _targetBucket = widget.existing!.targetBucket.isNotEmpty
+          ? widget.existing!.targetBucket
+          : null;
       // 解析多来源明细
       if (widget.existing!.sourceDetails.isNotEmpty) {
         _parseSourceDetails(widget.existing!.sourceDetails);
       } else if (widget.existing!.sourceBucket.isNotEmpty) {
         _selectedSources = {widget.existing!.sourceBucket};
-        _sourceControllers[widget.existing!.sourceBucket] = TextEditingController(
-            text: widget.existing!.amount.toString());
+        _sourceControllers[widget.existing!.sourceBucket] =
+            TextEditingController(text: widget.existing!.amount.toString());
       }
     } else {
       _category = _defaultCategory(_type);
@@ -848,7 +1022,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
         final amount = map['amount'];
         if (bucket.isNotEmpty && amount != null) {
           _selectedSources.add(bucket);
-          _sourceControllers[bucket] = TextEditingController(text: amount.toString());
+          _sourceControllers[bucket] =
+              TextEditingController(text: amount.toString());
         }
       }
     } catch (_) {}
@@ -927,18 +1102,25 @@ class _AddTxSheetState extends State<_AddTxSheet> {
 
   Future<void> _submit() async {
     // 多来源支出时，金额由各来源自动求和
-    final isMultiSource = _type == TxType.expense && _selectedSources.length > 1;
-    final v = isMultiSource ? _computeSourceTotal() : double.tryParse(_amount.text);
+    final isMultiSource =
+        _type == TxType.expense && _selectedSources.length > 1;
+    final v =
+        isMultiSource ? _computeSourceTotal() : double.tryParse(_amount.text);
     if (v == null || v <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请输入有效金额')));
       return;
     }
-    if (_category == TxCategory.expenseLoanRepay && (_loanRef == null || _loanRef!.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择要偿还的贷款')));
+    if (_category == TxCategory.expenseLoanRepay &&
+        (_loanRef == null || _loanRef!.isEmpty)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请选择要偿还的贷款')));
       return;
     }
-    if (_category == TxCategory.incomeInvestment && (_targetBucket == null || _targetBucket!.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('投资收益请选择目标桶')));
+    if (_category == TxCategory.incomeInvestment &&
+        (_targetBucket == null || _targetBucket!.isEmpty)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('投资收益请选择目标桶')));
       return;
     }
 
@@ -952,7 +1134,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       'note': _note.text,
     };
     if (_loanRef != null && _loanRef!.isNotEmpty) body['loanRef'] = _loanRef;
-    if (_targetBucket != null && _targetBucket!.isNotEmpty) body['targetBucket'] = _targetBucket;
+    if (_targetBucket != null && _targetBucket!.isNotEmpty)
+      body['targetBucket'] = _targetBucket;
     // 支出时添加来源桶（支持多来源）
     if (_type == TxType.expense) {
       if (_selectedSources.length > 1) {
@@ -961,8 +1144,9 @@ class _AddTxSheetState extends State<_AddTxSheet> {
         for (final src in _selectedSources) {
           final amt = double.tryParse(_sourceControllers[src]?.text ?? '') ?? 0;
           if (amt <= 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${TxCategory.sourceBucketLabels[src] ?? src} 的金额必须大于 0')));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(
+                    '${TxCategory.sourceBucketLabels[src] ?? src} 的金额必须大于 0')));
             setState(() => _busy = false);
             return;
           }
@@ -985,7 +1169,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     if (r.ok) {
       Navigator.pop(context, true);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
     setState(() => _busy = false);
   }
@@ -1001,15 +1186,26 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     final label = TxType.labels[_type] ?? _type;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 16,
+          right: 16,
+          top: 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(2)))),
+          Center(
+              child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 12),
           Text(widget.existing == null ? '记一笔 · $label' : '编辑账单 · $label',
-              style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center),
           const SizedBox(height: 12),
           // 类型切换（仅新增时）
           if (widget.existing == null)
@@ -1027,11 +1223,13 @@ class _AddTxSheetState extends State<_AddTxSheet> {
           Wrap(
             spacing: 8,
             runSpacing: 4,
-            children: cats.map((c) => ChoiceChip(
-              label: Text(TxCategory.labelOf(c)),
-              selected: _category == c,
-              onSelected: (_) => _onCategoryChanged(c),
-            )).toList(),
+            children: cats
+                .map((c) => ChoiceChip(
+                      label: Text(TxCategory.labelOf(c)),
+                      selected: _category == c,
+                      onSelected: (_) => _onCategoryChanged(c),
+                    ))
+                .toList(),
           ),
           // 支出来源桶选择（按类别过滤 + 多来源支持）
           if (_type == TxType.expense) ...[
@@ -1040,7 +1238,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             const SizedBox(height: 4),
             Builder(
               builder: (ctx) {
-                final allowed = TxCategory.allowedSourceBuckets[_category] ?? ['cash'];
+                final allowed =
+                    TxCategory.allowedSourceBuckets[_category] ?? ['cash'];
                 return Wrap(
                   spacing: 8,
                   runSpacing: 4,
@@ -1075,12 +1274,17 @@ class _AddTxSheetState extends State<_AddTxSheet> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: TextField(
                     controller: _sourceControllers[src],
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                    ],
                     decoration: InputDecoration(
-                      labelText: '${TxCategory.sourceBucketLabels[src] ?? src} 金额',
+                      labelText:
+                          '${TxCategory.sourceBucketLabels[src] ?? src} 金额',
                       prefixText: '¥ ',
-                      prefixStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700),
+                      prefixStyle: const TextStyle(
+                          color: Colors.redAccent, fontWeight: FontWeight.w700),
                       isDense: true,
                     ),
                     onChanged: (_) => setState(() {}),
@@ -1089,19 +1293,26 @@ class _AddTxSheetState extends State<_AddTxSheet> {
               }),
               // 自动求和显示
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: Colors.green.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
+                  border:
+                      Border.all(color: Colors.green.withValues(alpha: 0.35)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('合计', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green)),
+                    const Text('合计',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, color: Colors.green)),
                     Text(
                       '¥ ${_computeSourceTotal().toStringAsFixed(2)}',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: Colors.green.shade700, fontSize: 16),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF7EE0A6),
+                          fontSize: 16),
                     ),
                   ],
                 ),
@@ -1114,7 +1325,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             Text('选择要偿还的贷款', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 4),
             if (_loadingLoans)
-              const Padding(padding: EdgeInsets.all(8), child: LinearProgressIndicator())
+              const Padding(
+                  padding: EdgeInsets.all(8), child: LinearProgressIndicator())
             else if (_futureData == null)
               const Text('暂无贷款数据')
             else
@@ -1126,10 +1338,24 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             Text('息金目标桶', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 4),
             Wrap(spacing: 8, children: [
-              ChoiceChip(label: const Text('储蓄桶'), selected: _targetBucket == 'saving', onSelected: (_) => setState(() => _targetBucket = 'saving')),
-              ChoiceChip(label: const Text('投资桶'), selected: _targetBucket == 'investment', onSelected: (_) => setState(() => _targetBucket = 'investment')),
-              ChoiceChip(label: const Text('应急桶'), selected: _targetBucket == 'emergency', onSelected: (_) => setState(() => _targetBucket = 'emergency')),
-              ChoiceChip(label: const Text('养老桶'), selected: _targetBucket == 'pension', onSelected: (_) => setState(() => _targetBucket = 'pension')),
+              ChoiceChip(
+                  label: const Text('储蓄桶'),
+                  selected: _targetBucket == 'saving',
+                  onSelected: (_) => setState(() => _targetBucket = 'saving')),
+              ChoiceChip(
+                  label: const Text('投资桶'),
+                  selected: _targetBucket == 'investment',
+                  onSelected: (_) =>
+                      setState(() => _targetBucket = 'investment')),
+              ChoiceChip(
+                  label: const Text('应急桶'),
+                  selected: _targetBucket == 'emergency',
+                  onSelected: (_) =>
+                      setState(() => _targetBucket = 'emergency')),
+              ChoiceChip(
+                  label: const Text('养老桶'),
+                  selected: _targetBucket == 'pension',
+                  onSelected: (_) => setState(() => _targetBucket = 'pension')),
             ]),
           ],
           // 存钱：显示提示
@@ -1137,12 +1363,15 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(
+                  color: Colors.indigo.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(8)),
               child: const Row(children: [
                 Icon(Icons.info_outline, size: 14, color: Colors.indigo),
                 SizedBox(width: 6),
                 Expanded(
-                  child: Text('存钱模块的转账不影响家庭总财富', style: TextStyle(fontSize: 11, color: Colors.indigo)),
+                  child: Text('存钱模块的转账不影响家庭总财富',
+                      style: TextStyle(fontSize: 11, color: Colors.indigo)),
                 ),
               ]),
             ),
@@ -1152,12 +1381,16 @@ class _AddTxSheetState extends State<_AddTxSheet> {
           if (!(_type == TxType.expense && _selectedSources.length > 1))
             TextField(
               controller: _amount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+              ],
               decoration: InputDecoration(
                 labelText: '金额',
                 prefixText: '¥ ',
-                prefixStyle: TextStyle(color: color, fontWeight: FontWeight.w700),
+                prefixStyle:
+                    TextStyle(color: color, fontWeight: FontWeight.w700),
               ),
             ),
           const SizedBox(height: 12),
@@ -1170,7 +1403,11 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             onPressed: _busy ? null : _submit,
             style: FilledButton.styleFrom(backgroundColor: color),
             child: _busy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
                 : const Text('保存', style: TextStyle(color: Colors.white)),
           ),
           const SizedBox(height: 16),
@@ -1185,17 +1422,20 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       ...data.housingFundLoans.map((l) => _LoanOption(
             ref: 'hf:${l.id}',
             label: '公积金：${l.name}',
-            sub: '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
+            sub:
+                '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
           )),
       ...data.commercialLoans.map((l) => _LoanOption(
             ref: 'cl:${l.id}',
             label: '商业：${l.name}',
-            sub: '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
+            sub:
+                '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
           )),
       ...data.borrowedMoneys.map((l) => _LoanOption(
             ref: 'bm:${l.id}',
             label: '借款：${l.name}',
-            sub: '本金 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
+            sub:
+                '本金 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
           )),
     ];
     if (items.isEmpty) return const Text('暂无可偿还贷款，请先在【未来财务】中添加');

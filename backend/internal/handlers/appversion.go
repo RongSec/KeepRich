@@ -3,6 +3,7 @@ package handlers
 import (
 	"hash/fnv"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -188,3 +189,51 @@ func AdminDeleteAppVersion(c *gin.Context) {
 	database.DB.Delete(&models.AppVersion{}, id)
 	utils.OK(c, gin.H{"deleted": true})
 }
+
+// GetWebVersion Web 端版本检查（公开接口）
+//
+// Web 的"在线更新"与 APK 不同：服务端部署新构建后，已打开页面的用户需要被
+// 提示刷新。判定依据有两种，按优先级：
+//  1. 后台维护的 platform=web 版本记录（可写更新说明、控制发布）
+//  2. 环境变量 WEB_VERSION / WEB_BUILD / WEB_NOTES（部署脚本注入，免配置）
+//
+// GET /api/app/web-version?build=12
+func GetWebVersion(c *gin.Context) {
+	currentBuild := 0
+	if b := c.Query("build"); b != "" {
+		currentBuild, _ = strconv.Atoi(b)
+	}
+
+	var v models.AppVersion
+	err := database.DB.
+		Where("platform = ? AND channel = ? AND published = ?", "web", "stable", true).
+		Order("build_number DESC, id DESC").
+		First(&v).Error
+
+	if err == nil && v.Version != "" {
+		utils.OK(c, gin.H{
+			"version":         v.Version,
+			"buildNumber":     v.BuildNumber,
+			"notes":           v.Notes,
+			"updateAvailable": v.BuildNumber > currentBuild || compareVersion(c.Query("current"), v.Version) < 0,
+			"source":          "db",
+		})
+		return
+	}
+
+	// 回退：环境变量（部署时写入，适合个人/小团队部署）
+	wv := strings.TrimSpace(os.Getenv("WEB_VERSION"))
+	if wv == "" {
+		utils.OK(c, gin.H{"updateAvailable": false, "version": "", "buildNumber": 0})
+		return
+	}
+	wb, _ := strconv.Atoi(strings.TrimSpace(os.Getenv("WEB_BUILD")))
+	utils.OK(c, gin.H{
+		"version":         wv,
+		"buildNumber":     wb,
+		"notes":           os.Getenv("WEB_NOTES"),
+		"updateAvailable": wb > currentBuild,
+		"source":          "env",
+	})
+}
+

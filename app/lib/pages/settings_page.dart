@@ -1,13 +1,18 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../config.dart';
 import '../models.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/biometric.dart';
 import '../services/notify.dart';
 import '../services/updater.dart';
+import '../services/web_updater.dart';
+import '../theme.dart';
+import '../widgets/server_address_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -31,10 +36,15 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 CircleAvatar(
                   radius: 32,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
                   child: Text(
-                    (user?.nickname.isNotEmpty == true) ? user!.nickname.characters.first : 'U',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontSize: 24),
+                    (user?.nickname.isNotEmpty == true)
+                        ? user!.nickname.characters.first
+                        : 'U',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        fontSize: 24),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -42,8 +52,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user?.nickname.isNotEmpty == true ? user!.nickname : (user?.username ?? ''), style: Theme.of(context).textTheme.titleMedium),
-                      Text(user?.email ?? user?.phone ?? '', style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                          user?.nickname.isNotEmpty == true
+                              ? user!.nickname
+                              : (user?.username ?? ''),
+                          style: Theme.of(context).textTheme.titleMedium),
+                      Text(user?.email ?? user?.phone ?? '',
+                          style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
@@ -62,12 +77,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     right: -6,
                     top: -6,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(8)),
                       constraints: const BoxConstraints(minWidth: 14),
                       child: Text(
                         unreadCount > 99 ? '99+' : '$unreadCount',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -78,7 +99,8 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('查看超支提醒、大件可购买、家庭申请等通知'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+              await Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const NotificationsPage()));
               if (mounted) notify.loadUnreadCount();
             },
           ),
@@ -94,7 +116,8 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('用户管理'),
             subtitle: const Text('查看家庭成员、调整管理员、移除成员'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementPage())),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const UserManagementPage())),
           ),
           ListTile(
             leading: const Icon(Icons.assignment),
@@ -117,6 +140,38 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('查看新版本并在线升级'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
+              // Web 端：走前端版本接口，提示刷新即可拿到新构建
+              if (kIsWeb) {
+                final info = await WebUpdater.instance.check(force: true);
+                if (!context.mounted) return;
+                if (info == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('当前已是最新版本')),
+                  );
+                  return;
+                }
+                await showDialog<void>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text('发现新版本 v${info.version}'),
+                    content:
+                        Text(info.notes.isEmpty ? '点击刷新即可加载最新界面。' : info.notes),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('稍后')),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          WebUpdater.instance.applyUpdate();
+                        },
+                        child: const Text('立即刷新'),
+                      ),
+                    ],
+                  ),
+                );
+                return;
+              }
               final info = await UpdaterService.check();
               if (!context.mounted) return;
               if (info != null) {
@@ -128,6 +183,20 @@ class _SettingsPageState extends State<SettingsPage> {
               }
             },
           ),
+          // 服务端地址（本地联调 / 私有部署切换）
+          ListTile(
+            leading: const Icon(Icons.dns_outlined, color: AppTheme.gold),
+            title: const Text('服务端地址'),
+            subtitle: Text(
+              AppConfig.serverHost,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textDim),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await showServerAddressDialog(context);
+              if (mounted) setState(() {});
+            },
+          ),
           // 生物识别设置
           Consumer<BiometricService>(
             builder: (ctx, biometric, _) {
@@ -135,7 +204,9 @@ class _SettingsPageState extends State<SettingsPage> {
               return ListTile(
                 leading: Icon(
                   Icons.fingerprint,
-                  color: biometric.canCheckBiometrics ? Colors.deepPurple : Colors.grey,
+                  color: biometric.canCheckBiometrics
+                      ? AppTheme.gold
+                      : AppTheme.textDim,
                 ),
                 title: const Text('生物识别登录'),
                 subtitle: Text(biometric.getStatusDescription()),
@@ -161,24 +232,36 @@ class _SettingsPageState extends State<SettingsPage> {
                                     TextField(
                                       controller: pwd,
                                       obscureText: true,
-                                      decoration: const InputDecoration(labelText: '密码'),
+                                      decoration: const InputDecoration(
+                                          labelText: '密码'),
                                     ),
                                   ],
                                 ),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('启用')),
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('取消')),
+                                  FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('启用')),
                                 ],
                               ),
                             );
                             final pwdText = pwd.text;
                             pwd.dispose();
                             if (ok == true && pwdText.isNotEmpty) {
-                              final success = await biometric.enable(user.username, pwdText);
+                              final success = await biometric.enable(
+                                  user.username, pwdText);
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(
-                                    success ? '生物识别已启用' : (biometric.errorMessage.isNotEmpty ? biometric.errorMessage : '启用失败'),
+                                  SnackBar(
+                                      content: Text(
+                                    success
+                                        ? '生物识别已启用'
+                                        : (biometric.errorMessage.isNotEmpty
+                                            ? biometric.errorMessage
+                                            : '启用失败'),
                                   )),
                                 );
                               }
@@ -244,7 +327,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       if (r.ok && r.data != null) {
         final raw = r.data!['list'] as List? ?? [];
         setState(() {
-          _list = raw.map((e) => NotificationItem.fromJson(e as Map<String, dynamic>)).toList();
+          _list = raw
+              .map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
+              .toList();
           _unreadCount = (r.data!['unreadCount'] as num? ?? 0).toInt();
           _loading = false;
         });
@@ -385,9 +470,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.cloud_off, size: 48, color: Colors.black26),
+                      const Icon(Icons.cloud_off,
+                          size: 48, color: AppTheme.line),
                       const SizedBox(height: 8),
-                      Text(_error!, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+                      Text(_error!,
+                          style: const TextStyle(
+                              color: AppTheme.textDim, fontSize: 13)),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: _load,
@@ -398,95 +486,112 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   ),
                 )
               : _list.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.notifications_off_outlined, size: 64, color: Colors.black26),
-                      SizedBox(height: 8),
-                      Text('暂无通知', style: TextStyle(color: Colors.black45)),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _list.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-                    itemBuilder: (_, i) {
-                      final n = _list[i];
-                      final color = _colorOf(n.type);
-                      final isPending = _pendingRead.contains(n.id);
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: color.withValues(alpha: 0.12),
-                          child: Icon(_iconOf(n.type), color: color, size: 20),
-                        ),
-                        title: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                n.title.isEmpty ? NotifyType.labelOf(n.type) : n.title,
-                                style: TextStyle(
-                                  fontWeight: n.read ? FontWeight.w400 : FontWeight.w700,
-                                ),
-                              ),
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.notifications_off_outlined,
+                              size: 64, color: AppTheme.line),
+                          SizedBox(height: 8),
+                          Text('暂无通知',
+                              style: TextStyle(color: AppTheme.textDim)),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: _list.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, indent: 72),
+                        itemBuilder: (_, i) {
+                          final n = _list[i];
+                          final color = _colorOf(n.type);
+                          final isPending = _pendingRead.contains(n.id);
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: color.withValues(alpha: 0.12),
+                              child:
+                                  Icon(_iconOf(n.type), color: color, size: 20),
                             ),
-                            if (!n.read)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                margin: const EdgeInsets.only(left: 6),
-                                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                              ),
-                          ],
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (n.content.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(n.content, style: const TextStyle(fontSize: 13)),
-                              ),
-                            const SizedBox(height: 4),
-                            Row(
+                            title: Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
+                                Expanded(
                                   child: Text(
-                                    NotifyType.labelOf(n.type),
-                                    style: TextStyle(fontSize: 10, color: color),
+                                    n.title.isEmpty
+                                        ? NotifyType.labelOf(n.type)
+                                        : n.title,
+                                    style: TextStyle(
+                                      fontWeight: n.read
+                                          ? FontWeight.w400
+                                          : FontWeight.w700,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _timeStr(n.createdAt),
-                                  style: const TextStyle(fontSize: 11, color: Colors.black45),
+                                if (!n.read)
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    margin: const EdgeInsets.only(left: 6),
+                                    decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (n.content.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(n.content,
+                                        style: const TextStyle(fontSize: 13)),
+                                  ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: color.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        NotifyType.labelOf(n.type),
+                                        style: TextStyle(
+                                            fontSize: 10, color: color),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _timeStr(n.createdAt),
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.textDim),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                        trailing: n.read
-                            ? null
-                            : (isPending
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.chevron_right, size: 20)),
-                        onTap: n.read ? null : () => _markRead(n),
-                      );
-                    },
-                  ),
-                ),
+                            trailing: n.read
+                                ? null
+                                : (isPending
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.chevron_right,
+                                        size: 20)),
+                            onTap: n.read ? null : () => _markRead(n),
+                          );
+                        },
+                      ),
+                    ),
     );
   }
 }
@@ -538,15 +643,20 @@ class _UserManagementPageState extends State<UserManagementPage> {
       builder: (ctx) => AlertDialog(
         content: Text(m.isAdmin ? '取消该成员的管理员权限？' : '将该成员设为管理员？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认')),
         ],
       ),
     );
     if (ok != true) return;
     final r = await ApiClient.instance.updateFamilyMember(m.id, !m.isAdmin);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已更新' : (r.message.isEmpty ? '失败' : r.message))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(r.ok ? '已更新' : (r.message.isEmpty ? '失败' : r.message))));
     _load();
   }
 
@@ -554,9 +664,12 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        content: Text('确认移除 ${m.nickname.isNotEmpty ? m.nickname : m.username}？'),
+        content:
+            Text('确认移除 ${m.nickname.isNotEmpty ? m.nickname : m.username}？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -568,7 +681,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
     if (ok != true) return;
     final r = await ApiClient.instance.removeFamilyMember(m.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已移除' : (r.message.isEmpty ? '失败' : r.message))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(r.ok ? '已移除' : (r.message.isEmpty ? '失败' : r.message))));
     _load();
   }
 
@@ -579,7 +693,9 @@ class _UserManagementPageState extends State<UserManagementPage> {
         title: const Text('立即执行家庭删除'),
         content: const Text('冷静期已到期？点击确认将立即解散家庭并清除所有成员关系。\n此操作不可撤销。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -591,7 +707,9 @@ class _UserManagementPageState extends State<UserManagementPage> {
     if (ok != true) return;
     final r = await ApiClient.instance.forceDeleteFamily();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '家庭已删除' : (r.message.isEmpty ? '失败' : r.message))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:
+            Text(r.ok ? '家庭已删除' : (r.message.isEmpty ? '失败' : r.message))));
     Navigator.pop(context);
   }
 
@@ -613,9 +731,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Row(children: [
-                              const Icon(Icons.admin_panel_settings, color: Colors.amber),
+                              const Icon(Icons.admin_panel_settings,
+                                  color: Colors.amber),
                               const SizedBox(width: 8),
-                              const Expanded(child: Text('你是家庭管理员，可管理成员角色与执行冷静期到期后的家庭删除')),
+                              const Expanded(
+                                  child: Text('你是家庭管理员，可管理成员角色与执行冷静期到期后的家庭删除')),
                               FilledButton.tonal(
                                 onPressed: _forceDeleteFamily,
                                 child: const Text('执行删除'),
@@ -625,12 +745,18 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         ),
                       ),
                     ..._members.map((m) {
-                      final isMe = m.userId == context.read<AuthState>().user?.id;
+                      final isMe =
+                          m.userId == context.read<AuthState>().user?.id;
                       return ListTile(
                         leading: CircleAvatar(
-                          child: Text((m.nickname.isNotEmpty ? m.nickname : m.username).characters.first),
+                          child: Text(
+                              (m.nickname.isNotEmpty ? m.nickname : m.username)
+                                  .characters
+                                  .first),
                         ),
-                        title: Text((m.nickname.isNotEmpty ? m.nickname : m.username) + (isMe ? '（我）' : '')),
+                        title: Text(
+                            (m.nickname.isNotEmpty ? m.nickname : m.username) +
+                                (isMe ? '（我）' : '')),
                         subtitle: Text(m.isAdmin ? '家庭管理员' : '成员'),
                         trailing: _isAdmin && !isMe
                             ? PopupMenuButton<String>(
@@ -639,11 +765,17 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                   if (v == 'remove') _removeMember(m);
                                 },
                                 itemBuilder: (_) => [
-                                  PopupMenuItem(value: 'admin', child: Text(m.isAdmin ? '取消管理员' : '设为管理员')),
-                                  const PopupMenuItem(value: 'remove', child: Text('移除出家庭')),
+                                  PopupMenuItem(
+                                      value: 'admin',
+                                      child:
+                                          Text(m.isAdmin ? '取消管理员' : '设为管理员')),
+                                  const PopupMenuItem(
+                                      value: 'remove', child: Text('移除出家庭')),
                                 ],
                               )
-                            : (m.isAdmin ? const Icon(Icons.star, color: Colors.amber) : null),
+                            : (m.isAdmin
+                                ? const Icon(Icons.star, color: Colors.amber)
+                                : null),
                       );
                     }),
                   ],

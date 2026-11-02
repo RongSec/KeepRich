@@ -9,6 +9,8 @@ import 'settings_page.dart';
 import '../services/api.dart';
 import '../services/notify.dart';
 import '../services/updater.dart';
+import '../theme.dart';
+import '../widgets/update_banner.dart';
 
 class HomePage extends StatefulWidget {
   final int tab;
@@ -109,18 +111,37 @@ class _HomePageState extends State<HomePage> {
                 ? NavigationRailLabelType.none
                 : NavigationRailLabelType.all,
             destinations: const [
-              NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('总览')),
-              NavigationRailDestination(icon: Icon(Icons.savings_outlined), selectedIcon: Icon(Icons.savings), label: Text('未来')),
-              NavigationRailDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: Text('记账')),
-              NavigationRailDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: Text('设置')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard),
+                  label: Text('总览')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.savings_outlined),
+                  selectedIcon: Icon(Icons.savings),
+                  label: Text('未来')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  selectedIcon: Icon(Icons.receipt_long),
+                  label: Text('记账')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: Text('设置')),
             ],
           ),
           const VerticalDivider(width: 1),
           // IndexedStack 保活：切换 tab 不销毁页面状态
           Expanded(
-            child: IndexedStack(
-              index: _index,
-              children: _pages,
+            child: Column(
+              children: [
+                const WebUpdateBanner(),
+                Expanded(
+                  child: IndexedStack(
+                    index: _index,
+                    children: _pages,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -133,9 +154,16 @@ class _HomePageState extends State<HomePage> {
     final unreadCount = context.watch<NotifyService>().unreadCount;
     return Scaffold(
       // IndexedStack 保活：切换 tab 不销毁页面状态
-      body: IndexedStack(
-        index: _index,
-        children: _pages,
+      body: Column(
+        children: [
+          const WebUpdateBanner(),
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: _pages,
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: _BottomNavWithBall(
         index: _index,
@@ -179,7 +207,6 @@ class _BottomNavWithBall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return SizedBox(
       height: 80,
       child: Stack(
@@ -193,25 +220,36 @@ class _BottomNavWithBall extends StatelessWidget {
             child: Container(
               height: 64,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: Border(top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.3))),
+                color: const Color(0xF20C0C12),
+                border: Border(
+                  top: BorderSide(color: AppTheme.gold.withValues(alpha: 0.16)),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 12,
-                    offset: const Offset(0, -2),
+                    color: Colors.black.withValues(alpha: 0.55),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
               child: Row(
                 children: [
                   // 左 2 项：总览、未来
-                  Expanded(child: _navItem(context, 0, Icons.dashboard_outlined, Icons.dashboard, '总览')),
-                  Expanded(child: _navItem(context, 1, Icons.savings_outlined, Icons.savings, '未来')),
+                  Expanded(
+                      child: _navItem(context, 0, Icons.dashboard_outlined,
+                          Icons.dashboard, '总览')),
+                  Expanded(
+                      child: _navItem(context, 1, Icons.savings_outlined,
+                          Icons.savings, '未来')),
                   const SizedBox(width: 80), // 中间球占位
                   // 右 2 项：记账、设置
-                  Expanded(child: _navItem(context, 2, Icons.receipt_long_outlined, Icons.receipt_long, '记账')),
-                  Expanded(child: _navItem(context, 3, Icons.settings_outlined, Icons.settings, '设置', badge: unreadCount)),
+                  Expanded(
+                      child: _navItem(context, 2, Icons.receipt_long_outlined,
+                          Icons.receipt_long, '记账')),
+                  Expanded(
+                      child: _navItem(context, 3, Icons.settings_outlined,
+                          Icons.settings, '设置',
+                          badge: unreadCount)),
                 ],
               ),
             ),
@@ -224,7 +262,10 @@ class _BottomNavWithBall extends StatelessWidget {
             child: Center(
               child: GestureDetector(
                 onTap: onBallTap,
-                child: _Ball(worryFreePersonal: worryFreePersonal, worryFreeFamily: worryFreeFamily, loading: loading),
+                child: _Ball(
+                    worryFreePersonal: worryFreePersonal,
+                    worryFreeFamily: worryFreeFamily,
+                    loading: loading),
               ),
             ),
           ),
@@ -233,7 +274,9 @@ class _BottomNavWithBall extends StatelessWidget {
     );
   }
 
-  Widget _navItem(BuildContext context, int i, IconData icon, IconData activeIcon, String label, {int badge = 0}) {
+  Widget _navItem(BuildContext context, int i, IconData icon,
+      IconData activeIcon, String label,
+      {int badge = 0}) {
     final selected = index == i;
     final theme = Theme.of(context);
     return InkWell(
@@ -244,13 +287,17 @@ class _BottomNavWithBall extends StatelessWidget {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              Icon(selected ? activeIcon : icon, color: selected ? theme.colorScheme.primary : theme.colorScheme.outline),
+              Icon(selected ? activeIcon : icon,
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.outline),
               if (badge > 0)
                 Positioned(
                   right: -8,
                   top: -4,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
                       color: Colors.red,
                       borderRadius: BorderRadius.circular(8),
@@ -258,7 +305,10 @@ class _BottomNavWithBall extends StatelessWidget {
                     constraints: const BoxConstraints(minWidth: 14),
                     child: Text(
                       badge > 99 ? '99+' : '$badge',
-                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -270,7 +320,9 @@ class _BottomNavWithBall extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: selected ? theme.colorScheme.primary : theme.colorScheme.outline,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
@@ -285,7 +337,10 @@ class _Ball extends StatelessWidget {
   final double worryFreePersonal;
   final double worryFreeFamily;
   final bool loading;
-  const _Ball({required this.worryFreePersonal, required this.worryFreeFamily, required this.loading});
+  const _Ball(
+      {required this.worryFreePersonal,
+      required this.worryFreeFamily,
+      required this.loading});
 
   String _formatAmount(double v) {
     if (v >= 100000000) {
@@ -298,7 +353,7 @@ class _Ball extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    const ink = Color(0xFF2A1D04);
     return Tooltip(
       message: '个人：${NumberFormat('#,##0.00').format(worryFreePersonal)} 元/笔\n'
           '家庭：${NumberFormat('#,##0.00').format(worryFreeFamily)} 元/笔\n点击进入总览',
@@ -307,21 +362,22 @@ class _Ball extends StatelessWidget {
         height: 72,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFE9B0), Color(0xFFFFC65C), Color(0xFFD79A32)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
+          border: Border.all(color: const Color(0x66FFFFFF), width: 1.2),
           boxShadow: [
             BoxShadow(
-              color: theme.colorScheme.primary.withValues(alpha: 0.4),
-              blurRadius: 14,
+              color: AppTheme.gold.withValues(alpha: 0.45),
+              blurRadius: 16,
               spreadRadius: 1,
             ),
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -329,8 +385,12 @@ class _Ball extends StatelessWidget {
             ? const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.flash_on, color: Colors.white, size: 18),
-                  SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white)),
+                  Icon(Icons.flash_on, color: ink, size: 18),
+                  SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 1.5, color: ink)),
                 ],
               )
             : Column(
@@ -339,23 +399,27 @@ class _Ball extends StatelessWidget {
                   // 个人
                   Text(
                     _formatAmount(worryFreePersonal),
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                        color: ink, fontSize: 12, fontWeight: FontWeight.w800),
                   ),
                   // 分隔线
                   Container(
                     width: 28,
                     height: 1,
                     margin: const EdgeInsets.symmetric(vertical: 2),
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: ink.withValues(alpha: 0.28),
                   ),
                   // 家庭
                   Text(
                     _formatAmount(worryFreeFamily),
-                    style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                        color: Color(0xCC2A1D04),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700),
                   ),
                   const Text(
                     '元/笔',
-                    style: TextStyle(color: Colors.white54, fontSize: 7),
+                    style: TextStyle(color: Color(0x992A1D04), fontSize: 7),
                   ),
                 ],
               ),

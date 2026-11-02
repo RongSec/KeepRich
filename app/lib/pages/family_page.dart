@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api.dart';
+import '../theme.dart';
 
 class FamilyManagePage extends StatefulWidget {
   const FamilyManagePage({super.key});
@@ -54,14 +55,22 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: '家庭名称')),
+            TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: '家庭名称')),
             const SizedBox(height: 8),
-            TextField(controller: desc, decoration: const InputDecoration(labelText: '描述（可选）')),
+            TextField(
+                controller: desc,
+                decoration: const InputDecoration(labelText: '描述（可选）')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('创建')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('创建')),
         ],
       ),
     );
@@ -78,7 +87,8 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
     if (r.ok) {
       _load();
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -92,14 +102,22 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: code, decoration: const InputDecoration(labelText: '家庭码')),
+            TextField(
+                controller: code,
+                decoration: const InputDecoration(labelText: '家庭码')),
             const SizedBox(height: 8),
-            TextField(controller: msg, decoration: const InputDecoration(labelText: '附言（可选）')),
+            TextField(
+                controller: msg,
+                decoration: const InputDecoration(labelText: '附言（可选）')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('申请')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('申请')),
         ],
       ),
     );
@@ -115,9 +133,11 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
     final r = await ApiClient.instance.applyJoin(codeText, msgText);
     if (!mounted) return;
     if (r.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('申请已提交，等待家庭管理员审批')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('申请已提交，等待家庭管理员审批')));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -133,8 +153,12 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         title: const Text('终身绑定'),
         content: const Text('开启后无法恢复个人数据，删除家庭将清除所有内容。确定吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确定')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确定')),
         ],
       ),
     );
@@ -157,7 +181,10 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                     height: 160,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.amber.shade300, Colors.deepOrange.shade400],
+                        colors: [
+                          Colors.amber.shade300,
+                          Colors.deepOrange.shade400
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -187,7 +214,8 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       );
       _load();
     } else if (mounted && !r.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -202,12 +230,18 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
           children: [
             const Text('发起后需要所有家庭成员同意才能解散。'),
             const SizedBox(height: 8),
-            TextField(controller: reason, decoration: const InputDecoration(labelText: '原因（可选）')),
+            TextField(
+                controller: reason,
+                decoration: const InputDecoration(labelText: '原因（可选）')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('发起投票')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('发起投票')),
         ],
       ),
     );
@@ -219,17 +253,20 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
     reason.dispose();
     final r = await ApiClient.instance.requestDeleteFamily(reason: reasonText);
     if (r.ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已发起删除投票，等待其他成员同意')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已发起删除投票，等待其他成员同意')));
       _load();
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
   Future<void> _voteDelete(int requestId, bool vote) async {
     final r = await ApiClient.instance.voteDeleteFamily(requestId, vote);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.data?['message'] ?? (r.ok ? '已投票' : r.message))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(r.data?['message'] ?? (r.ok ? '已投票' : r.message))));
     _load();
   }
 
@@ -240,8 +277,12 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
         title: const Text('同步个人数据'),
         content: const Text('将您的个人记账、规划、贷款等数据同步到家庭空间。\n\n已有数据不会重复，新数据会追加。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('同步')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('同步')),
         ],
       ),
     );
@@ -249,10 +290,12 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
     final r = await ApiClient.instance.syncPersonalData();
     if (!mounted) return;
     if (r.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('个人数据已同步到家庭')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('个人数据已同步到家庭')));
       _load();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -273,15 +316,21 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.family_restroom, size: 64, color: Colors.grey),
+          const Icon(Icons.family_restroom, size: 64, color: AppTheme.textDim),
           const SizedBox(height: 16),
           const Text('尚未加入任何家庭'),
           const SizedBox(height: 24),
           Wrap(
             spacing: 12,
             children: [
-              FilledButton.icon(onPressed: _create, icon: const Icon(Icons.add), label: const Text('创建家庭')),
-              OutlinedButton.icon(onPressed: _join, icon: const Icon(Icons.login), label: const Text('加入家庭')),
+              FilledButton.icon(
+                  onPressed: _create,
+                  icon: const Icon(Icons.add),
+                  label: const Text('创建家庭')),
+              OutlinedButton.icon(
+                  onPressed: _join,
+                  icon: const Icon(Icons.login),
+                  label: const Text('加入家庭')),
             ],
           ),
         ],
@@ -306,9 +355,14 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
               children: [
                 Row(
                   children: [
-                    Text(fam['name'] as String? ?? '-', style: Theme.of(context).textTheme.titleLarge),
+                    Text(fam['name'] as String? ?? '-',
+                        style: Theme.of(context).textTheme.titleLarge),
                     const Spacer(),
-                    if (bound) Chip(label: const Text('终身绑定'), backgroundColor: Theme.of(context).colorScheme.tertiaryContainer),
+                    if (bound)
+                      Chip(
+                          label: const Text('终身绑定'),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.tertiaryContainer),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -316,18 +370,23 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                   children: [
                     const Icon(Icons.qr_code, size: 16),
                     const SizedBox(width: 6),
-                    SelectableText('家庭码：${fam['code']}', style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    SelectableText('家庭码：${fam['code']}',
+                        style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 4),
-                if ((fam['description'] as String? ?? '').isNotEmpty) Text(fam['description'] as String),
+                if ((fam['description'] as String? ?? '').isNotEmpty)
+                  Text(fam['description'] as String),
               ],
             ),
           ),
         ),
         const SizedBox(height: 16),
         if (isAdmin && _requests.isNotEmpty) ...[
-          Text('待审批申请 (${_requests.length})', style: Theme.of(context).textTheme.titleMedium),
+          Text('待审批申请 (${_requests.length})',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           ..._requests.map((r) => Card(
                 child: ListTile(
@@ -336,8 +395,14 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => _approve((r['id'] as num).toInt(), true)),
-                      IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _approve((r['id'] as num).toInt(), false)),
+                      IconButton(
+                          icon: const Icon(Icons.check, color: Colors.green),
+                          onPressed: () =>
+                              _approve((r['id'] as num).toInt(), true)),
+                      IconButton(
+                          icon: const Icon(Icons.close, color: Colors.red),
+                          onPressed: () =>
+                              _approve((r['id'] as num).toInt(), false)),
                     ],
                   ),
                 ),
@@ -377,37 +442,53 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
                   Row(children: [
                     const Icon(Icons.how_to_vote, color: Colors.red, size: 20),
                     const SizedBox(width: 8),
-                    Text('解散家庭投票进行中', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.red.shade700)),
+                    Text('解散家庭投票进行中',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red.shade700)),
                   ]),
                   const SizedBox(height: 8),
-                  Text('发起人：用户 #${_deleteVote!['request']?['requestBy'] ?? '-'}'),
-                  if ((_deleteVote!['request']?['reason'] ?? '').toString().isNotEmpty)
+                  Text(
+                      '发起人：用户 #${_deleteVote!['request']?['requestBy'] ?? '-'}'),
+                  if ((_deleteVote!['request']?['reason'] ?? '')
+                      .toString()
+                      .isNotEmpty)
                     Text('原因：${_deleteVote!['request']['reason']}'),
                   const SizedBox(height: 8),
-                  Text('投票状态：${(_deleteVote!['votes'] as List?)?.length ?? 0} 人已投票'),
+                  Text(
+                      '投票状态：${(_deleteVote!['votes'] as List?)?.length ?? 0} 人已投票'),
                   const SizedBox(height: 8),
                   if (_deleteVote!['myVote'] == null) ...[
                     Row(children: [
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: () => _voteDelete((_deleteVote!['request']['id'] as num).toInt(), true),
+                          onPressed: () => _voteDelete(
+                              (_deleteVote!['request']['id'] as num).toInt(),
+                              true),
                           icon: const Icon(Icons.check),
                           label: const Text('同意解散'),
-                          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => _voteDelete((_deleteVote!['request']['id'] as num).toInt(), false),
+                          onPressed: () => _voteDelete(
+                              (_deleteVote!['request']['id'] as num).toInt(),
+                              false),
                           icon: const Icon(Icons.close),
                           label: const Text('反对'),
                         ),
                       ),
                     ]),
                   ] else ...[
-                    Text('你已投票：${_deleteVote!['myVote']['vote'] == true ? '同意' : '反对'}',
-                        style: TextStyle(color: _deleteVote!['myVote']['vote'] == true ? Colors.red : Colors.green)),
+                    Text(
+                        '你已投票：${_deleteVote!['myVote']['vote'] == true ? '同意' : '反对'}',
+                        style: TextStyle(
+                            color: _deleteVote!['myVote']['vote'] == true
+                                ? Colors.red
+                                : Colors.green)),
                   ],
                 ],
               ),

@@ -107,7 +107,8 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   Future<void> _toggle(int id, bool disabled) async {
     final r = await ApiClient.instance.adminToggleUser(id, !disabled);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已更新' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已更新' : r.message)));
     _load();
   }
 
@@ -123,7 +124,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           decoration: const InputDecoration(labelText: '新密码（至少 8 位）'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('提交'),
@@ -142,12 +145,14 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     final newPwd = pwd.text;
     pwd.dispose();
     if (newPwd.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('密码至少 8 位')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('密码至少 8 位')));
       return;
     }
     final r = await ApiClient.instance.adminResetPassword(id, newPwd);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已重置' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已重置' : r.message)));
   }
 
   Future<void> _resetMfa(int id, String username) async {
@@ -157,15 +162,20 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         title: Text('重置 $username 的 MFA？'),
         content: const Text('用户将需要重新绑定 MFA 才能登录'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认')),
         ],
       ),
     );
     if (confirm != true) return;
     final r = await ApiClient.instance.adminResetMfa(id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已重置' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已重置' : r.message)));
   }
 
   @override
@@ -180,17 +190,22 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           final u = _users[i];
           final disabled = u['disabled'] as bool? ?? false;
           return ListTile(
-            leading: CircleAvatar(child: Text(((u['nickname'] as String? ?? 'U').characters.first))),
+            leading: CircleAvatar(
+                child:
+                    Text(((u['nickname'] as String? ?? 'U').characters.first))),
             title: Text('${u['nickname'] ?? ''} (${u['username']})'),
-            subtitle: Text('${u['role']} · MFA ${u['mfaEnabled'] == true ? '已开启' : '未开启'}'),
+            subtitle: Text(
+                '${u['role']} · MFA ${u['mfaEnabled'] == true ? '已开启' : '未开启'}'),
             trailing: PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'toggle') _toggle(u['id'] as int, disabled);
-                if (v == 'reset_pwd') _resetPassword(u['id'] as int, u['username']);
+                if (v == 'reset_pwd')
+                  _resetPassword(u['id'] as int, u['username']);
                 if (v == 'reset_mfa') _resetMfa(u['id'] as int, u['username']);
               },
               itemBuilder: (_) => [
-                PopupMenuItem(value: 'toggle', child: Text(disabled ? '启用' : '停用')),
+                PopupMenuItem(
+                    value: 'toggle', child: Text(disabled ? '启用' : '停用')),
                 const PopupMenuItem(value: 'reset_pwd', child: Text('重置密码')),
                 const PopupMenuItem(value: 'reset_mfa', child: Text('重置 MFA')),
               ],
@@ -237,7 +252,8 @@ class _AdminFamiliesPageState extends State<AdminFamiliesPage> {
     final r = await ApiClient.instance.adminFamilyStats(id);
     if (!mounted) return;
     if (!r.ok || r.data == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
       return;
     }
     final d = r.data!;
@@ -247,19 +263,25 @@ class _AdminFamiliesPageState extends State<AdminFamiliesPage> {
       builder: (_) => AlertDialog(
         title: Text('${f['name']} 统计'),
         content: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('家庭 ID: ${d['family']['id']}'),
-            Text('家庭名: ${d['family']['name']}'),
-            Text('管理员 UID: ${d['family']['adminUid']}'),
-            Text('绑定状态: ${d['family']['bound'] == true ? '已终身绑定' : '未绑定'}'),
-            const Divider(),
-            Text('成员数: ${d['memberCount']}'),
-            Text('记账笔数: ${d['txCount']}'),
-            Text('总收入: ${f2.format(d['totalIncome'])} 元'),
-            Text('总支出: ${f2.format(d['totalExpense'])} 元'),
-          ]),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('家庭 ID: ${d['family']['id']}'),
+                Text('家庭名: ${d['family']['name']}'),
+                Text('管理员 UID: ${d['family']['adminUid']}'),
+                Text('绑定状态: ${d['family']['bound'] == true ? '已终身绑定' : '未绑定'}'),
+                const Divider(),
+                Text('成员数: ${d['memberCount']}'),
+                Text('记账笔数: ${d['txCount']}'),
+                Text('总收入: ${f2.format(d['totalIncome'])} 元'),
+                Text('总支出: ${f2.format(d['totalExpense'])} 元'),
+              ]),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('关闭'))
+        ],
       ),
     );
   }
@@ -271,15 +293,21 @@ class _AdminFamiliesPageState extends State<AdminFamiliesPage> {
         title: Text('删除家庭 "${f['name']}"？'),
         content: const Text('将一并删除所有成员、记账、规划、删除请求等，且不可恢复'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(context, true), child: const Text('强制删除')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('强制删除')),
         ],
       ),
     );
     if (confirm != true) return;
     final r = await ApiClient.instance.adminDeleteFamily(f['id'] as int);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
     _load();
   }
 
@@ -297,9 +325,11 @@ class _AdminFamiliesPageState extends State<AdminFamiliesPage> {
         itemBuilder: (ctx, i) {
           final f = _families[i];
           return ListTile(
-            leading: CircleAvatar(child: Text(((f['name'] as String? ?? 'F').characters.first))),
+            leading: CircleAvatar(
+                child: Text(((f['name'] as String? ?? 'F').characters.first))),
             title: Text('${f['name']} (#${f['id']})'),
-            subtitle: Text('成员 ${f['memberCount']} · 邀请码 ${f['code']} · 绑定 ${f['bound'] == true ? '是' : '否'}'),
+            subtitle: Text(
+                '成员 ${f['memberCount']} · 邀请码 ${f['code']} · 绑定 ${f['bound'] == true ? '是' : '否'}'),
             trailing: PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'stats') _viewStats(f);
@@ -307,7 +337,9 @@ class _AdminFamiliesPageState extends State<AdminFamiliesPage> {
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'stats', child: Text('查看统计')),
-                PopupMenuItem(value: 'delete', child: Text('强制删除', style: TextStyle(color: Colors.red))),
+                PopupMenuItem(
+                    value: 'delete',
+                    child: Text('强制删除', style: TextStyle(color: Colors.red))),
               ],
             ),
           );
@@ -351,7 +383,8 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
   Future<void> _delete(int id) async {
     final r = await ApiClient.instance.adminDeleteError(id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
     _load();
   }
 
@@ -361,15 +394,21 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
       builder: (_) => AlertDialog(
         title: const Text('清空所有错误？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(context, true), child: const Text('确认')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认')),
         ],
       ),
     );
     if (confirm != true) return;
     final r = await ApiClient.instance.adminClearErrors();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.ok ? '已清空' : r.message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.ok ? '已清空' : r.message)));
     _load();
   }
 
@@ -377,19 +416,32 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
   Widget build(BuildContext context) {
     var filtered = _errors;
     if (_filter != 'all') {
-      filtered = _errors.where((e) => (e['platform'] ?? '') == _filter).toList();
+      filtered =
+          _errors.where((e) => (e['platform'] ?? '') == _filter).toList();
     }
     return Column(children: [
       Padding(
         padding: const EdgeInsets.all(8),
         child: Row(children: [
-          ChoiceChip(label: const Text('全部'), selected: _filter == 'all', onSelected: (_) => setState(() => _filter = 'all')),
+          ChoiceChip(
+              label: const Text('全部'),
+              selected: _filter == 'all',
+              onSelected: (_) => setState(() => _filter = 'all')),
           const SizedBox(width: 6),
-          ChoiceChip(label: const Text('Web'), selected: _filter == 'web', onSelected: (_) => setState(() => _filter = 'web')),
+          ChoiceChip(
+              label: const Text('Web'),
+              selected: _filter == 'web',
+              onSelected: (_) => setState(() => _filter = 'web')),
           const SizedBox(width: 6),
-          ChoiceChip(label: const Text('Android'), selected: _filter == 'android', onSelected: (_) => setState(() => _filter = 'android')),
+          ChoiceChip(
+              label: const Text('Android'),
+              selected: _filter == 'android',
+              onSelected: (_) => setState(() => _filter = 'android')),
           const Spacer(),
-          OutlinedButton.icon(onPressed: _clear, icon: const Icon(Icons.delete_sweep), label: const Text('清空')),
+          OutlinedButton.icon(
+              onPressed: _clear,
+              icon: const Icon(Icons.delete_sweep),
+              label: const Text('清空')),
         ]),
       ),
       Expanded(
@@ -403,26 +455,37 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
                   itemBuilder: (ctx, i) {
                     final e = filtered[i];
                     return ExpansionTile(
-                      title: Text('${e['platform']} / ${e['app']} · ${e['message']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(_parseTime(e['createdAt']))),
+                      title: Text(
+                          '${e['platform']} / ${e['app']} · ${e['message']}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      subtitle: Text(DateFormat('yyyy-MM-dd HH:mm:ss')
+                          .format(_parseTime(e['createdAt']))),
                       children: [
                         Padding(
                           padding: const EdgeInsets.all(12),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            SelectableText('URL: ${e['url'] ?? ''}'),
-                            const SizedBox(height: 4),
-                            SelectableText('版本: ${e['version'] ?? ''}'),
-                            const SizedBox(height: 4),
-                            const Text('Stack:', style: TextStyle(fontWeight: FontWeight.bold)),
-                            SelectableText(e['stack']?.toString() ?? ''),
-                            const SizedBox(height: 4),
-                            SelectableText('Extra: ${e['extra'] ?? ''}'),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton.icon(onPressed: () => _delete(e['id'] as int), icon: const Icon(Icons.delete), label: const Text('删除')),
-                            ),
-                          ]),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SelectableText('URL: ${e['url'] ?? ''}'),
+                                const SizedBox(height: 4),
+                                SelectableText('版本: ${e['version'] ?? ''}'),
+                                const SizedBox(height: 4),
+                                const Text('Stack:',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                                SelectableText(e['stack']?.toString() ?? ''),
+                                const SizedBox(height: 4),
+                                SelectableText('Extra: ${e['extra'] ?? ''}'),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                      onPressed: () => _delete(e['id'] as int),
+                                      icon: const Icon(Icons.delete),
+                                      label: const Text('删除')),
+                                ),
+                              ]),
                         ),
                       ],
                     );
@@ -482,7 +545,8 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
             hintText: '搜索用户名/路径/详情',
             prefixIcon: const Icon(Icons.search),
             border: const OutlineInputBorder(),
-            suffixIcon: IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+            suffixIcon:
+                IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           ),
           onSubmitted: (_) => _load(),
         ),

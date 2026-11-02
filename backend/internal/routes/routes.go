@@ -21,6 +21,7 @@ func Register(r *gin.Engine) {
 		api.POST("/auth/login", authLimiter, handlers.Login)
 		api.POST("/auth/refresh", authLimiter, handlers.Refresh)
 		api.GET("/app/version", handlers.GetAppVersion) // 在线更新版本检查
+		api.GET("/app/web-version", handlers.GetWebVersion) // Web 端在线更新检查
 
 		// 需要登录
 		auth := api.Group("")

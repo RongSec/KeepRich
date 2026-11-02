@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/api.dart';
+import '../theme.dart';
 
 class OverviewPage extends StatefulWidget {
   const OverviewPage({super.key});
@@ -40,7 +41,8 @@ class _OverviewPageState extends State<OverviewPage> {
       });
       return;
     }
-    final cr = await ApiClient.instance.overviewChart(scope: _scope, period: _chartPeriod);
+    final cr = await ApiClient.instance
+        .overviewChart(scope: _scope, period: _chartPeriod);
     if (!mounted) return;
     setState(() {
       _ov = r.data;
@@ -50,7 +52,8 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   Future<void> _reloadChart() async {
-    final cr = await ApiClient.instance.overviewChart(scope: _scope, period: _chartPeriod);
+    final cr = await ApiClient.instance
+        .overviewChart(scope: _scope, period: _chartPeriod);
     if (!mounted) return;
     setState(() {
       _chart = cr.ok ? cr.data : null;
@@ -119,14 +122,16 @@ class _OverviewPageState extends State<OverviewPage> {
         bg: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
         title: _scope == 'personal' ? '个人总财富' : '家庭总财富',
         value: f.format(ov.totalWealth),
-        unit: ov.totalHousingFund > 0 ? '含公积金 ${f.format(ov.totalHousingFund)} 元' : '元',
+        unit: ov.totalHousingFund > 0
+            ? '含公积金 ${f.format(ov.totalHousingFund)} 元'
+            : '元',
         onTap: () => _showWealthDetail(context),
       ),
       _miniCard(
         theme: theme,
         icon: Icons.work_outline,
-        iconColor: Colors.indigo,
-        bg: Colors.indigo.shade50,
+        iconColor: const Color(0xFF9FA8FF),
+        bg: Colors.indigo.withValues(alpha: 0.16),
         title: '年薪',
         value: f.format(ov.annualIncome),
         unit: '元/年',
@@ -135,8 +140,8 @@ class _OverviewPageState extends State<OverviewPage> {
       _miniCard(
         theme: theme,
         icon: Icons.account_balance_wallet_outlined,
-        iconColor: Colors.green.shade700,
-        bg: Colors.green.shade50,
+        iconColor: const Color(0xFF7EE0A6),
+        bg: Colors.green.withValues(alpha: 0.14),
         title: '本月剩余消费',
         value: f.format(ov.monthConsumableLeft),
         unit: '元',
@@ -145,8 +150,8 @@ class _OverviewPageState extends State<OverviewPage> {
       _miniCard(
         theme: theme,
         icon: Icons.savings_outlined,
-        iconColor: Colors.deepOrange,
-        bg: Colors.deepOrange.shade50,
+        iconColor: const Color(0xFFFF9E7A),
+        bg: Colors.deepOrange.withValues(alpha: 0.14),
         title: '未来财富',
         value: f.format(ov.futureWealth),
         unit: '元（折现）',
@@ -201,16 +206,24 @@ class _OverviewPageState extends State<OverviewPage> {
                   child: Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: iconColor, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: iconColor,
+                          fontWeight: FontWeight.w600)),
                 ),
               ]),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.bottomLeft,
                 child: Text(value,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.black87)),
+                    style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.text)),
               ),
-              Text(unit, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+              Text(unit,
+                  style:
+                      const TextStyle(fontSize: 10, color: AppTheme.textDim)),
             ],
           ),
         ),
@@ -230,11 +243,13 @@ class _OverviewPageState extends State<OverviewPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Icon(Icons.pie_chart_outline, color: theme.colorScheme.primary, size: 20),
+              Icon(Icons.pie_chart_outline,
+                  color: theme.colorScheme.primary, size: 20),
               const SizedBox(width: 6),
               Text('财务统筹', style: theme.textTheme.titleMedium),
               const Spacer(),
-              Text('月收入 ${f.format(a.monthlyIncome)} 元', style: theme.textTheme.bodySmall),
+              Text('月收入 ${f.format(a.monthlyIncome)} 元',
+                  style: theme.textTheme.bodySmall),
             ]),
             const SizedBox(height: 8),
             // 储蓄 + 长远投资（一行 2 列）
@@ -255,7 +270,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 child: _bucketTile(
                   name: '长远投资',
                   icon: Icons.trending_up,
-                  color: Colors.indigo,
+                  color: const Color(0xFF9FA8FF),
                   balance: ov.investmentBalance,
                   thisMonth: a.investmentThisMonth,
                   thisMonthTarget: a.investmentTarget,
@@ -271,7 +286,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 child: _bucketTile(
                   name: '应急备用金',
                   icon: Icons.local_hospital,
-                  color: Colors.deepOrange,
+                  color: const Color(0xFFFF9E7A),
                   balance: ov.emergencyBalance,
                   target: ov.emergencyTarget,
                   pct: ov.emergencyPct,
@@ -286,7 +301,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 child: _bucketTile(
                   name: '养老金',
                   icon: Icons.elderly,
-                  color: Colors.teal,
+                  color: const Color(0xFF6FD9CE),
                   balance: ov.pensionBalance,
                   target: ov.pensionTarget,
                   pct: ov.pensionPct,
@@ -320,97 +335,116 @@ class _OverviewPageState extends State<OverviewPage> {
     final hasTarget = target != null && target > 0;
     final pctClamped = (pct ?? 0).clamp(0.0, 1.0);
     final pctStr = (pctClamped * 100).toStringAsFixed(0);
-    final monthPct = thisMonthTarget > 0 ? (thisMonth / thisMonthTarget).clamp(0.0, 1.0) : 0.0;
+    final monthPct = thisMonthTarget > 0
+        ? (thisMonth / thisMonthTarget).clamp(0.0, 1.0)
+        : 0.0;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: color)),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.bottomLeft,
+              child: Text('${f.format(balance)} 元',
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.text)),
             ),
-          ]),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.bottomLeft,
-            child: Text('${f.format(balance)} 元',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)),
-          ),
-          if (hasTarget) ...[
+            if (hasTarget) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                Text('总进度', style: TextStyle(fontSize: 10, color: color)),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: pctClamped,
+                      minHeight: 4,
+                      backgroundColor: color.withValues(alpha: 0.15),
+                      valueColor: AlwaysStoppedAnimation(color),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text('$pctStr%', style: TextStyle(fontSize: 10, color: color)),
+              ]),
+              if (monthsLeft != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  monthsLeft == 0 ? '已达成' : '预估还需 $monthsLeft 个月',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: monthsLeft == 0
+                          ? const Color(0xFF7EE0A6)
+                          : AppTheme.textDim),
+                ),
+              ],
+            ],
             const SizedBox(height: 4),
             Row(children: [
-              Text('总进度', style: TextStyle(fontSize: 10, color: color)),
+              Text('本月',
+                  style:
+                      const TextStyle(fontSize: 10, color: AppTheme.textDim)),
               const SizedBox(width: 4),
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(2),
                   child: LinearProgressIndicator(
-                    value: pctClamped,
+                    value: monthPct,
                     minHeight: 4,
-                    backgroundColor: color.withValues(alpha: 0.15),
-                    valueColor: AlwaysStoppedAnimation(color),
+                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation(
+                        monthPct >= 1.0 ? const Color(0xFF7EE0A6) : color),
                   ),
                 ),
               ),
               const SizedBox(width: 4),
-              Text('$pctStr%', style: TextStyle(fontSize: 10, color: color)),
+              Text('${(monthPct * 100).toStringAsFixed(0)}%',
+                  style:
+                      const TextStyle(fontSize: 10, color: AppTheme.textDim)),
             ]),
-            if (monthsLeft != null) ...[
+            // 本月剩余应存入量
+            if (thisMonthTarget > 0) ...[
               const SizedBox(height: 2),
-              Text(
-                monthsLeft == 0 ? '已达成' : '预估还需 $monthsLeft 个月',
-                style: TextStyle(fontSize: 10, color: monthsLeft == 0 ? Colors.green : Colors.black54),
-              ),
+              Builder(builder: (_) {
+                final remaining = thisMonthTarget - thisMonth;
+                if (remaining <= 0) {
+                  return Text('本月已完成',
+                      style: TextStyle(
+                          fontSize: 10, color: const Color(0xFF7EE0A6)));
+                }
+                return Text('本月剩余 ${f.format(remaining)} 待转入',
+                    style: TextStyle(
+                        fontSize: 10, color: color.withValues(alpha: 0.7)));
+              }),
             ],
           ],
-          const SizedBox(height: 4),
-          Row(children: [
-            Text('本月', style: const TextStyle(fontSize: 10, color: Colors.black54)),
-            const SizedBox(width: 4),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: monthPct,
-                  minHeight: 4,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation(monthPct >= 1.0 ? Colors.green : color),
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text('${(monthPct * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(fontSize: 10, color: Colors.black54)),
-          ]),
-          // 本月剩余应存入量
-          if (thisMonthTarget > 0) ...[
-            const SizedBox(height: 2),
-            Builder(builder: (_) {
-              final remaining = thisMonthTarget - thisMonth;
-              if (remaining <= 0) {
-                return Text('本月已完成', style: TextStyle(fontSize: 10, color: Colors.green.shade600));
-              }
-              return Text('本月剩余 ${f.format(remaining)} 待转入',
-                  style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7)));
-            }),
-          ],
-        ],
+        ),
       ),
-    ),
     );
   }
 
@@ -451,7 +485,7 @@ class _OverviewPageState extends State<OverviewPage> {
                               : '约 ${p.estimatedMonths} 个月'),
                       style: TextStyle(
                         color: p.achievable
-                            ? Colors.green
+                            ? const Color(0xFF7EE0A6)
                             : theme.colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w500,
                       ),
@@ -499,8 +533,12 @@ class _OverviewPageState extends State<OverviewPage> {
               const SizedBox(width: 8),
               SegmentedButton<String>(
                 segments: const [
-                  ButtonSegment(value: 'month', label: Text('月', style: TextStyle(fontSize: 12))),
-                  ButtonSegment(value: 'year', label: Text('年', style: TextStyle(fontSize: 12))),
+                  ButtonSegment(
+                      value: 'month',
+                      label: Text('月', style: TextStyle(fontSize: 12))),
+                  ButtonSegment(
+                      value: 'year',
+                      label: Text('年', style: TextStyle(fontSize: 12))),
                 ],
                 selected: {_chartPeriod},
                 onSelectionChanged: (s) {
@@ -520,17 +558,22 @@ class _OverviewPageState extends State<OverviewPage> {
                 LineChartData(
                   minY: minV < 0 ? minV * 1.1 : 0,
                   maxY: maxV * 1.1,
-                  gridData: const FlGridData(show: true, drawVerticalLine: false),
+                  gridData:
+                      const FlGridData(show: true, drawVerticalLine: false),
                   borderData: FlBorderData(show: false),
                   titlesData: FlTitlesData(
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 40,
                         getTitlesWidget: (v, _) => Text(
-                          v.abs() >= 1000 ? '${(v / 1000).toStringAsFixed(0)}k' : v.toStringAsFixed(0),
+                          v.abs() >= 1000
+                              ? '${(v / 1000).toStringAsFixed(0)}k'
+                              : v.toStringAsFixed(0),
                           style: const TextStyle(fontSize: 10),
                         ),
                       ),
@@ -541,10 +584,12 @@ class _OverviewPageState extends State<OverviewPage> {
                         interval: 1,
                         getTitlesWidget: (v, _) {
                           final i = v.toInt();
-                          if (i < 0 || i >= w.length) return const SizedBox.shrink();
+                          if (i < 0 || i >= w.length)
+                            return const SizedBox.shrink();
                           final label = w[i].month;
                           // month 格式 "YYYY-MM"（月视图）或 "YYYY"（年视图），按长度安全截取
-                          final text = label.length > 5 ? label.substring(5) : label;
+                          final text =
+                              label.length > 5 ? label.substring(5) : label;
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(text,
@@ -563,7 +608,8 @@ class _OverviewPageState extends State<OverviewPage> {
                       dotData: const FlDotData(show: false),
                       belowBarData: BarAreaData(
                         show: true,
-                        color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                        color:
+                            theme.colorScheme.primary.withValues(alpha: 0.15),
                       ),
                     ),
                   ],
@@ -578,7 +624,10 @@ class _OverviewPageState extends State<OverviewPage> {
 
   Widget _legendDot(Color c, String text) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+      Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
       const SizedBox(width: 4),
       Text(text, style: const TextStyle(fontSize: 12)),
     ]);
@@ -597,7 +646,8 @@ class _OverviewPageState extends State<OverviewPage> {
     Navigator.pop(context); // 关闭 loading
 
     if (!r.ok || r.data == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('加载投资汇算数据失败')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('加载投资汇算数据失败')));
       return;
     }
     final d = r.data!;
@@ -624,11 +674,14 @@ class _OverviewPageState extends State<OverviewPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _detailRow('投入本金', f.format(totalPrincipal), Colors.indigo),
-              _detailRow('实际收益', f.format(totalProfit), totalProfit >= 0 ? Colors.green : Colors.red),
-              _detailRow('实际年化', '${(actualRate * 100).toStringAsFixed(2)}%', actualRate >= targetRate ? Colors.green : Colors.red),
+              _detailRow('实际收益', f.format(totalProfit),
+                  totalProfit >= 0 ? Colors.green : Colors.red),
+              _detailRow('实际年化', '${(actualRate * 100).toStringAsFixed(2)}%',
+                  actualRate >= targetRate ? Colors.green : Colors.red),
               const Divider(),
-              _detailRow('预期年化', '${(targetRate * 100).toStringAsFixed(2)}%', Colors.grey),
-              _detailRow('预期收益', f.format(expectedProfit), Colors.grey),
+              _detailRow('预期年化', '${(targetRate * 100).toStringAsFixed(2)}%',
+                  AppTheme.textDim),
+              _detailRow('预期收益', f.format(expectedProfit), AppTheme.textDim),
               const Divider(),
               if (deficit > 0) ...[
                 _detailRow('缺失收益', f.format(deficit), Colors.red),
@@ -644,12 +697,17 @@ class _OverviewPageState extends State<OverviewPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(children: [
-                        Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                        Icon(Icons.info_outline,
+                            size: 16, color: Colors.orange.shade700),
                         const SizedBox(width: 6),
-                        Text('补差方案', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.orange.shade700)),
+                        Text('补差方案',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange.shade700)),
                       ]),
                       const SizedBox(height: 4),
-                      Text('${lastYear + 1}年每月从消费桶扣除 ${f.format(monthlyDeduction)} 元，自动转入投资桶',
+                      Text(
+                          '${lastYear + 1}年每月从消费桶扣除 ${f.format(monthlyDeduction)} 元，自动转入投资桶',
                           style: const TextStyle(fontSize: 13)),
                     ],
                   ),
@@ -663,9 +721,11 @@ class _OverviewPageState extends State<OverviewPage> {
                     border: Border.all(color: Colors.green.shade200),
                   ),
                   child: Row(children: [
-                    Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
+                    Icon(Icons.check_circle,
+                        size: 16, color: Colors.green.shade700),
                     const SizedBox(width: 6),
-                    Text('收益达标，无需补差', style: TextStyle(color: Colors.green.shade700)),
+                    Text('收益达标，无需补差',
+                        style: TextStyle(color: Colors.green.shade700)),
                   ]),
                 ),
               ],
@@ -673,7 +733,8 @@ class _OverviewPageState extends State<OverviewPage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('关闭')),
         ],
       ),
     );
@@ -709,11 +770,25 @@ class _OverviewPageState extends State<OverviewPage> {
             children: [
               _detailRow('月收入', f.format(a.monthlyIncome), Colors.indigo),
               const Divider(),
-              Text('硬性扣除', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
-              _detailRow('  储蓄 (${a.monthlyIncome > 0 ? (a.savingTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)', '- ${f.format(a.savingTarget)}', Colors.orange),
-              _detailRow('  投资 (${a.monthlyIncome > 0 ? (a.investmentTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)', '- ${f.format(a.investmentTarget)}', Colors.indigo),
-              _detailRow('  应急 (${a.monthlyIncome > 0 ? (a.emergencyTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)', '- ${f.format(a.emergencyTarget)}', Colors.deepOrange),
-              _detailRow('  养老 (${a.monthlyIncome > 0 ? (a.pensionTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)', '- ${f.format(a.pensionTarget)}', Colors.teal),
+              Text('硬性扣除',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: AppTheme.textDim)),
+              _detailRow(
+                  '  储蓄 (${a.monthlyIncome > 0 ? (a.savingTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
+                  '- ${f.format(a.savingTarget)}',
+                  Colors.orange),
+              _detailRow(
+                  '  投资 (${a.monthlyIncome > 0 ? (a.investmentTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
+                  '- ${f.format(a.investmentTarget)}',
+                  Colors.indigo),
+              _detailRow(
+                  '  应急 (${a.monthlyIncome > 0 ? (a.emergencyTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
+                  '- ${f.format(a.emergencyTarget)}',
+                  Colors.deepOrange),
+              _detailRow(
+                  '  养老 (${a.monthlyIncome > 0 ? (a.pensionTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
+                  '- ${f.format(a.pensionTarget)}',
+                  Colors.teal),
               if (monthlyDeduction > 0) ...[
                 const Divider(),
                 Container(
@@ -723,25 +798,33 @@ class _OverviewPageState extends State<OverviewPage> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(children: [
-                    Icon(Icons.trending_down, size: 16, color: Colors.orange.shade700),
+                    Icon(Icons.trending_down,
+                        size: 16, color: Colors.orange.shade700),
                     const SizedBox(width: 6),
-                    Expanded(child: Text('投资补差扣除：- ${f.format(monthlyDeduction)}', style: TextStyle(fontSize: 12, color: Colors.orange.shade700))),
+                    Expanded(
+                        child: Text('投资补差扣除：- ${f.format(monthlyDeduction)}',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.orange.shade700))),
                   ]),
                 ),
               ],
               const Divider(),
               _detailRow('可消费额度', f.format(a.consumption), Colors.green),
               _detailRow('已消费', f.format(ov.dailySpent), Colors.red),
-              _detailRow('剩余可消费', f.format(ov.monthConsumableLeft), ov.monthConsumableLeft >= 0 ? Colors.green : Colors.red),
+              _detailRow('剩余可消费', f.format(ov.monthConsumableLeft),
+                  ov.monthConsumableLeft >= 0 ? Colors.green : Colors.red),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
-          TextButton(onPressed: () {
-            Navigator.pop(context);
-            context.push('/bookkeeping');
-          }, child: const Text('去记账')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                context.push('/bookkeeping');
+              },
+              child: const Text('去记账')),
         ],
       ),
     );
@@ -756,7 +839,8 @@ class _OverviewPageState extends State<OverviewPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: Row(children: [
-          Icon(Icons.account_balance, color: Theme.of(context).colorScheme.primary),
+          Icon(Icons.account_balance,
+              color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
           Text(_scope == 'personal' ? '个人总财富明细' : '家庭总财富明细'),
         ]),
@@ -765,15 +849,20 @@ class _OverviewPageState extends State<OverviewPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('资产构成', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+              Text('资产构成',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: AppTheme.textDim)),
               _detailRow('  现金', f.format(ov.totalCash), Colors.green),
               _detailRow('  公积金', f.format(ov.totalHousingFund), Colors.blue),
               _detailRow('  储蓄桶', f.format(ov.savingBalance), Colors.orange),
-              _detailRow('  投资桶', f.format(ov.investmentBalance), Colors.indigo),
-              _detailRow('  应急桶', f.format(ov.emergencyBalance), Colors.deepOrange),
+              _detailRow(
+                  '  投资桶', f.format(ov.investmentBalance), Colors.indigo),
+              _detailRow(
+                  '  应急桶', f.format(ov.emergencyBalance), Colors.deepOrange),
               _detailRow('  养老桶', f.format(ov.pensionBalance), Colors.teal),
               const Divider(),
-              _detailRow('总财富', f.format(ov.totalWealth), Theme.of(context).colorScheme.primary),
+              _detailRow('总财富', f.format(ov.totalWealth),
+                  Theme.of(context).colorScheme.primary),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -782,9 +871,11 @@ class _OverviewPageState extends State<OverviewPage> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(children: [
-                  Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
+                  Icon(Icons.info_outline,
+                      size: 14, color: Colors.blue.shade700),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(
+                  Expanded(
+                      child: Text(
                     '总财富 = 现金 + 公积金 + 储蓄桶 + 投资桶 + 应急桶 + 养老桶',
                     style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
                   )),
@@ -794,7 +885,8 @@ class _OverviewPageState extends State<OverviewPage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('关闭')),
         ],
       ),
     );
@@ -806,8 +898,9 @@ class _OverviewPageState extends State<OverviewPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+          Text(label, style: const TextStyle(color: AppTheme.textDim)),
+          Text(value,
+              style: TextStyle(fontWeight: FontWeight.w600, color: color)),
         ],
       ),
     );

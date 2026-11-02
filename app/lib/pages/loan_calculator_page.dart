@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../utils/money.dart';
+import '../theme.dart';
 
 /// 可贷款计算模块
 /// 根据用户收入情况判断是否可以承担某笔贷款
@@ -107,7 +108,8 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
       _totalInterest = round2(total - P);
       _canAfford = monthly <= maxMonthly;
       // 月收入为 0 时避免除零得到 Infinity/NaN
-      _debtRatio = widget.monthlyIncome > 0 ? monthly / widget.monthlyIncome : 1.0;
+      _debtRatio =
+          widget.monthlyIncome > 0 ? monthly / widget.monthlyIncome : 1.0;
       _calculated = true;
     });
   }
@@ -138,17 +140,26 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
+                    Icon(Icons.info_outline,
+                        size: 16, color: Colors.blue.shade700),
                     const SizedBox(width: 6),
-                    Text('您的还款能力', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
+                    Text('您的还款能力',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue.shade700)),
                   ]),
                   const SizedBox(height: 8),
                   Text('月收入：¥${f.format(widget.monthlyIncome)}'),
-                  Text('可用于还贷：¥${f.format(widget.monthlyIncome * widget.loanRatio)}（${(widget.loanRatio * 100).toStringAsFixed(0)}%）'),
+                  Text(
+                      '可用于还贷：¥${f.format(widget.monthlyIncome * widget.loanRatio)}（${(widget.loanRatio * 100).toStringAsFixed(0)}%）'),
                   const Divider(),
                   Text('最大可贷款额：¥${f.format(_maxLoanAmount)}',
-                      style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade700, fontSize: 16)),
-                  Text('基于等额本息、当前利率和期限计算', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green.shade700,
+                          fontSize: 16)),
+                  Text('基于等额本息、当前利率和期限计算',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textDim)),
                 ],
               ),
             ),
@@ -166,7 +177,8 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _totalAmount,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: '贷款总额',
                       prefixText: '¥ ',
@@ -179,7 +191,8 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                       Expanded(
                         child: TextField(
                           controller: _annualRate,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
                           decoration: const InputDecoration(
                             labelText: '年利率',
                             suffixText: '%',
@@ -204,11 +217,14 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                   const SizedBox(height: 12),
                   SegmentedButton<String>(
                     segments: const [
-                      ButtonSegment(value: 'equal_payment', label: Text('等额本息')),
-                      ButtonSegment(value: 'equal_capital', label: Text('等额本金')),
+                      ButtonSegment(
+                          value: 'equal_payment', label: Text('等额本息')),
+                      ButtonSegment(
+                          value: 'equal_capital', label: Text('等额本金')),
                     ],
                     selected: {_method},
-                    onSelectionChanged: (s) => setState(() => _method = s.first),
+                    onSelectionChanged: (s) =>
+                        setState(() => _method = s.first),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -233,12 +249,16 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('计算结果', style: Theme.of(context).textTheme.titleMedium),
+                    Text('计算结果',
+                        style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 12),
-                    _resultRow('每月还款', f.format(_monthlyPayment), Colors.indigo),
-                    _resultRow('还款总额', f.format(_totalPayment), Colors.black87),
+                    _resultRow(
+                        '每月还款', f.format(_monthlyPayment), Colors.indigo),
+                    _resultRow('还款总额', f.format(_totalPayment), AppTheme.text),
                     _resultRow('总利息', f.format(_totalInterest), Colors.red),
-                    _resultRow('负债比率', '${(_debtRatio * 100).toStringAsFixed(1)}%',
+                    _resultRow(
+                        '负债比率',
+                        '${(_debtRatio * 100).toStringAsFixed(1)}%',
                         _debtRatio > 0.5 ? Colors.red : Colors.green),
                     const Divider(),
                     // 判断结果
@@ -246,10 +266,14 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: _canAfford ? Colors.green.shade50 : Colors.red.shade50,
+                        color: _canAfford
+                            ? Colors.green.shade50
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _canAfford ? Colors.green.shade200 : Colors.red.shade200,
+                          color: _canAfford
+                              ? Colors.green.shade200
+                              : Colors.red.shade200,
                         ),
                       ),
                       child: Column(
@@ -265,7 +289,9 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              color: _canAfford ? Colors.green.shade700 : Colors.red.shade700,
+                              color: _canAfford
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -275,7 +301,9 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                                 : '月供占收入${(_debtRatio * 100).toStringAsFixed(1)}%，超过50%警戒线',
                             style: TextStyle(
                               fontSize: 13,
-                              color: _canAfford ? Colors.green.shade600 : Colors.red.shade600,
+                              color: _canAfford
+                                  ? Colors.green.shade600
+                                  : Colors.red.shade600,
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -298,8 +326,10 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: color, fontSize: 16)),
+          Text(label, style: const TextStyle(color: AppTheme.textDim)),
+          Text(value,
+              style: TextStyle(
+                  fontWeight: FontWeight.w600, color: color, fontSize: 16)),
         ],
       ),
     );

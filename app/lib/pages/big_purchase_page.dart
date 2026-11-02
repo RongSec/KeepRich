@@ -38,7 +38,8 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
 
   Future<void> _showForm({PurchaseItem? initial}) async {
     final name = TextEditingController(text: initial?.name ?? '');
-    final price = TextEditingController(text: initial != null ? initial.price.toString() : '');
+    final price = TextEditingController(
+        text: initial != null ? initial.price.toString() : '');
     final priority = TextEditingController(text: '${initial?.priority ?? 1}');
     final note = TextEditingController(text: initial?.note ?? '');
     final ok = await showDialog<bool>(
@@ -49,25 +50,37 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: name, decoration: const InputDecoration(labelText: '名称')),
+              TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: '名称')),
               TextField(
                 controller: price,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                decoration: const InputDecoration(labelText: '预算（元）', prefixText: '¥ '),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                ],
+                decoration:
+                    const InputDecoration(labelText: '预算（元）', prefixText: '¥ '),
               ),
               TextField(
                 controller: priority,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: '优先级（数字越小越优先）'),
               ),
-              TextField(controller: note, decoration: const InputDecoration(labelText: '备注（可选）')),
+              TextField(
+                  controller: note,
+                  decoration: const InputDecoration(labelText: '备注（可选）')),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存')),
         ],
       ),
     );
@@ -102,7 +115,8 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
     if (r.ok) {
       _load();
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -113,8 +127,12 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
         title: const Text('确认删除'),
         content: Text('删除大件规划「${p.name}」？该操作不可撤销。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton.tonal(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton.tonal(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('删除')),
         ],
       ),
     );
@@ -123,7 +141,8 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
     if (r.ok) {
       _load();
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.message)));
     }
   }
 
@@ -159,9 +178,11 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
                           itemBuilder: (ctx, i) {
                             final p = _list[i];
                             return ListTile(
-                              leading: CircleAvatar(child: Text('${p.priority}')),
+                              leading:
+                                  CircleAvatar(child: Text('${p.priority}')),
                               title: Text(p.name),
-                              subtitle: Text('${f.format(p.price)} 元${p.achieved ? " · 已达成" : ""}'),
+                              subtitle: Text(
+                                  '${f.format(p.price)} 元${p.achieved ? " · 已达成" : ""}'),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -171,12 +192,15 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
                                     onPressed: () => _showForm(initial: p),
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                                    icon: const Icon(Icons.delete_outline,
+                                        size: 20, color: Colors.redAccent),
                                     tooltip: '删除',
                                     onPressed: () => _delete(p),
                                   ),
                                   Icon(
-                                    p.achieved ? Icons.check_circle : Icons.flag,
+                                    p.achieved
+                                        ? Icons.check_circle
+                                        : Icons.flag,
                                     color: p.achieved ? Colors.green : null,
                                   ),
                                 ],

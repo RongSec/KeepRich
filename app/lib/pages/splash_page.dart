@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth.dart';
+import '../theme.dart';
 
+/// 开屏页：金币池全景 + 金色标语（背景由全局 CoinPoolBackground 提供）
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
   @override
@@ -15,7 +17,7 @@ class SplashPage extends StatefulWidget {
 class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _slideController;
-  late AnimationController _orbController;
+  late AnimationController _ringController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim1;
   late Animation<Offset> _slideAnim2;
@@ -24,14 +26,12 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
-    // 文字淡入
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
     _fadeAnim = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
 
-    // 第一行文字上移
     _slideController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -39,33 +39,29 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
     _slideAnim1 = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
+    ).animate(
+        CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
     _slideAnim2 = Tween<Offset>(
       begin: const Offset(0, 0.5),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
+    ).animate(
+        CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
 
-    // 背景光圈动画
-    _orbController = AnimationController(
+    _ringController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
-    )..repeat(reverse: true);
+    )..repeat();
 
-    // 启动动画序列
     _fadeController.forward();
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) _slideController.forward();
     });
 
-    // 3.5 秒后跳转
-    Timer(const Duration(milliseconds: 3500), () {
+    // 3.2 秒后跳转
+    Timer(const Duration(milliseconds: 3200), () {
       if (!mounted) return;
       final auth = context.read<AuthState>();
-      if (auth.isLoggedIn) {
-        context.go('/overview');
-      } else {
-        context.go('/login');
-      }
+      context.go(auth.isLoggedIn ? '/overview' : '/login');
     });
   }
 
@@ -73,107 +69,107 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   void dispose() {
     _fadeController.dispose();
     _slideController.dispose();
-    _orbController.dispose();
+    _ringController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // 白色背景
-          Container(
-            color: Colors.white,
+          // 中心压暗，保证金色标语在金币堆上依然可读
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                radius: 0.8,
+                colors: [
+                  Color(0xC407070B),
+                  Color(0x8C07070B),
+                  Color(0x0007070B),
+                ],
+                stops: [0.0, 0.55, 1.0],
+              ),
+            ),
           ),
-          // 动态光圈（淡色）
-          AnimatedBuilder(
-            animation: _orbController,
-            builder: (_, __) => _buildOrbs(),
-          ),
-          // 主内容
           Center(
             child: FadeTransition(
               opacity: _fadeAnim,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo 图标
-                  Container(
-                    width: 88,
-                    height: 88,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [
-                          theme.colorScheme.primary,
-                          theme.colorScheme.tertiary,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                          blurRadius: 24,
-                          spreadRadius: 2,
+                  AnimatedBuilder(
+                    animation: _ringController,
+                    builder: (_, __) => Container(
+                      width: 96,
+                      height: 96,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: SweepGradient(
+                          transform:
+                              GradientRotation(_ringController.value * 6.283),
+                          colors: const [
+                            Color(0xFFFFE9B8),
+                            Color(0xFFC8912F),
+                            Color(0xFFFFC65C),
+                            Color(0xFFC8912F),
+                            Color(0xFFFFE9B8),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/icon.ico',
-                        width: 68,
-                        height: 68,
-                        fit: BoxFit.cover,
-                        errorBuilder: (ctx, err, st) => const Icon(
-                          Icons.account_balance_wallet_rounded,
-                          size: 44,
-                          color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.gold.withValues(alpha: 0.45),
+                            blurRadius: 30,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(3),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF101018),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        // 图标解码完成前先垫一个金色存钱罐，避免出现黑圈
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            const Icon(Icons.savings_rounded,
+                                color: AppTheme.goldDeep),
+                            Image.asset(
+                              'assets/images/icon.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (ctx, err, st) =>
+                                  const SizedBox.shrink(),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 40),
-                  // 第一行：让财务透明
                   SlideTransition(
                     position: _slideAnim1,
-                    child: Text(
-                      '让财务透明',
-                      style: TextStyle(
-                        color: Colors.grey.shade800,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 8,
-                      ),
-                    ),
+                    child: _goldText('让财务透明', 28),
                   ),
-                  const SizedBox(height: 12),
-                  // 第二行：让资产永存
+                  const SizedBox(height: 10),
                   SlideTransition(
                     position: _slideAnim2,
-                    child: Text(
-                      '让资产永存',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 8,
-                      ),
-                    ),
+                    child: _goldText('让资产永存', 28),
                   ),
-                  const SizedBox(height: 48),
-                  // 底部小字
+                  const SizedBox(height: 46),
                   FadeTransition(
                     opacity: _fadeAnim,
                     child: Text(
-                      'Family Finance',
+                      'F A M I L Y   F I N A N C E',
                       style: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontSize: 13,
+                        color: AppTheme.gold.withValues(alpha: 0.55),
+                        fontSize: 11,
                         letterSpacing: 4,
-                        fontWeight: FontWeight.w300,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -186,38 +182,24 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildOrbs() {
-    return Stack(
-      children: [
-        Positioned(
-          top: -100 + 40 * _orbController.value,
-          right: -80,
-          child: _orb(240, const Color(0xFF6C63FF).withValues(alpha: 0.08)),
-        ),
-        Positioned(
-          bottom: -120 - 40 * _orbController.value,
-          left: -80,
-          child: _orb(280, const Color(0xFFE91E63).withValues(alpha: 0.06)),
-        ),
-        Positioned(
-          top: 300 + 30 * _orbController.value,
-          right: 100,
-          child: _orb(160, const Color(0xFF00BCD4).withValues(alpha: 0.05)),
-        ),
-      ],
-    );
-  }
-
-  Widget _orb(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, color.withValues(alpha: 0)],
-          stops: const [0.0, 1.0],
-        ),
+  Widget _goldText(String text, double size) {
+    // 继承主题字体（Noto Sans SC），否则首帧可能回退成无中文字形的字体
+    final base = Theme.of(context).textTheme.headlineMedium;
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (rect) => const LinearGradient(
+        colors: [Color(0xFFFFEFC8), Color(0xFFFFC65C), Color(0xFFD9A03A)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(rect),
+      child: Text(
+        text,
+        style: base?.copyWith(
+              fontSize: size,
+              fontWeight: FontWeight.w300,
+              letterSpacing: 8,
+            ) ??
+            TextStyle(fontSize: size, letterSpacing: 8),
       ),
     );
   }
