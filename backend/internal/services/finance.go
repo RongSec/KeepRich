@@ -65,7 +65,7 @@ type OverviewData struct {
 	PensionMonthsLeft   int     `json:"pensionMonthsLeft"`
 
 	// 关键指标
-	WorryFreePerBuy    float64 `json:"worryFreePerBuy"`    // 储蓄桶余额 + 年薪×20，单位：元
+	WorryFreePerBuy    float64 `json:"worryFreePerBuy"`    // 最大单笔消费 = (总财富+年薪×20)/10000，单位：元
 	AnnualIncome       float64 `json:"annualIncome"`       // 年薪（工资+公积金年化）
 	MonthlyConsumable  float64 `json:"monthlyConsumable"`  // 本月可消费（累加机制后）
 	MonthConsumableLeft float64 `json:"monthConsumableLeft"` // 本月剩余可消费（= MonthlyConsumable - DailySpent）
@@ -210,18 +210,14 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeSalary, yearAgo, &salaryIncome)
 
 	// 计算实际有工资收入的月数（与 salaryIncome 同一聚合口径，否则家庭空间月数缺失导致年薪虚增）
-	var activeMonths int
 	mq := s.DB.Model(&models.Transaction{}).
 		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo)
 	mq = s.applyScopeQuery(mq, scope, uid, familyID)
-	mq.Select("COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(occurred_at), '%Y-%m'))").Scan(&activeMonths)
+	activeMonths := CountDistinctMonths(mq)
 	if activeMonths < 1 {
 		activeMonths = 1
 	}
 	annualIncome := utils.Round2(salaryIncome / float64(activeMonths) * 12.0)
-
-	// 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20（文档公式结果为万元，API 统一返回元）
-	worryFree := utils.Round2(saving + annualIncome*20)
 
 	plan, err := s.getPlan(scope, uid, familyID)
 	if err != nil {
@@ -296,11 +292,9 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	// 大件前 5 + 预估月数
 	top, _ := s.topPurchaseProjections(scope, uid, familyID, totalCash, plan)
 
-	// 当月可支配 - 已记账支出
+	// 剩余待支配：收入的公积金之外的现金部分 − 本月已记账支出。
+	// 允许为负，透支时如实显示
 	remaining := monthlyIncome - monthExpense
-	if remaining < 0 {
-		remaining = 0
-	}
 
 	// 家庭总财富：现金池 + 投资桶 + 公积金 + 未来利益折现 - 待还款
 	// 现金池 = 累计收入 - 累计日常消费（其余 4 桶已转入对应桶余额，不扣减现金）
@@ -354,10 +348,13 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	estimatedPayoffAt := time.Now().AddDate(0, maxRemain, 0).Unix()
 
 	// 家庭总财富（文档 §8）：现金池 + 4 桶 + 公积金 + 未来利益折现 - 待还款
+	// 允许为负：贷款/借款超过资产时，总财富应如实显示负数
 	totalWealth := utils.Round2(totalCash + saving + investment + emergency + pension + housingFund + wealthProduct - totalPending)
-	if totalWealth < 0 {
-		totalWealth = 0
-	}
+
+	// 最大单笔消费（元）= (总财富 + 年收入 × 20) / 10000
+	// 例：年收入 12 万、总财富 20 万 → (200000 + 2400000)/10000 = 260 元
+	// 随总财富变化而变化
+	worryFree := utils.Round2((totalWealth + annualIncome*20) / 10000.0)
 
 	// 本月剩余可消费 = 本月可消费配额 - 本月已花日常消费
 	// 注意：花超后保留负数，便于用户直观看到超支金额
@@ -492,41 +489,22 @@ func (s *FinanceService) GetChartData(scope string, uid uint64, familyID *uint64
 	out := &ChartData{Wealth: []WealthPoint{}, CategoryPie: []CategorySlice{}}
 	now := time.Now()
 
-	// 加载用户规划（用于未来利益折现的年龄参数）
-	plan, _ := s.getPlan(scope, uid, familyID)
-
-	// 贷款和未来利益（恒定）— 折现到各月时假设线性增长（简化处理）
-	var hflist []models.HousingFundLoan
-	var cllist []models.CommercialLoan
-	var bmlist []models.BorrowedMoney
-	var fblist []models.FutureBenefit
-	loanQ := s.DB
-	if scope == models.TxScopePersonal {
-		loanQ = loanQ.Where("uid = ?", uid)
-	} else if familyID != nil {
-		loanQ = loanQ.Where("family_id = ?", *familyID)
+	// 锚定总览：曲线最后一个点必须等于总览卡片上的"总财富"。
+	// 原来用"贷款总额汇总 - 累计净收入"各算一套，图上 -660 万、卡片上 -196 万，
+	// 用户只会认为其中一个是错的。这里改成以总览为准，历史月份按净现金流回推。
+	cur, _ := s.GetOverview(scope, uid, familyID)
+	baseWealth := 0.0
+	curPending := 0.0
+	curWealthProduct := 0.0
+	if cur != nil {
+		baseWealth = cur.TotalWealth
+		curPending = cur.TotalPending
+		curWealthProduct = cur.TotalWealthProduct
 	}
-	loanQ.Find(&hflist)
-	loanQ.Find(&cllist)
-	loanQ.Find(&bmlist)
-	loanQ.Find(&fblist)
-	pendingNow := 0.0
-	for _, l := range hflist {
-		pendingNow += utils.RemainingPrincipalAny(l.Total, l.AnnualRate, l.TermMonths, l.PaidMonths, l.Method)
-	}
-	for _, l := range cllist {
-		pendingNow += utils.RemainingPrincipalAny(l.Total, l.AnnualRate, l.TermMonths, l.PaidMonths, l.Method)
-	}
-	for _, l := range bmlist {
-		pendingNow += utils.RemainingPrincipalAny(l.Total, l.AnnualRate, l.TermMonths, l.PaidMonths, l.Method)
-	}
-	wealthProductNow := 0.0
-	for _, b := range fblist {
-		sm := utils.BenefitSummary(b.PayoutDate, b.PayoutAmount, b.Type, plan.CurrentAge, plan.LifeExpectancy, b.CustomYears, plan.InvestAnnualRate)
-		if v, ok := sm["presentValue"].(float64); ok {
-			wealthProductNow += v
-		}
-	}
+	var curInc, curExp float64
+	_ = s.sumScopeBetween(scope, uid, familyID, models.TxTypeIncome, "", 0, now.Unix(), &curInc)
+	_ = s.sumScopeBetween(scope, uid, familyID, models.TxTypeExpense, "", 0, now.Unix(), &curExp)
+	curNet := curInc - curExp
 
 	// 累计净财富曲线（支持月/年两种粒度）
 	type timePoint struct {
@@ -575,14 +553,15 @@ func (s *FinanceService) GetChartData(scope string, uid uint64, familyID *uint64
 		em += emI
 		pn += pnI
 		out.Wealth = append(out.Wealth, WealthPoint{
-			Month:         p.label,
-			TotalWealth:   net + wealthProductNow - pendingNow,
+			Month: p.label,
+			// 当前点用总览口径，历史点按"当时累计净现金流与今天的差"回推
+			TotalWealth:   utils.Round2(baseWealth - (curNet - net)),
 			Saving:        sv,
 			Investment:    iv,
 			Emergency:     em,
 			Pension:       pn,
-			WealthProduct: wealthProductNow,
-			Pending:       pendingNow,
+			WealthProduct: curWealthProduct,
+			Pending:       curPending,
 		})
 	}
 

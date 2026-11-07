@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ type CreateTxReq struct {
 	Scope         string         `json:"scope" binding:"required,oneof=personal family"`
 	Type          string         `json:"type" binding:"required,oneof=income expense transfer"`
 	Category      string         `json:"category" binding:"required"`
-	Amount        float64        `json:"amount" binding:"gte=0"` // 投资收益可正可负
+	Amount        float64        `json:"amount"` // 正负由业务校验给出中文提示（金额必须大于 0）
 	Note          string         `json:"note"`
 	OccurredAt    int64          `json:"occurredAt"`
 	LoanRef       string         `json:"loanRef"`       // 偿还贷款关联，category=loan_repay 时必填："hf:1" / "cl:2" / "bm:3"
@@ -40,6 +41,144 @@ type TxItem struct {
 	Username  string `json:"username"`
 	Nickname  string `json:"nickname"`
 	OverWorry bool   `json:"overWorry"` // 单笔是否超过无顾虑单笔
+	LoanName  string `json:"loanName"`  // 偿还的贷款名称（loanRef 解析，便于账单里直接看到）
+}
+
+// resolveLoanName 根据 loanRef 解析贷款名称："hf:1" → "公积金贷款 #1"
+func resolveLoanName(loanRef string) string {
+	if loanRef == "" {
+		return ""
+	}
+	parts := strings.SplitN(loanRef, ":", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	id, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return ""
+	}
+	var name string
+	switch parts[0] {
+	case "hf":
+		var l models.HousingFundLoan
+		if database.DB.First(&l, id).Error == nil {
+			return l.Name
+		}
+		name = "公积金贷款"
+	case "cl":
+		var l models.CommercialLoan
+		if database.DB.First(&l, id).Error == nil {
+			return l.Name
+		}
+		name = "商业贷款"
+	case "bm":
+		var l models.BorrowedMoney
+		if database.DB.First(&l, id).Error == nil {
+			return l.Name
+		}
+		name = "借款"
+	}
+	return fmt.Sprintf("%s #%d", name, id)
+}
+
+// applyLoanRef 偿还贷款后同步更新对应贷款的累计已还本金
+// loanRef 格式："hf:1"（公积金）/ "cl:2"（商业）/ "bm:3"（借款）
+// delta 为正表示新增偿还，为负表示删除账单回滚
+func applyLoanRef(loanRef string, delta float64) {
+	if loanRef == "" || delta == 0 {
+		return
+	}
+	parts := strings.SplitN(loanRef, ":", 2)
+	if len(parts) != 2 {
+		return
+	}
+	id, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return
+	}
+	switch parts[0] {
+	case "hf":
+		database.DB.Model(&models.HousingFundLoan{}).Where("id = ?", id).
+			Update("paid_amount", gorm.Expr("COALESCE(paid_amount,0) + ?", delta))
+	case "cl":
+		database.DB.Model(&models.CommercialLoan{}).Where("id = ?", id).
+			Update("paid_amount", gorm.Expr("COALESCE(paid_amount,0) + ?", delta))
+	case "bm":
+		database.DB.Model(&models.BorrowedMoney{}).Where("id = ?", id).
+			Update("paid_amount", gorm.Expr("COALESCE(paid_amount,0) + ?", delta))
+	}
+}
+
+// bucketLabelCN 桶名 → 中文，错误提示别把 "cash" 直接甩给用户
+func bucketLabelCN(bucket string) string {
+	switch bucket {
+	case "cash":
+		return "可支配额度"
+	case "saving":
+		return "储蓄桶"
+	case "investment":
+		return "投资桶"
+	case "emergency":
+		return "应急备用金"
+	case "pension":
+		return "养老金"
+	case "housing_fund":
+		return "公积金"
+	}
+	return bucket
+}
+
+// loanRefExists 校验 loanRef 指向的贷款是否真实存在。
+// 只有"选了贷款但该贷款已被删除"时才会为 false —— 这种账单存进去，
+// 用户在账单里既看不到还的是哪笔，贷款条目也不会变化，必须挡在入口。
+func loanRefExists(loanRef string) bool {
+	parts := strings.SplitN(loanRef, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	id, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return false
+	}
+	var n int64
+	switch parts[0] {
+	case "hf":
+		database.DB.Model(&models.HousingFundLoan{}).Where("id = ?", id).Count(&n)
+	case "cl":
+		database.DB.Model(&models.CommercialLoan{}).Where("id = ?", id).Count(&n)
+	case "bm":
+		database.DB.Model(&models.BorrowedMoney{}).Where("id = ?", id).Count(&n)
+	}
+	return n > 0
+}
+
+// bucketBalance 指定来源桶的当前可用余额。
+// bucket: cash / saving / investment / emergency / pension / housing_fund
+//
+// 直接复用总览（GetOverview）的同一套口径 —— 来源标签上显示多少余额，
+// 校验就用多少，否则前端显示 9000 而后端按另一种算法算出 0，用户会看到
+// "明明有钱却提示余额不足"（公积金曾经就是这样）。
+func bucketBalance(scope string, uid uint64, familyID *uint64, bucket string) float64 {
+	svc := services.NewFinanceService(database.DB)
+	ov, err := svc.GetOverview(scope, uid, familyID)
+	if err != nil || ov == nil {
+		return 0
+	}
+	switch bucket {
+	case "cash":
+		return utils.Round2(ov.RemainingBudget)
+	case "saving":
+		return utils.Round2(ov.SavingBalance)
+	case "investment":
+		return utils.Round2(ov.InvestmentBalance)
+	case "emergency":
+		return utils.Round2(ov.EmergencyBalance)
+	case "pension":
+		return utils.Round2(ov.PensionBalance)
+	case "housing_fund":
+		return utils.Round2(ov.TotalHousingFund)
+	}
+	return 0
 }
 
 func CreateTx(c *gin.Context) {
@@ -86,9 +225,16 @@ func CreateTx(c *gin.Context) {
 		req.TargetBucket = models.BucketFromTransfer(req.Category)
 	}
 	// 偿还贷款需关联 loanRef
-	if req.Category == models.ExpenseLoanRepay && req.LoanRef == "" {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请选择要偿还的贷款")
-		return
+	if req.Category == models.ExpenseLoanRepay {
+		if req.LoanRef == "" {
+			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请选择要偿还的贷款")
+			return
+		}
+		if !loanRefExists(req.LoanRef) {
+			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
+				"关联的贷款不存在（可能已被删除），请重新选择")
+			return
+		}
 	}
 	// 支出来源校验：按支出类别限制允许的来源桶
 	if req.Type == models.TxTypeExpense {
@@ -153,9 +299,37 @@ func CreateTx(c *gin.Context) {
 		database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m)
 		tx.FamilyID = &m.FamilyID
 	}
+	// 支出不能超过来源余额（单来源与多来源都校验）
+	if req.Type == models.TxTypeExpense {
+		if len(req.SourceDetails) > 0 {
+			for _, sd := range req.SourceDetails {
+				bal := bucketBalance(req.Scope, uid, tx.FamilyID, sd.Bucket)
+				if sd.Amount > bal+0.005 {
+					utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
+						fmt.Sprintf("「%s」余额不足：当前 %.2f 元，本次支出 %.2f 元",
+							bucketLabelCN(sd.Bucket), bal, sd.Amount))
+					return
+				}
+			}
+		} else if req.SourceBucket != "" {
+			bal := bucketBalance(req.Scope, uid, tx.FamilyID, req.SourceBucket)
+			if req.Amount > bal+0.005 {
+				utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
+					fmt.Sprintf("「%s」余额不足：当前 %.2f 元，本次支出 %.2f 元",
+						bucketLabelCN(req.SourceBucket), bal, req.Amount))
+				return
+			}
+		}
+	}
+
 	if err := database.DB.Create(&tx).Error; err != nil {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
+	}
+
+	// 偿还贷款：同步累加对应贷款的已还本金，否则贷款条目永远不变
+	if req.Category == models.ExpenseLoanRepay {
+		applyLoanRef(req.LoanRef, req.Amount)
 	}
 
 	// 超支提醒：仅当支出超过无顾虑单笔时触发
@@ -279,6 +453,7 @@ func ListTx(c *gin.Context) {
 			Username:    u.Username,
 			Nickname:    u.Nickname,
 			OverWorry:   t.Amount > worryPerBuy,
+			LoanName:    resolveLoanName(t.LoanRef),
 		})
 	}
 
@@ -314,6 +489,10 @@ func DeleteTx(c *gin.Context) {
 	if tx.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权删除")
 		return
+	}
+	// 删除账单时回滚贷款已还本金
+	if tx.Category == models.ExpenseLoanRepay {
+		applyLoanRef(tx.LoanRef, -tx.Amount)
 	}
 	database.DB.Delete(&tx)
 	utils.OK(c, gin.H{"ok": true})
@@ -367,11 +546,10 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 	baseIncome := salaryIncome
 
 	// 计算实际有工资收入的月数（不含公积金）
-	var activeMonths int
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
-		Where(scopeQ).
-		Select("COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(occurred_at), '%Y-%m'))").Scan(&activeMonths)
+	activeMonths := services.CountDistinctMonths(
+		database.DB.Model(&models.Transaction{}).
+			Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
+			Where(scopeQ))
 	if activeMonths < 1 {
 		activeMonths = 1
 	}

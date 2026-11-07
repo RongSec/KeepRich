@@ -3,6 +3,8 @@ app:
   env: development
   port: 8080
   timezone: Asia/Shanghai
+  # App 在线更新源：GitHub Releases（owner/repo），发布新 Release 后 App 自动拉到
+  githubRepo: RongSec/KeepRich
 
 database:
   host: 127.0.0.1
@@ -17,8 +19,8 @@ database:
 jwt:
   accessSecret: dev-access-secret
   refreshSecret: dev-refresh-secret
-  accessTTL: 3600
-  refreshTTL: 2592000
+  accessTTL: 900
+  refreshTTL: 604800
 
 mfa:
   issuer: FamilyFinance

@@ -69,13 +69,22 @@ func serveWebApp(r *gin.Engine) {
 	r.Static("/assets", filepath.Join(dist, "assets"))
 	r.Static("/canvaskit", filepath.Join(dist, "canvaskit"))
 	r.Static("/icons", filepath.Join(dist, "icons"))
-	for _, f := range []string{
-		"flutter_bootstrap.js", "flutter.js", "manifest.json",
-		"favicon.png", "flutter_service_worker.js", "version.json",
-	} {
-		p := filepath.Join(dist, f)
-		if _, err := os.Stat(p); err == nil {
-			r.StaticFile("/"+f, p)
+	// dist 顶层的所有文件全部挂载（main.dart.js、flutter_bootstrap.js、
+	// main.dart.js_1 分片等）。此前固定清单漏了 main.dart.js，
+	// 请求 404 被兜底成 index.html（text/html），浏览器拒绝执行，
+	// 整个 Web 卡死在 index 的静态加载占位上 —— 用户看到的就是"永远的开屏"。
+	entries, err := os.ReadDir(dist)
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			if strings.HasSuffix(name, ".html") {
+				continue // html 走 NoRoute 的 SPA 兜底
+			}
+			p := filepath.Join(dist, name)
+			r.StaticFile("/"+name, p)
 		}
 	}
 

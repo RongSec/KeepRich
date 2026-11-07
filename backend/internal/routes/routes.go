@@ -10,6 +10,9 @@ import (
 
 // Register 注册路由
 func Register(r *gin.Engine) {
+	// 安全响应头（CSP / X-Frame-Options / nosniff / HSTS 等）
+	r.Use(middleware.SecurityHeaders())
+
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"ok": true})
 	})
@@ -25,7 +28,8 @@ func Register(r *gin.Engine) {
 
 		// 需要登录
 		auth := api.Group("")
-		auth.Use(middleware.JWT(), middleware.Audit())
+		// 已登录接口：单 IP 每分钟 600 次（正常使用远达不到，只挡脚本刷接口）
+		auth.Use(middleware.RateLimit(time.Minute, 600, "api-ip"), middleware.JWT(), middleware.Audit())
 		{
 			auth.GET("/auth/me", handlers.Me)
 			auth.POST("/mfa/setup", handlers.MFASetup)

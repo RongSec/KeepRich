@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../services/auth.dart';
 import '../theme.dart';
 
-/// 开屏页：金币池全景 + 金色标语（背景由全局 CoinPoolBackground 提供）
+/// 开屏页：金沙池全景 + 金色标语（背景由全局 GoldSandBackground 提供）
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
   @override

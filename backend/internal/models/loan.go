@@ -19,7 +19,9 @@ type HousingFundLoan struct {
 	TermMonths  int     `json:"termMonths"`                        // 贷款期数（月）
 	Method      string  `gorm:"size:32" json:"method"`             // equal_payment / equal_capital
 	StartMonth  int64   `json:"startMonth"`                        // 开始还款月份（Unix 秒，月份粒度）
-	PaidMonths  int     `json:"paidMonths"`                        // 已还期数
+	PaidMonths  int     `json:"paidMonths"`                        // 已还期数（定期与银行数据校对时人工调整）
+	PaidAmount  float64 `json:"paidAmount"`                        // 累计已还本金（记账偿还时自动累加，冲本金时人工调整）
+	Interest    float64 `json:"interest"`                          // 利息（新建时按当前数据估算，编辑时人工校对/调整）
 	Note        string  `gorm:"size:512" json:"note"`
 }
 
@@ -36,6 +38,8 @@ type CommercialLoan struct {
 	Method      string  `gorm:"size:32" json:"method"`
 	StartMonth  int64   `json:"startMonth"`
 	PaidMonths  int     `json:"paidMonths"`
+	PaidAmount  float64 `json:"paidAmount"` // 累计已还本金
+	Interest    float64 `json:"interest"`   // 利息（可人工调整）
 	Note        string  `gorm:"size:512" json:"note"`
 }
 
@@ -52,6 +56,8 @@ type BorrowedMoney struct {
 	Method      string  `gorm:"size:32" json:"method"` // equal_payment/equal_capital/interest_free
 	StartMonth  int64   `json:"startMonth"`
 	PaidMonths  int     `json:"paidMonths"`
+	PaidAmount  float64 `json:"paidAmount"` // 累计已还本金
+	Interest    float64 `json:"interest"`   // 利息（可人工调整）
 	Note        string  `gorm:"size:512" json:"note"`
 }
 

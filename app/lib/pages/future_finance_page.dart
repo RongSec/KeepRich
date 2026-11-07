@@ -608,6 +608,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
         initialRate: src?.annualRate ?? 3.25,
         initialMonths: src?.termMonths ?? 360,
         initialPaid: src?.paidMonths ?? 0,
+      initialInterest: src?.interest,
         initialMethod: src?.method ?? LoanMethod.equalPayment,
         initialNote: src?.note ?? '',
         allowInterestFree: false,
@@ -642,6 +643,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
         initialRate: src?.annualRate ?? 4.5,
         initialMonths: src?.termMonths ?? 360,
         initialPaid: src?.paidMonths ?? 0,
+      initialInterest: src?.interest,
         initialMethod: src?.method ?? LoanMethod.equalPayment,
         initialNote: src?.note ?? '',
         allowInterestFree: false,
@@ -676,6 +678,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
         initialRate: src?.annualRate ?? 0,
         initialMonths: src?.termMonths ?? 12,
         initialPaid: src?.paidMonths ?? 0,
+      initialInterest: src?.interest,
         initialMethod: src?.method ?? LoanMethod.interestFree,
         initialNote: src?.note ?? '',
         allowInterestFree: true,
@@ -766,6 +769,7 @@ class _LoanEditDialog extends StatefulWidget {
   final double initialRate;
   final int initialMonths;
   final int initialPaid;
+  final double? initialInterest;
   final String initialMethod;
   final String initialNote;
   final bool allowInterestFree;
@@ -777,6 +781,7 @@ class _LoanEditDialog extends StatefulWidget {
     required this.initialRate,
     required this.initialMonths,
     required this.initialPaid,
+    this.initialInterest,
     required this.initialMethod,
     required this.initialNote,
     required this.allowInterestFree,
@@ -790,8 +795,11 @@ class _LoanEditDialog extends StatefulWidget {
 class _LoanEditDialogState extends State<_LoanEditDialog> {
   late final TextEditingController _name =
       TextEditingController(text: widget.initialName);
-  late final TextEditingController _total =
-      TextEditingController(text: widget.initialTotal.toStringAsFixed(0));
+  // 新建时总额留空：预填 "0" 会让用户直接输入后变成 "01000000"
+  late final TextEditingController _total = TextEditingController(
+      text: widget.initialTotal > 0
+          ? widget.initialTotal.toStringAsFixed(0)
+          : '');
   late final TextEditingController _rate =
       TextEditingController(text: widget.initialRate.toStringAsFixed(2));
   late final TextEditingController _months =
@@ -800,6 +808,10 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
       TextEditingController(text: widget.initialPaid.toString());
   late final TextEditingController _note =
       TextEditingController(text: widget.initialNote);
+  late final TextEditingController _interest = TextEditingController(
+      text: widget.initialInterest != null
+          ? widget.initialInterest!.toStringAsFixed(2)
+          : '');
   late String _method = widget.initialMethod;
 
   @override
@@ -809,11 +821,46 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
     _rate.dispose();
     _months.dispose();
     _paid.dispose();
+    _interest.dispose();
     _note.dispose();
     super.dispose();
   }
 
   double? _previewMonthly;
+
+  /// 用户手动改过利息就不再自动覆盖（编辑时人工校对用）。
+  /// 编辑已有贷款时默认锁定：利息是跟银行对过账的人工数据，
+  /// 不能因为顺手改了个期数就被自动算掉。
+  late bool _interestTouched = widget.initialInterest != null;
+
+  /// 总利息（随输入实时计算）
+  /// 等额本息：总利息 = 月供 × n − 本金
+  ///   月供 M = P·r·(1+r)^n / ((1+r)^n − 1)，r 为月利率
+  /// 等额本金：第 i 月利息 = (P − (i−1)·P/n)·r，求和 = r·P·(n+1)/2
+  /// 无息：0
+  void _calcInterest() {
+    if (_interestTouched) return;
+    final P = double.tryParse(_total.text) ?? 0;
+    final annualRate = double.tryParse(_rate.text) ?? 0;
+    final n = int.tryParse(_months.text) ?? 0;
+    if (P <= 0 || n <= 0) {
+      _interest.text = '';
+      return;
+    }
+    final mr = annualRate / 12.0 / 100.0; // 月利率
+    double interest;
+    if (_method == LoanMethod.interestFree || mr <= 0) {
+      interest = 0;
+    } else if (_method == LoanMethod.equalPayment) {
+      final factor = _pow(1 + mr, n);
+      final monthly = P * mr * factor / (factor - 1);
+      interest = monthly * n - P;
+    } else {
+      // 等额本金
+      interest = mr * P * (n + 1) / 2;
+    }
+    _interest.text = interest.toStringAsFixed(2);
+  }
 
   void _calcPreview() {
     final P = double.tryParse(_total.text) ?? 0;
@@ -821,6 +868,7 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
     final n = int.tryParse(_months.text) ?? 0;
     if (P <= 0 || n <= 0) {
       setState(() => _previewMonthly = null);
+      _calcInterest();
       return;
     }
     final mr = r / 12.0 / 100.0;
@@ -838,6 +886,7 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
       m = P / n;
     }
     setState(() => _previewMonthly = m);
+    _calcInterest();
   }
 
   double _pow(double x, int n) {
@@ -876,6 +925,21 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
                 ],
                 onChanged: (_) => _calcPreview(),
                 decoration: const InputDecoration(labelText: '贷款总额 (元)'),
+              ),
+              const SizedBox(height: 8),
+              // 利息：新建时按当前数据自动估算，编辑时人工校对/调整
+              TextField(
+                controller: _interest,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                ],
+                onChanged: (_) => _interestTouched = true,
+                decoration: const InputDecoration(
+                  labelText: '利息 (元)',
+                  helperText: '新建时自动估算，编辑时可人工调整（与银行数据校对）',
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -948,6 +1012,7 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
               'annualRate': double.tryParse(_rate.text) ?? 0,
               'termMonths': int.tryParse(_months.text) ?? 0,
               'paidMonths': int.tryParse(_paid.text) ?? 0,
+              'interest': double.tryParse(_interest.text) ?? 0,
               'method': _method,
               'startMonth': 0,
               'note': _note.text,

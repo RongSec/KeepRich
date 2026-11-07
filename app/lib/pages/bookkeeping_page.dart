@@ -519,7 +519,10 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     final r = await ApiClient.instance.deleteTxFallback(tx.id);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
+        .showSnackBar(SnackBar(
+        content: Text(r.ok ? '已删除' : r.message),
+        duration: const Duration(milliseconds: 1100),
+      ));
     if (r.ok) _load();
   }
 }
@@ -857,7 +860,19 @@ class _TxTile extends StatelessWidget {
                 style: const TextStyle(fontSize: 10, color: Colors.brown)),
           ),
         ],
-        if (tx.type == TxType.expense && tx.sourceBucket.isNotEmpty) ...[
+        if (tx.loanName.isNotEmpty) ...[
+        Container(
+          margin: const EdgeInsets.only(top: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: Colors.orange.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text('偿还：${tx.loanName}',
+              style: const TextStyle(fontSize: 10, color: Color(0xFFFFB86B))),
+        ),
+      ],
+      if (tx.type == TxType.expense && tx.sourceBucket.isNotEmpty) ...[
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -962,6 +977,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   late final TextEditingController _amount;
   late final TextEditingController _note;
   bool _busy = false;
+  /// 表单内联错误提示（余额不足、未选贷款等）
+  String? _formError;
   String? _loanRef;
   String? _targetBucket; // 收入目标桶
   // 多来源支持：key=来源桶名, value=金额控制器
@@ -969,11 +986,19 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   Set<String> _selectedSources = {'cash'}; // 当前选中的来源桶
   FutureFinanceData? _futureData;
   bool _loadingLoans = false;
+  double _monthlyIncome = 0; // 本月收入（非意外收入），存钱快捷比例的基数
+  ({double saving, double investment, double emergency, double pension}) _planRatios =
+      (saving: 0, investment: 0, emergency: 0, pension: 0);
+  Map<String, double> _bucketBalances = {}; // 各桶当前余额，来源选择器上显示
 
   @override
   void initState() {
     super.initState();
     _type = widget.type;
+    // 存钱与支出都需要余额（快捷比例 + 来源标签显示）
+    if (_type == TxType.transfer || _type == TxType.expense) {
+      _loadMonthlyIncome();
+    }
     if (widget.existing != null) {
       _category = widget.existing!.category;
       _amount = TextEditingController(text: widget.existing!.amount.toString());
@@ -1087,6 +1112,95 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     });
   }
 
+  /// 表单内联错误条。
+  ///
+  /// 不再用 SnackBar：底表（modal bottom sheet）是独立路由，SnackBar 渲染在
+  /// 它下面的 Scaffold 里，会被整块表格挡住；往屏幕顶部推又会被状态栏截断。
+  /// 直接画在保存按钮上方，位置永远可见。
+  void _showTopSnack(String msg) {
+    if (!mounted) return;
+    setState(() => _formError = msg);
+    Future<void>.delayed(const Duration(seconds: 4), () {
+      if (mounted && _formError == msg) setState(() => _formError = null);
+    });
+  }
+
+  Future<void> _loadMonthlyIncome() async {
+    try {
+      final r = await ApiClient.instance.overview(scope: widget.scope);
+      if (!mounted) return;
+      final data = r.data;
+      if (data != null) {
+        setState(() {
+          _monthlyIncome = data.allocation.monthlyIncome;
+          _bucketBalances = {
+            'cash': data.remainingBudget,
+            'saving': data.savingBalance,
+            'investment': data.investmentBalance,
+            'emergency': data.emergencyBalance,
+            'pension': data.pensionBalance,
+            'housing_fund': data.totalHousingFund,
+          };
+        });
+      }
+    } catch (_) {}
+    try {
+      final pr = await ApiClient.instance.getPlan(scope: widget.scope);
+      if (!mounted) return;
+      final plan = pr.data;
+      if (plan != null) {
+        setState(() {
+          _planRatios = (
+            saving: (plan['savingRatio'] as num? ?? 0).toDouble(),
+            investment: (plan['investmentRatio'] as num? ?? 0).toDouble(),
+            emergency: (plan['emergencyRatio'] as num? ?? 0).toDouble(),
+            pension: (plan['pensionRatio'] as num? ?? 0).toDouble(),
+          );
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 存钱快捷比例：只用财务预规划中设置好的比例，取整到十位
+  Widget _savingQuickPicks() {
+    final f = NumberFormat('#,##0');
+    final plan = _planRatios;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_monthlyIncome > 0)
+          Text('本月收入 ${f.format(_monthlyIncome)} 元（按预规划比例计算）',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textDim)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            if (plan.saving > 0)
+              _ratioChip('储蓄 ${(plan.saving * 100).round()}%', plan.saving),
+            if (plan.investment > 0)
+              _ratioChip('投资 ${(plan.investment * 100).round()}%', plan.investment),
+            if (plan.emergency > 0)
+              _ratioChip('应急 ${(plan.emergency * 100).round()}%', plan.emergency),
+            if (plan.pension > 0)
+              _ratioChip('养老 ${(plan.pension * 100).round()}%', plan.pension),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _ratioChip(String label, double ratio) {
+    return ActionChip(
+      label: Text(label),
+      onPressed: () {
+        // 按比例计算，取整到十位
+        final v = (_monthlyIncome * ratio / 10).roundToDouble() * 10;
+        _amount.text = v.toStringAsFixed(0);
+      },
+    );
+  }
+
   Future<void> _loadLoans() async {
     if (_loadingLoans) return;
     setState(() => _loadingLoans = true);
@@ -1107,24 +1221,24 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     final v =
         isMultiSource ? _computeSourceTotal() : double.tryParse(_amount.text);
     if (v == null || v <= 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请输入有效金额')));
+      _showTopSnack('请输入有效金额');
       return;
     }
     if (_category == TxCategory.expenseLoanRepay &&
         (_loanRef == null || _loanRef!.isEmpty)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请选择要偿还的贷款')));
+      _showTopSnack('请选择要偿还的贷款');
       return;
     }
     if (_category == TxCategory.incomeInvestment &&
         (_targetBucket == null || _targetBucket!.isEmpty)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('投资收益请选择目标桶')));
+      _showTopSnack('投资收益请选择目标桶');
       return;
     }
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _formError = null; // 每次提交先清掉上一次的报错
+    });
 
     final body = <String, dynamic>{
       'scope': widget.scope,
@@ -1144,9 +1258,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
         for (final src in _selectedSources) {
           final amt = double.tryParse(_sourceControllers[src]?.text ?? '') ?? 0;
           if (amt <= 0) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(
-                    '${TxCategory.sourceBucketLabels[src] ?? src} 的金额必须大于 0')));
+            _showTopSnack(
+                '${TxCategory.sourceBucketLabels[src] ?? src} 的金额必须大于 0');
             setState(() => _busy = false);
             return;
           }
@@ -1169,8 +1282,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     if (r.ok) {
       Navigator.pop(context, true);
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(r.message)));
+      _showTopSnack(r.message);
     }
     setState(() => _busy = false);
   }
@@ -1185,16 +1297,16 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     final color = _BookkeepingPageState.colorOf(_type);
     final label = TxType.labels[_type] ?? _type;
 
+    // 键盘弹起 + 多来源时表单会超过可用高度，必须可滚动，
+    // 否则底部会报 "BOTTOM OVERFLOWED BY N PIXELS"（黄黑警示条）
     return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           Center(
               child: Container(
                   width: 36,
@@ -1240,28 +1352,89 @@ class _AddTxSheetState extends State<_AddTxSheet> {
               builder: (ctx) {
                 final allowed =
                     TxCategory.allowedSourceBuckets[_category] ?? ['cash'];
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: allowed.map((src) {
-                    final selected = _selectedSources.contains(src);
-                    return FilterChip(
-                      label: Text(TxCategory.sourceBucketLabels[src] ?? src),
-                      selected: selected,
-                      onSelected: (val) {
+                // 每行两个来源；卡片内分两行显示"名称 / 余额"，
+                // 用标签把名字和余额塞成一行会被省略号截掉数字
+                final bal = _bucketBalances;
+                final items = allowed.map((src) {
+                  final selected = _selectedSources.contains(src);
+                  final label = TxCategory.sourceBucketLabels[src] ?? src;
+                  final b = bal[src];
+                  final balText = b == null
+                      ? '—'
+                      : '${NumberFormat('#,##0.00').format(b)} 元';
+                  return SizedBox(
+                    width: (MediaQuery.of(ctx).size.width - 64) / 2,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () {
                         setState(() {
-                          if (val) {
+                          if (_selectedSources.contains(src)) {
+                            // 至少保留一个来源，否则无法确定从哪里扣钱
+                            if (_selectedSources.length > 1) {
+                              _selectedSources.remove(src);
+                              _sourceControllers[src]?.dispose();
+                              _sourceControllers.remove(src);
+                            }
+                          } else {
                             _selectedSources.add(src);
                             _sourceControllers[src] ??= TextEditingController();
-                          } else {
-                            _selectedSources.remove(src);
-                            _sourceControllers[src]?.dispose();
-                            _sourceControllers.remove(src);
                           }
                         });
                       },
-                    );
-                  }).toList(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppTheme.gold.withValues(alpha: 0.16)
+                              : Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: selected
+                                ? AppTheme.gold
+                                : Colors.white.withValues(alpha: 0.14),
+                            width: selected ? 1.2 : 1,
+                          ),
+                        ),
+                        child: Row(children: [
+                          if (selected) ...[
+                            const Icon(Icons.check,
+                                size: 13, color: AppTheme.gold),
+                            const SizedBox(width: 4),
+                          ],
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 1),
+                                Text('余额 $balText',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: selected
+                                          ? AppTheme.gold
+                                          : AppTheme.textDim,
+                                    )),
+                              ],
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  );
+                }).toList();
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: items,
                 );
               },
             ),
@@ -1393,11 +1566,39 @@ class _AddTxSheetState extends State<_AddTxSheet> {
                     TextStyle(color: color, fontWeight: FontWeight.w700),
               ),
             ),
+          // 存钱快捷比例：按月收入（非意外收入）自动计算并取整到十位
+          if (_type == TxType.transfer) ...[
+            const SizedBox(height: 8),
+            _savingQuickPicks(),
+          ],
           const SizedBox(height: 12),
           TextField(
             controller: _note,
             decoration: const InputDecoration(labelText: '备注（可选）'),
           ),
+          // 内联错误条：放在保存上方，键盘弹起时也一定可见
+          if (_formError != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFB3261E).withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFFB3261E).withValues(alpha: 0.55)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.error_outline,
+                    size: 16, color: Color(0xFFFF8A80)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(_formError!,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: Color(0xFFFFB4AB))),
+                ),
+              ]),
+            ),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _busy ? null : _submit,
@@ -1412,6 +1613,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
           ),
           const SizedBox(height: 16),
         ],
+        ),
       ),
     );
   }

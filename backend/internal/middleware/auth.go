@@ -18,7 +18,13 @@ const (
 // WebSocket 端点（/ws）额外支持 ?token= 查询参数（浏览器 WebSocket 无法设置 Authorization 头）
 func JWT() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		auth := c.GetHeader("Authorization")
+		// 云托管网关会用自家 JWT 覆盖 Authorization 头（实测确认），
+		// 所以自定义头 X-Finance-Token 优先 —— App 端两个头都发，谁真用谁。
+		// 网关同时注入 X-Wb-Share-Code 头，已被平台用于分享码校验。
+		auth := c.GetHeader("X-Finance-Token")
+		if auth == "" {
+			auth = c.GetHeader("Authorization")
+		}
 		tokenStr := ""
 		if auth == "" {
 			// 仅对 WS 端点允许 query token，避免 token 进 URL 被日志记录的面扩大
@@ -31,13 +37,19 @@ func JWT() gin.HandlerFunc {
 				return
 			}
 		} else {
-			parts := strings.SplitN(auth, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			// 兼容三种形态："Bearer <token>"（标准）、裸 token（X-Finance-Token
+			// 自定义头直接放 token）、以及大小写变体
+			trimmed := strings.TrimSpace(auth)
+			if len(trimmed) >= 7 && strings.EqualFold(trimmed[:7], "Bearer ") {
+				tokenStr = strings.TrimSpace(trimmed[7:])
+			} else {
+				tokenStr = trimmed
+			}
+			if tokenStr == "" {
 				utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "invalid authorization format")
 				c.Abort()
 				return
 			}
-			tokenStr = parts[1]
 		}
 		claims, err := utils.ParseToken(tokenStr, config.C.JWT.AccessSecret)
 		if err != nil {

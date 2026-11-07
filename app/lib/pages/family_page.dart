@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api.dart';
+import '../utils/dialog_dispose.dart';
 import '../theme.dart';
 
 class FamilyManagePage extends StatefulWidget {
@@ -75,14 +76,14 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       ),
     );
     if (ok != true) {
-      name.dispose();
-      desc.dispose();
+      disposeDialogController(name);
+      disposeDialogController(desc);
       return;
     }
     final nameText = name.text;
     final descText = desc.text;
-    name.dispose();
-    desc.dispose();
+    disposeDialogController(name);
+    disposeDialogController(desc);
     final r = await ApiClient.instance.createFamily(nameText, descText);
     if (r.ok) {
       _load();
@@ -122,14 +123,14 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       ),
     );
     if (ok != true) {
-      code.dispose();
-      msg.dispose();
+      disposeDialogController(code);
+      disposeDialogController(msg);
       return;
     }
     final codeText = code.text.trim();
     final msgText = msg.text;
-    code.dispose();
-    msg.dispose();
+    disposeDialogController(code);
+    disposeDialogController(msg);
     final r = await ApiClient.instance.applyJoin(codeText, msgText);
     if (!mounted) return;
     if (r.ok) {
@@ -246,11 +247,11 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       ),
     );
     if (ok != true) {
-      reason.dispose();
+      disposeDialogController(reason);
       return;
     }
     final reasonText = reason.text;
-    reason.dispose();
+    disposeDialogController(reason);
     final r = await ApiClient.instance.requestDeleteFamily(reason: reasonText);
     if (r.ok && mounted) {
       ScaffoldMessenger.of(context)

@@ -153,7 +153,7 @@ func AdminClearErrors(c *gin.Context) {
 }
 
 type AdminResetPasswordReq struct {
-	NewPassword string `json:"newPassword" binding:"required,min=8"`
+	NewPassword string `json:"newPassword" binding:"required"`
 }
 
 // AdminResetPassword 重置用户密码
@@ -162,6 +162,10 @@ func AdminResetPassword(c *gin.Context) {
 	var req AdminResetPasswordReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		return
+	}
+	if msg := validatePasswordStrength(req.NewPassword); msg != "" {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}
 	var u models.User

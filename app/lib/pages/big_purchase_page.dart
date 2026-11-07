@@ -37,68 +37,64 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
   }
 
   Future<void> _showForm({PurchaseItem? initial}) async {
-    final name = TextEditingController(text: initial?.name ?? '');
-    final price = TextEditingController(
-        text: initial != null ? initial.price.toString() : '');
-    final priority = TextEditingController(text: '${initial?.priority ?? 1}');
-    final note = TextEditingController(text: initial?.note ?? '');
+    // 用 TextFormField + onChanged 收集输入，不再手动建/销毁 controller。
+    // 之前用 TextEditingController 并在 showDialog 返回后立刻 dispose，
+    // 但对话框退场动画还在用它们，于是崩在
+    // "A TextEditingController was used after being disposed"。
+    var nameText = initial?.name ?? '';
+    var priceText = initial != null ? initial.price.toString() : '';
+    var priorityText = '${initial?.priority ?? 1}';
+    var noteText = initial?.note ?? '';
+
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: Text(initial == null ? '新增大件' : '编辑大件'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: '名称')),
-              TextField(
-                controller: price,
+              TextFormField(
+                initialValue: nameText,
+                onChanged: (v) => nameText = v,
+                decoration: const InputDecoration(labelText: '名称'),
+              ),
+              TextFormField(
+                initialValue: priceText,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
                 ],
+                onChanged: (v) => priceText = v,
                 decoration:
                     const InputDecoration(labelText: '预算（元）', prefixText: '¥ '),
               ),
-              TextField(
-                controller: priority,
+              TextFormField(
+                initialValue: priorityText,
                 keyboardType: TextInputType.number,
+                onChanged: (v) => priorityText = v,
                 decoration: const InputDecoration(labelText: '优先级（数字越小越优先）'),
               ),
-              TextField(
-                  controller: note,
-                  decoration: const InputDecoration(labelText: '备注（可选）')),
+              TextFormField(
+                initialValue: noteText,
+                onChanged: (v) => noteText = v,
+                decoration: const InputDecoration(labelText: '备注（可选）'),
+              ),
             ],
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogCtx, false),
               child: const Text('取消')),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(dialogCtx, true),
               child: const Text('保存')),
         ],
       ),
     );
-    if (ok != true) {
-      name.dispose();
-      price.dispose();
-      priority.dispose();
-      note.dispose();
-      return;
-    }
-    final nameText = name.text;
-    final priceText = price.text;
-    final priorityText = priority.text;
-    final noteText = note.text;
-    name.dispose();
-    price.dispose();
-    priority.dispose();
-    note.dispose();
+    if (ok != true) return;
     final body = <String, dynamic>{
       'scope': _scope,
       'name': nameText,

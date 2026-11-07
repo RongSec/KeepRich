@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models.dart';
 import '../services/api.dart';
+import '../utils/dialog_dispose.dart';
 import '../services/auth.dart';
 
 class SecurityPage extends StatefulWidget {
@@ -49,11 +50,11 @@ class _SecurityPageState extends State<SecurityPage> {
       ),
     );
     if (ok != true) {
-      code.dispose();
+      disposeDialogController(code);
       return;
     }
     final codeText = code.text.trim();
-    code.dispose();
+    disposeDialogController(code);
     final r = await ApiClient.instance.mfaEnable(codeText);
     if (r.ok && mounted) {
       setState(() {
@@ -110,14 +111,14 @@ class _SecurityPageState extends State<SecurityPage> {
       ),
     );
     if (ok != true) {
-      old.dispose();
-      nw.dispose();
+      disposeDialogController(old);
+      disposeDialogController(nw);
       return;
     }
     final oldText = old.text;
     final nwText = nw.text;
-    old.dispose();
-    nw.dispose();
+    disposeDialogController(old);
+    disposeDialogController(nw);
     final r = await ApiClient.instance.changePassword(oldText, nwText);
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -166,20 +167,20 @@ class _SecurityPageState extends State<SecurityPage> {
       ),
     );
     if (ok != true) {
-      nickname.dispose();
-      avatar.dispose();
-      email.dispose();
-      phone.dispose();
+      disposeDialogController(nickname);
+      disposeDialogController(avatar);
+      disposeDialogController(email);
+      disposeDialogController(phone);
       return;
     }
     final nicknameText = nickname.text;
     final avatarText = avatar.text;
     final emailText = email.text;
     final phoneText = phone.text;
-    nickname.dispose();
-    avatar.dispose();
-    email.dispose();
-    phone.dispose();
+    disposeDialogController(nickname);
+    disposeDialogController(avatar);
+    disposeDialogController(email);
+    disposeDialogController(phone);
     final r = await ApiClient.instance.updateProfile({
       'nickname': nicknameText,
       'avatar': avatarText,

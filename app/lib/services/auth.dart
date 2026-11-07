@@ -13,14 +13,24 @@ class AuthState extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
 
   Future<void> bootstrap() async {
-    await ApiClient.instance.loadTokens();
+    // 任何一步失败都不能让 _loading 卡在 true —— 那会让整个 Web 卡死在
+    // 开屏页永远进不了登录页（secure_storage 在 Web 抛异常曾就是这个效果）。
+    try {
+      await ApiClient.instance.loadTokens();
+    } catch (_) {
+      // 读不到本地登录态：按未登录处理
+    }
     if (ApiClient.instance.hasToken) {
-      final r = await ApiClient.instance.me();
-      if (r.ok && r.data != null) {
-        _user = r.data;
-      } else {
-        ApiClient.instance.clearTokens();
-        await ApiClient.instance.clearPersisted();
+      try {
+        final r = await ApiClient.instance.me();
+        if (r.ok && r.data != null) {
+          _user = r.data;
+        } else {
+          ApiClient.instance.clearTokens();
+          await ApiClient.instance.clearPersisted();
+        }
+      } catch (_) {
+        // 网络失败：保留 token，进 App 后各页面会自行重试/走 401 刷新
       }
     }
     _loading = false;
@@ -52,6 +62,13 @@ class AuthState extends ChangeNotifier {
     ApiClient.instance.clearTokens();
     await ApiClient.instance.clearPersisted();
     _user = null;
+    notifyListeners();
+  }
+
+  /// 会话被服务端判定过期（refresh 也失败）：清掉本地登录态，让路由跳回登录页
+  void sessionExpired() {
+    _user = null;
+    _loading = false;
     notifyListeners();
   }
 

@@ -355,8 +355,8 @@ class _Ball extends StatelessWidget {
   Widget build(BuildContext context) {
     const ink = Color(0xFF2A1D04);
     return Tooltip(
-      message: '个人：${NumberFormat('#,##0.00').format(worryFreePersonal)} 元/笔\n'
-          '家庭：${NumberFormat('#,##0.00').format(worryFreeFamily)} 元/笔\n点击进入总览',
+      message: '个人最大单笔消费：${NumberFormat('#,##0.00').format(worryFreePersonal)} 元\n'
+          '家庭最大单笔消费：${NumberFormat('#,##0.00').format(worryFreeFamily)} 元\n点击进入总览',
       child: Container(
         width: 72,
         height: 72,

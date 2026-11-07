@@ -1,0 +1,35 @@
+{
+  "name": "永远富裕 · 家庭财务",
+  "short_name": "永远富裕",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#07070B",
+  "theme_color": "#07070B",
+  "description": "家庭与个人财务管理系统",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/Icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/Icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/Icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

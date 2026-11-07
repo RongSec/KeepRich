@@ -137,14 +137,13 @@ class _OverviewPageState extends State<OverviewPage> {
         unit: '元/年',
         onTap: () {},
       ),
-      _miniCard(
+      _splitCard(
         theme: theme,
         icon: Icons.account_balance_wallet_outlined,
         iconColor: const Color(0xFF7EE0A6),
         bg: Colors.green.withValues(alpha: 0.14),
-        title: '本月剩余消费',
-        value: f.format(ov.monthConsumableLeft),
-        unit: '元',
+        top: (title: '剩余可消费', value: ov.monthConsumableLeft),
+        bottom: (title: '剩余待支配', value: ov.remainingBudget),
         onTap: () => _showConsumptionDetail(context),
       ),
       _miniCard(
@@ -176,6 +175,75 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
+  /// 上下两行的卡片：上=剩余可消费，下=剩余待支配（收入的公积金之外的现金部分）
+  Widget _splitCard({
+    required ThemeData theme,
+    required IconData icon,
+    required Color iconColor,
+    required Color bg,
+    required ({String title, double value}) top,
+    required ({String title, double value}) bottom,
+    required VoidCallback onTap,
+  }) {
+    final f = NumberFormat('#,##0.00');
+    Widget row(({String title, double value}) item) => InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              Expanded(
+                child: Text(item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textDim)),
+              ),
+              Text(f.format(item.value),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.onSurface)),
+            ]),
+          ),
+        );
+
+    return Card(
+      // 色调叠在玻璃底上：纯半透明会让背后的金沙糊住数字
+      color: Color.alphaBlend(bg, AppTheme.glass),
+      elevation: 0,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                Icon(icon, color: iconColor, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('本月可消费',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: iconColor,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              row(top),
+              Divider(height: 6, thickness: 0.6, color: Colors.white.withValues(alpha: 0.10)),
+              row(bottom),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // 通用小卡片
   Widget _miniCard({
     required ThemeData theme,
@@ -188,7 +256,8 @@ class _OverviewPageState extends State<OverviewPage> {
     required VoidCallback onTap,
   }) {
     return Card(
-      color: bg,
+      // 色调叠在玻璃底上：纯半透明会让背后的金币糊住数字
+      color: Color.alphaBlend(bg, AppTheme.glass),
       elevation: 0,
       child: InkWell(
         onTap: onTap,
@@ -852,7 +921,7 @@ class _OverviewPageState extends State<OverviewPage> {
               Text('资产构成',
                   style: TextStyle(
                       fontWeight: FontWeight.w600, color: AppTheme.textDim)),
-              _detailRow('  现金', f.format(ov.totalCash), Colors.green),
+              _detailRow('  可支配额度', f.format(ov.remainingBudget), Colors.green),
               _detailRow('  公积金', f.format(ov.totalHousingFund), Colors.blue),
               _detailRow('  储蓄桶', f.format(ov.savingBalance), Colors.orange),
               _detailRow(
@@ -876,7 +945,7 @@ class _OverviewPageState extends State<OverviewPage> {
                   const SizedBox(width: 6),
                   Expanded(
                       child: Text(
-                    '总财富 = 现金 + 公积金 + 储蓄桶 + 投资桶 + 应急桶 + 养老桶',
+                    '总财富 = 可支配额度 + 公积金 + 储蓄桶 + 投资桶 + 应急桶 + 养老桶 − 待还款',
                     style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
                   )),
                 ]),

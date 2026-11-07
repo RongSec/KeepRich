@@ -72,9 +72,10 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      // 透明：让金币池背景透上来（背景由 CoinPoolBackground 统一绘制）
-      scaffoldBackgroundColor: Colors.transparent,
-      canvasColor: Colors.transparent,
+      // 半透明暗底：列表文字要有落脚处，同时让金沙隐约透上来。
+      // 登录页/开屏页需要全透明，自己用 Scaffold(backgroundColor: transparent) 覆盖。
+      scaffoldBackgroundColor: const Color(0xB80A0A10),
+      canvasColor: const Color(0xB80A0A10),
     );
 
     return base.copyWith(

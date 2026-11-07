@@ -16,6 +16,7 @@ class AppConfig {
   AppConfig._();
 
   static const String _kServerHostKey = 'server_host_override';
+  static const String _kShareCodeKey = 'server_share_code';
 
   /// 构建注入的服务端地址（不含 /api 后缀）
   static const String _envServerHost = String.fromEnvironment('API_BASE_URL');
@@ -35,7 +36,15 @@ class AppConfig {
   static const String localhostHost = 'http://127.0.0.1:28080';
 
   static String? _overrideHost;
+
+  /// 云托管分享码：平台要求每个请求带 sharecode（?sharecode= 或 X-Share-Code 头），
+  /// 否则一律 403。从服务端地址里解析出来，如
+  /// `https://xxx.app.workbuddy.host/?sharecode=VAUEWKAZSR` → `VAUEWKAZSR`
+  static String? _shareCode;
   static bool _inited = false;
+
+  /// 当前解析到的分享码（无则为 null）
+  static String? get shareCode => _shareCode;
 
   /// 平台默认服务端地址
   static String get defaultServerHost {
@@ -71,8 +80,10 @@ class AppConfig {
     try {
       final p = await SharedPreferences.getInstance();
       _overrideHost = p.getString(_kServerHostKey);
+      _shareCode = p.getString(_kShareCodeKey);
     } catch (_) {
       _overrideHost = null;
+      _shareCode = null;
     }
     _inited = true;
   }
@@ -83,17 +94,35 @@ class AppConfig {
     final v = (host ?? '').trim();
     if (v.isEmpty) {
       await p.remove(_kServerHostKey);
+      await p.remove(_kShareCodeKey);
       _overrideHost = null;
+      _shareCode = null;
       return;
     }
     final n = _normalize(v);
     await p.setString(_kServerHostKey, n);
+    final code = _extractShareCode(v);
+    if (code != null) {
+      await p.setString(_kShareCodeKey, code);
+    } else {
+      await p.remove(_kShareCodeKey);
+    }
     _overrideHost = n;
+    _shareCode = code;
   }
 
-  /// 去掉尾部斜杠与多余的 /api
+  /// 从地址里提取 sharecode
+  static String? _extractShareCode(String host) {
+    final uri = Uri.tryParse(host.trim());
+    if (uri == null) return null;
+    return uri.queryParameters['sharecode'];
+  }
+
+  /// 去掉尾部斜杠、多余的 /api 与查询参数（sharecode 单独存）
   static String _normalize(String host) {
     var h = host.trim();
+    final q = h.indexOf('?');
+    if (q >= 0) h = h.substring(0, q);
     while (h.endsWith('/')) {
       h = h.substring(0, h.length - 1);
     }
@@ -117,7 +146,16 @@ class AppConfig {
       return '格式应为 http://192.168.1.10:28080';
     }
     try {
-      final resp = await http.get(Uri.parse('$host/healthz')).timeout(timeout);
+      var probeUrl = Uri.parse('$host/healthz');
+      // 云托管域名需要 sharecode 才放行，探测时也要带上
+      if (_shareCode != null && _shareCode!.isNotEmpty) {
+        probeUrl = probeUrl.replace(queryParameters: {
+          ...probeUrl.queryParameters,
+          'sharecode': _shareCode!,
+        });
+      }
+      final resp =
+          await http.get(probeUrl).timeout(timeout);
       if (resp.statusCode == 200) return null;
       return '服务返回 HTTP ${resp.statusCode}';
     } catch (e) {

@@ -1,0 +1,36 @@
+package models
+
+// PurchasePlan 大件购买计划
+type PurchasePlan struct {
+	Base
+	Scope       string  `gorm:"size:16;index;not null" json:"scope"`     // personal/family
+	UID         uint64  `gorm:"index;not null" json:"uid"`
+	FamilyID    *uint64 `gorm:"index" json:"familyId,omitempty"`
+	TargetID    uint64  `gorm:"index;not null" json:"targetId"`
+
+	Name        string  `gorm:"size:64;not null" json:"name"`
+	Price       float64 `gorm:"type:decimal(14,2);not null" json:"price"`
+	Priority    int     `gorm:"default:0" json:"priority"` // 数字越小优先级越高
+	TargetDate  int64   `json:"targetDate"`                // 期望购买时间
+	Note        string  `gorm:"size:255" json:"note"`
+	Achieved    bool    `gorm:"default:false" json:"achieved"`   // 已购买（用户手动标记）
+	AchievedAt  *int64  `json:"achievedAt,omitempty"`
+	NotifiedAt  *int64  `json:"notifiedAt,omitempty"`            // 上次"可购买"通知时间（7 天去重）
+}
+
+// InvestmentRecord 投资月度收益记录
+type InvestmentRecord struct {
+	Base
+	Scope     string  `gorm:"size:16;index;not null" json:"scope"`
+	UID       uint64  `gorm:"index;not null" json:"uid"`
+	FamilyID  *uint64 `gorm:"index" json:"familyId,omitempty"`
+	TargetID  uint64  `gorm:"index;not null" json:"targetId"`
+	Year      int     `gorm:"index" json:"year"`
+	Month     int     `gorm:"index" json:"month"`
+	MonthlyRate float64 `gorm:"type:decimal(8,6)" json:"monthlyRate"` // 月收益率
+	Amount    float64 `gorm:"type:decimal(14,2)" json:"amount"`     // 实际收益额（元，可正可负）
+	// 文档 §7 月度结算结果
+	HardSavingTransfer float64 `gorm:"type:decimal(14,2)" json:"hardSavingTransfer"` // 超额 30% 自动转入硬性存储（储蓄桶）金额
+	Deficit            float64 `gorm:"type:decimal(14,2)" json:"deficit"`            // 收益不足额（从下月可消费余额中扣补）
+	Note      string  `gorm:"size:255" json:"note"`
+}

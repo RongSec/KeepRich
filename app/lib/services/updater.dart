@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -66,18 +67,96 @@ class UpdaterService {
     try {
       final pkg = await PackageInfo.fromPlatform();
       final did = await _deviceId();
+      // 设备 ABI：GitHub Release 按架构分发包（arm64-v8a / armeabi-v7a / x86_64）
+      String? abi;
+      try {
+        final dev = await DeviceInfoPlugin().androidInfo;
+        abi = dev.supportedAbis.isNotEmpty ? dev.supportedAbis.first : null;
+      } catch (_) {}
+
       final r = await ApiClient.instance.checkAppVersion(
         platform: 'android',
         current: pkg.version,
         did: did,
+        abi: abi,
       );
       if (!r.ok || r.data == null) return null;
-      final info = AppUpdateInfo.fromJson(r.data!);
+      final data = r.data!;
+      // 后端拿不到 GitHub（沙箱出网受限等）时，App 直连 GitHub 兜底
+      if (data['version'] == null || (data['version'] as String).isEmpty) {
+        final repo = (data['githubRepo'] as String?) ?? '';
+        if (repo.isEmpty) return null;
+        final direct = await _checkGitHubDirect(repo, pkg.version, abi);
+        return direct;
+      }
+      final info = AppUpdateInfo.fromJson(data);
       return info.updateAvailable ? info : null;
     } catch (e) {
       debugPrint('[updater] check failed: $e');
       return null;
     }
+  }
+
+  /// 直连 GitHub Releases 查询最新版（后端出网受限时的兜底）
+  static Future<AppUpdateInfo?> _checkGitHubDirect(
+      String repo, String current, String? abi) async {
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+      ));
+      dio.options.headers['User-Agent'] = 'keeprich-app';
+      final resp = await dio.get(
+          'https://api.github.com/repos/$repo/releases/latest');
+      final rel = resp.data as Map<String, dynamic>;
+      final version =
+          ((rel['tag_name'] as String?) ?? '').replaceFirst(RegExp('^v'), '');
+      if (version.isEmpty) return null;
+
+      // 按 ABI 选包，选不到回退第一个 .apk
+      Map<String, dynamic>? asset;
+      for (final a in (rel['assets'] as List)) {
+        final m = a as Map<String, dynamic>;
+        final name = (m['name'] as String).toLowerCase();
+        if (!name.endsWith('.apk')) continue;
+        asset ??= m;
+        if (abi != null && name.contains(abi)) {
+          asset = m;
+          break;
+        }
+      }
+      if (asset == null) return null;
+
+      return AppUpdateInfo(
+        version: version,
+        buildNumber: 0,
+        notes: (rel['body'] as String?) ?? '',
+        apkUrl: asset['browser_download_url'] as String,
+        sha256: '',
+        sizeBytes: (asset['size'] as num?)?.toInt() ?? 0,
+        updateAvailable: _versionLess(current, version),
+        forceUpdate: false,
+      );
+    } catch (e) {
+      debugPrint('[updater] direct github check failed: $e');
+      return null;
+    }
+  }
+
+  /// 简单语义化版本比较：current < latest 返回 true
+  static bool _versionLess(String a, String b) {
+    List<int> parse(String v) => v
+        .replaceFirst(RegExp('^v'), '')
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
+    final pa = parse(a), pb = parse(b);
+    for (var i = 0; i < 3; i++) {
+      final va = i < pa.length ? pa[i] : 0;
+      final vb = i < pb.length ? pb[i] : 0;
+      if (va != vb) return va < vb;
+    }
+    return false;
   }
 
   /// 静默检查 + 弹窗引导更新（启动后调用一次）

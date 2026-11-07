@@ -13,12 +13,13 @@ import 'pages/plan_page.dart';
 import 'pages/security_page.dart';
 import 'pages/settings_page.dart' show UserManagementPage;
 import 'pages/splash_page.dart';
+import 'services/api.dart';
 import 'services/auth.dart';
 import 'services/biometric.dart';
 import 'services/notify.dart';
 import 'services/web_updater.dart';
 import 'theme.dart';
-import 'widgets/coin_pool.dart';
+import 'widgets/gold_sand.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +43,12 @@ class _AppRootState extends State<AppRoot> {
   @override
   void initState() {
     super.initState();
+    // 会话过期（refresh 也失败）→ 跳回登录页，而不是页面空着停在原地。
+    // 同时清掉上一页残留的报错，免得登录页顶上还挂着"invalid or expired token"。
+    ApiClient.onSessionExpired = () {
+      _auth.sessionExpired();
+      _AppShell.scaffoldMessengerKey.currentState?.clearSnackBars();
+    };
     _auth.bootstrap();
     _biometric.init();
     _notify.initLocalNotifications();
@@ -82,6 +89,9 @@ class _AppRootState extends State<AppRoot> {
 class _AppShell extends StatelessWidget {
   final AuthState auth;
   const _AppShell({required this.auth});
+
+  /// 用来在跳登录页前清掉上一页残留的错误提示
+  static final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
   @override
   Widget build(BuildContext context) {
@@ -125,18 +135,19 @@ class _AppShell extends StatelessWidget {
     );
 
     return MaterialApp.router(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: '永远富裕',
       debugShowCheckedModeBanner: false,
-      // 全程深色（不跟随系统亮度，避免与金币池背景冲突）
+      // 全程深色（不跟随系统亮度，避免与金沙背景冲突）
       themeMode: ThemeMode.dark,
       theme: AppTheme.dark(),
       darkTheme: AppTheme.dark(),
       routerConfig: router,
-      // 金币池背景铺在最底层：登录前饱满、登录后变淡
+      // 金沙背景铺在最底层：登录前饱满、登录后变淡
       builder: (ctx, child) => Stack(
         fit: StackFit.expand,
         children: [
-          CoinPoolBackground(dimmed: auth.isLoggedIn),
+          GoldSandBackground(dimmed: auth.isLoggedIn),
           if (child != null) child,
         ],
       ),

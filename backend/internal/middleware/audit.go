@@ -13,7 +13,10 @@ import (
 )
 
 // sensitiveKeys 审计日志中必须脱敏的 JSON 字段（大小写不敏感子串匹配）
-var sensitiveKeys = []string{"password", "secret", "token", "code", "otp", "backup"}
+var sensitiveKeys = []string{
+	"password", "secret", "token", "code", "otp", "backup",
+	"idcard", "id_card", "bank", "cardno", "phone", "mobile", "pin",
+}
 
 // sanitizeDetail 脱敏审计详情：JSON 中的敏感字段值替换为 "***"
 func sanitizeDetail(raw []byte) string {

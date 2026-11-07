@@ -13,7 +13,7 @@ import (
 
 type CreateUserReq struct {
 	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password" binding:"required,min=8"`
+	Password string `json:"password" binding:"required"`
 	Nickname string `json:"nickname"`
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
@@ -28,9 +28,31 @@ type UpdateProfileReq struct {
 	Phone    *string `json:"phone"`
 }
 
+// validatePasswordStrength 密码强度：至少 8 位，且同时含字母和数字
+func validatePasswordStrength(pw string) string {
+	if len(pw) < 8 {
+		return "密码至少 8 位"
+	}
+	var hasLetter, hasDigit bool
+	for _, r := range pw {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+			hasLetter = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return "密码需同时包含字母和数字"
+	}
+	return ""
+}
+
 type ChangePasswordReq struct {
 	OldPassword string `json:"oldPassword" binding:"required"`
-	NewPassword string `json:"newPassword" binding:"required,min=8"`
+	// 长度/复杂度统一交给 validatePasswordStrength，避免 gin 的英文校验文案
+	// （"failed on the 'min' tag"）直接弹给用户
+	NewPassword string `json:"newPassword" binding:"required"`
 }
 
 // CreateUser 管理员创建账号
@@ -38,6 +60,10 @@ func CreateUser(c *gin.Context) {
 	var req CreateUserReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		return
+	}
+	if msg := validatePasswordStrength(req.Password); msg != "" {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}
 	role := req.Role
@@ -149,6 +175,10 @@ func ChangePassword(c *gin.Context) {
 	var req ChangePasswordReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		return
+	}
+	if msg := validatePasswordStrength(req.NewPassword); msg != "" {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}
 	var u models.User

@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -37,10 +39,66 @@ type LoginResp struct {
 // @Param body body LoginReq true "登录参数"
 // @Success 200 {object} utils.Response{data=LoginResp}
 // @Router /api/auth/login [post]
+// 登录失败锁定：同一账号/ IP 5 分钟内失败 5 次即锁 15 分钟
+var (
+	loginFailsMu   sync.Mutex
+	loginFails     = map[string]*loginFailState{}
+)
+
+type loginFailState struct {
+	Count     int
+	FirstFail time.Time
+	LockedTil time.Time
+}
+
+func loginFailKey(u string, ip string) string { return u + "|" + ip }
+
+func checkLoginLocked(key string) (bool, time.Duration) {
+	loginFailsMu.Lock()
+	defer loginFailsMu.Unlock()
+	st, ok := loginFails[key]
+	if !ok {
+		return false, 0
+	}
+	if time.Now().Before(st.LockedTil) {
+		return true, time.Until(st.LockedTil)
+	}
+	return false, 0
+}
+
+func recordLoginFail(key string) {
+	loginFailsMu.Lock()
+	defer loginFailsMu.Unlock()
+	st, ok := loginFails[key]
+	if !ok || time.Since(st.FirstFail) > 5*time.Minute {
+		loginFails[key] = &loginFailState{Count: 1, FirstFail: time.Now()}
+		return
+	}
+	st.Count++
+	if st.Count >= 5 {
+		st.LockedTil = time.Now().Add(15 * time.Minute)
+		st.Count = 0
+		st.FirstFail = time.Now()
+	}
+}
+
+func clearLoginFail(key string) {
+	loginFailsMu.Lock()
+	defer loginFailsMu.Unlock()
+	delete(loginFails, key)
+}
+
 func Login(c *gin.Context) {
 	var req LoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		return
+	}
+	// 登录失败锁定：同一账号+IP 5 分钟内失败 5 次锁 15 分钟
+	failKey := loginFailKey(req.Username, c.ClientIP())
+	if locked, d := checkLoginLocked(failKey); locked {
+		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden,
+			fmt.Sprintf("登录失败次数过多，请 %d 分钟后再试", int(d.Minutes())+1))
 		return
 	}
 	// 账号维度限流：单账号 5 分钟最多 10 次尝试（防 TOTP/密码暴力破解）
@@ -58,9 +116,11 @@ func Login(c *gin.Context) {
 		return
 	}
 	if !utils.CheckPassword(u.PasswordHash, req.Password) {
+		recordLoginFail(failKey)
 		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号或密码错误")
 		return
 	}
+	clearLoginFail(failKey)
 	if u.MFAEnabled {
 		if !utils.VerifyMFACode(u.MFASecret, req.MFACode) {
 			utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "MFA 校验失败")

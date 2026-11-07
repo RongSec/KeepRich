@@ -464,6 +464,7 @@ class TxRecord {
   final String nickname;
   final bool overWorry;
   final String loanRef; // 偿还贷款关联
+  final String loanName; // 偿还的贷款名称（后端解析后返回）
   final String targetBucket; // 收入目标桶
   final String sourceBucket; // 支出来源桶（单来源兼容）
   final String sourceDetails; // 多来源 JSON
@@ -482,6 +483,7 @@ class TxRecord {
     this.nickname = '',
     this.overWorry = false,
     this.loanRef = '',
+    this.loanName = '',
     this.targetBucket = '',
     this.sourceBucket = '',
     this.sourceDetails = '',
@@ -501,6 +503,7 @@ class TxRecord {
         nickname: json['nickname'] as String? ?? '',
         overWorry: json['overWorry'] as bool? ?? false,
         loanRef: json['loanRef'] as String? ?? '',
+        loanName: json['loanName'] as String? ?? '',
         targetBucket: json['targetBucket'] as String? ?? '',
         sourceBucket: json['sourceBucket'] as String? ?? '',
         sourceDetails: json['sourceDetails'] as String? ?? '',
@@ -654,7 +657,7 @@ class TxCategory {
 
   // 来源桶显示名
   static const Map<String, String> sourceBucketLabels = {
-    'cash': '现金',
+    'cash': '可支配额度',
     'saving': '储蓄桶',
     'housing_fund': '公积金',
     'emergency': '应急桶',
@@ -718,6 +721,8 @@ class HousingFundLoan {
   final String method;
   final int startMonth;
   final int paidMonths;
+  final double paidAmount;
+  final double interest;
   final String note;
   final LoanSummary summary;
   HousingFundLoan({
@@ -730,6 +735,8 @@ class HousingFundLoan {
     required this.method,
     required this.startMonth,
     required this.paidMonths,
+    this.paidAmount = 0,
+    this.interest = 0,
     required this.note,
     required this.summary,
   });
@@ -744,6 +751,8 @@ class HousingFundLoan {
         method: json['method'] as String? ?? 'equal_payment',
         startMonth: (json['startMonth'] as num? ?? 0).toInt(),
         paidMonths: (json['paidMonths'] as num? ?? 0).toInt(),
+        paidAmount: (json['paidAmount'] as num? ?? 0).toDouble(),
+        interest: (json['interest'] as num? ?? 0).toDouble(),
         note: json['note'] as String? ?? '',
         summary: LoanSummary.fromJson(
             json['summary'] as Map<String, dynamic>? ?? {}),
@@ -760,6 +769,8 @@ class CommercialLoan {
   final String method;
   final int startMonth;
   final int paidMonths;
+  final double paidAmount;
+  final double interest;
   final String note;
   final LoanSummary summary;
   CommercialLoan({
@@ -772,6 +783,8 @@ class CommercialLoan {
     required this.method,
     required this.startMonth,
     required this.paidMonths,
+    this.paidAmount = 0,
+    this.interest = 0,
     required this.note,
     required this.summary,
   });
@@ -785,6 +798,8 @@ class CommercialLoan {
         method: json['method'] as String? ?? 'equal_payment',
         startMonth: (json['startMonth'] as num? ?? 0).toInt(),
         paidMonths: (json['paidMonths'] as num? ?? 0).toInt(),
+        paidAmount: (json['paidAmount'] as num? ?? 0).toDouble(),
+        interest: (json['interest'] as num? ?? 0).toDouble(),
         note: json['note'] as String? ?? '',
         summary: LoanSummary.fromJson(
             json['summary'] as Map<String, dynamic>? ?? {}),
@@ -801,6 +816,8 @@ class BorrowedMoney {
   final String method;
   final int startMonth;
   final int paidMonths;
+  final double paidAmount;
+  final double interest;
   final String note;
   final LoanSummary summary;
   BorrowedMoney({
@@ -813,6 +830,8 @@ class BorrowedMoney {
     required this.method,
     required this.startMonth,
     required this.paidMonths,
+    this.paidAmount = 0,
+    this.interest = 0,
     required this.note,
     required this.summary,
   });
@@ -826,6 +845,8 @@ class BorrowedMoney {
         method: json['method'] as String? ?? 'equal_payment',
         startMonth: (json['startMonth'] as num? ?? 0).toInt(),
         paidMonths: (json['paidMonths'] as num? ?? 0).toInt(),
+        paidAmount: (json['paidAmount'] as num? ?? 0).toDouble(),
+        interest: (json['interest'] as num? ?? 0).toDouble(),
         note: json['note'] as String? ?? '',
         summary: LoanSummary.fromJson(
             json['summary'] as Map<String, dynamic>? ?? {}),

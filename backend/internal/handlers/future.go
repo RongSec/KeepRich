@@ -41,6 +41,8 @@ type HousingFundLoanReq struct {
 	Method     string  `json:"method" binding:"required,oneof=equal_payment equal_capital"`
 	StartMonth int64   `json:"startMonth"`
 	PaidMonths int     `json:"paidMonths"`
+	Interest   float64 `json:"interest"`   // 利息：与银行对账后可人工调整
+	PaidAmount float64 `json:"paidAmount"` // 累计已还本金（冲本金时人工调整）
 	Note       string  `json:"note"`
 }
 
@@ -79,6 +81,8 @@ func CreateHousingFundLoan(c *gin.Context) {
 		Method:     req.Method,
 		StartMonth: req.StartMonth,
 		PaidMonths: req.PaidMonths,
+		Interest:   req.Interest,
+		PaidAmount: req.PaidAmount,
 		Note:       req.Note,
 	}
 	database.DB.Create(&rec)
@@ -109,6 +113,8 @@ func UpdateHousingFundLoan(c *gin.Context) {
 	rec.Method = req.Method
 	rec.StartMonth = req.StartMonth
 	rec.PaidMonths = req.PaidMonths
+	rec.Interest = req.Interest
+	rec.PaidAmount = req.PaidAmount
 	rec.Note = req.Note
 	database.DB.Save(&rec)
 	utils.OK(c, rec)
@@ -141,6 +147,8 @@ type CommercialLoanReq struct {
 	Method     string  `json:"method" binding:"required,oneof=equal_payment equal_capital"`
 	StartMonth int64   `json:"startMonth"`
 	PaidMonths int     `json:"paidMonths"`
+	Interest   float64 `json:"interest"`   // 利息：与银行对账后可人工调整
+	PaidAmount float64 `json:"paidAmount"` // 累计已还本金（冲本金时人工调整）
 	Note       string  `json:"note"`
 }
 
@@ -174,6 +182,8 @@ func CreateCommercialLoan(c *gin.Context) {
 		Method:     req.Method,
 		StartMonth: req.StartMonth,
 		PaidMonths: req.PaidMonths,
+		Interest:   req.Interest,
+		PaidAmount: req.PaidAmount,
 		Note:       req.Note,
 	}
 	database.DB.Create(&rec)
@@ -204,6 +214,8 @@ func UpdateCommercialLoan(c *gin.Context) {
 	rec.Method = req.Method
 	rec.StartMonth = req.StartMonth
 	rec.PaidMonths = req.PaidMonths
+	rec.Interest = req.Interest
+	rec.PaidAmount = req.PaidAmount
 	rec.Note = req.Note
 	database.DB.Save(&rec)
 	utils.OK(c, rec)
@@ -236,6 +248,8 @@ type BorrowedMoneyReq struct {
 	Method     string  `json:"method" binding:"required,oneof=equal_payment equal_capital interest_free"`
 	StartMonth int64   `json:"startMonth"`
 	PaidMonths int     `json:"paidMonths"`
+	Interest   float64 `json:"interest"`   // 利息：与银行对账后可人工调整
+	PaidAmount float64 `json:"paidAmount"` // 累计已还本金（冲本金时人工调整）
 	Note       string  `json:"note"`
 }
 
@@ -269,6 +283,8 @@ func CreateBorrowedMoney(c *gin.Context) {
 		Method:     req.Method,
 		StartMonth: req.StartMonth,
 		PaidMonths: req.PaidMonths,
+		Interest:   req.Interest,
+		PaidAmount: req.PaidAmount,
 		Note:       req.Note,
 	}
 	database.DB.Create(&rec)
@@ -299,6 +315,8 @@ func UpdateBorrowedMoney(c *gin.Context) {
 	rec.Method = req.Method
 	rec.StartMonth = req.StartMonth
 	rec.PaidMonths = req.PaidMonths
+	rec.Interest = req.Interest
+	rec.PaidAmount = req.PaidAmount
 	rec.Note = req.Note
 	database.DB.Save(&rec)
 	utils.OK(c, rec)

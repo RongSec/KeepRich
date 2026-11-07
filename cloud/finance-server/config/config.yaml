@@ -1,0 +1,30 @@
+app:
+  name: family-finance
+  env: development
+  port: 8080
+  timezone: Asia/Shanghai
+  # App 在线更新源：GitHub Releases（owner/repo），发布新 Release 后 App 自动拉到
+  githubRepo: RongSec/KeepRich
+
+database: {}
+
+jwt:
+  accessSecret: dev-access-secret
+  refreshSecret: dev-refresh-secret
+  accessTTL: 900
+  refreshTTL: 604800
+
+mfa:
+  issuer: FamilyFinance
+  cooldownDays: 7
+
+notify:
+  wsEnabled: true
+  fcmEnabled: false
+  fcmServerKey: ""
+
+plan:
+  emergencyTarget: 1000000
+  pensionTarget: 500000
+  bigPurchaseRatio: 0.5
+  investAnnualRate: 0.05

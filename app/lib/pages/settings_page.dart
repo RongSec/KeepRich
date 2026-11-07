@@ -682,7 +682,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final r = await ApiClient.instance.removeFamilyMember(m.id);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(r.ok ? '已移除' : (r.message.isEmpty ? '失败' : r.message))));
+        content: Text(r.ok ? '已移除' : (r.message.isEmpty ? '失败' : r.message)),
+        duration: const Duration(milliseconds: 1100)));
     _load();
   }
 
@@ -709,7 +710,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content:
-            Text(r.ok ? '家庭已删除' : (r.message.isEmpty ? '失败' : r.message))));
+            Text(r.ok ? '家庭已删除' : (r.message.isEmpty ? '失败' : r.message)),
+            duration: const Duration(milliseconds: 1100)));
     Navigator.pop(context);
   }
 

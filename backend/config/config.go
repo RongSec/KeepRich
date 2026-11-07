@@ -12,6 +12,8 @@ type AppConfig struct {
 	Env      string `mapstructure:"env"`
 	Port     int    `mapstructure:"port"`
 	Timezone string `mapstructure:"timezone"`
+	// GitHub 仓库（owner/repo）：设置后 App 在线更新从 Releases 拉取
+	GitHubRepo string `mapstructure:"githubRepo"`
 }
 
 type DatabaseConfig struct {
@@ -73,7 +75,8 @@ func Load() error {
 	viper.AutomaticEnv()
 
 	// 兼容环境变量直接覆盖常见字段
-	_ = viper.BindEnv("app.port", "APP_PORT")
+	_ = viper.BindEnv("app.port", "APP_PORT", "PORT") // PORT：云托管沙箱注入的监听端口
+	_ = viper.BindEnv("app.githubRepo", "GITHUB_REPO")
 	_ = viper.BindEnv("app.env", "APP_ENV")
 	_ = viper.BindEnv("database.host", "DB_HOST")
 	_ = viper.BindEnv("database.port", "DB_PORT")

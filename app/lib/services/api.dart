@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,10 +16,49 @@ class ApiClient {
   static const _secure = FlutterSecureStorage(
       aOptions: AndroidOptions(encryptedSharedPreferences: true));
 
+  /// ---- token 落地存储 ----
+  ///
+  /// 移动端用系统安全存储；Web 端 flutter_secure_storage 插件不可用
+  /// （read/write 会抛 MissingPluginException，曾把 bootstrap 打断，
+  /// 整个 Web 卡在开屏页进不了登录），改用 SharedPreferences。
+  Future<String?> _readStored(String key) async {
+    if (kIsWeb) {
+      final p = await SharedPreferences.getInstance();
+      return p.getString('tok_$key');
+    }
+    try {
+      return await _secure.read(key: key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeStored(String key, String value) async {
+    if (kIsWeb) {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('tok_$key', value);
+      return;
+    }
+    try {
+      await _secure.write(key: key, value: value);
+    } catch (_) {}
+  }
+
+  Future<void> _deleteStored(String key) async {
+    if (kIsWeb) {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('tok_$key');
+      return;
+    }
+    try {
+      await _secure.delete(key: key);
+    } catch (_) {}
+  }
+
   late Dio _dio;
   String? _accessToken;
   String? _refreshToken;
-  bool _refreshing = false;
+  Future<bool>? _refreshFuture;
 
   /// 服务端地址变更后重建连接（保留 token）
   void rebuild() {
@@ -38,34 +78,56 @@ class ApiClient {
       onRequest: (options, handler) async {
         if (_accessToken != null) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
+          // 云托管网关会用自家 JWT 覆盖 Authorization 头（实测确认），
+          // X-Finance-Token 是实测可透传的自定义头，后端优先从它取
+          options.headers['X-Finance-Token'] = _accessToken!;
+        }
+        // 云托管域名要求每个请求都带 sharecode，否则一律 403
+        final code = AppConfig.shareCode;
+        if (code != null && code.isNotEmpty) {
+          options.queryParameters['sharecode'] = code;
         }
         handler.next(options);
       },
-      onError: (e, handler) async {
-        // 401 → 尝试用 refresh token 换新后重试一次（解决 access 过期后全 App 报错）
-        if (e.response?.statusCode == 401 &&
-            _refreshToken != null &&
-            e.requestOptions.extra['retried'] != true) {
-          try {
-            final refreshed = await _refreshAccessToken();
-            if (refreshed) {
-              e.requestOptions.extra['retried'] = true;
-              e.requestOptions.headers['Authorization'] =
-                  'Bearer $_accessToken';
-              final clone = await dio.fetch(e.requestOptions);
-              return handler.resolve(clone);
-            }
-          } catch (_) {
-            // 刷新失败则走原错误
-          }
-          await clearPersisted();
-          clearTokens();
+      // 401 必须在 onResponse 里处理：BaseOptions 的 validateStatus 接受了 <500，
+      // Dio 会把 401 当成"成功响应"，onError 永远不会触发 —— 之前 refresh
+      // 一次都没发出过，token 过期后整屏只剩 "invalid or expired token"。
+      onResponse: (resp, handler) async {
+        if (resp.statusCode != 401) {
+          handler.next(resp);
+          return;
         }
+        final req = resp.requestOptions;
+        // 并发场景共享同一个刷新 Future，避免 A 刷新时 B 把新 token 清掉
+        if (_refreshToken != null && req.extra['retried'] != true) {
+          final refreshed = await _refreshAccessToken();
+          if (refreshed) {
+            req.extra['retried'] = true;
+            req.headers['Authorization'] = 'Bearer $_accessToken';
+            try {
+              final clone = await dio.fetch(req);
+              handler.resolve(clone);
+              return;
+            } catch (_) {
+              // 重试失败则继续走下面的失效处理
+            }
+          }
+        }
+        // access + refresh 都不可用：清登录态并跳回登录页
+        await clearPersisted();
+        clearTokens();
+        onSessionExpired?.call();
+        handler.next(resp);
+      },
+      onError: (e, handler) async {
         handler.next(e);
       },
     ));
     return dio;
   }
+
+  /// 会话已失效（refresh 也失败）回调：由 AuthState 注册，用来跳回登录页
+  static void Function()? onSessionExpired;
 
   void setTokens({String? access, String? refresh}) {
     if (access != null) _accessToken = access;
@@ -82,16 +144,27 @@ class ApiClient {
   /// 当前 access token（WS 握手等场景用）
   String? get accessToken => _accessToken;
 
-  /// 用 refresh token 换取新 access token
-  Future<bool> _refreshAccessToken() async {
-    if (_refreshing) return false;
-    _refreshing = true;
+  /// 用 refresh token 换取新 access token。
+  /// 并发调用共享同一个 Future，刷新过程中进来的请求会等它，而不是各自判定失败。
+  Future<bool> _refreshAccessToken() {
+    return _refreshFuture ??= _doRefresh().whenComplete(() {
+      _refreshFuture = null;
+    });
+  }
+
+  Future<bool> _doRefresh() async {
     try {
+      final sc = AppConfig.shareCode;
       final r = await Dio(BaseOptions(
         baseUrl: AppConfig.apiBaseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
-      )).post('/auth/refresh', data: {'refreshToken': _refreshToken});
+      )).post(
+        '/auth/refresh',
+        queryParameters:
+            (sc == null || sc.isEmpty) ? null : {'sharecode': sc},
+        data: {'refreshToken': _refreshToken},
+      );
       final data = r.data as Map<String, dynamic>?;
       if (data != null && data['code'] == 0 && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
@@ -102,14 +175,12 @@ class ApiClient {
       return false;
     } catch (_) {
       return false;
-    } finally {
-      _refreshing = false;
     }
   }
 
   Future<void> loadTokens() async {
-    _accessToken = await _secure.read(key: 'access_token');
-    _refreshToken = await _secure.read(key: 'refresh_token');
+    _accessToken = await _readStored('access_token');
+    _refreshToken = await _readStored('refresh_token');
     // 迁移：旧版本 token 存 SharedPreferences 的搬进安全存储
     final p = await SharedPreferences.getInstance();
     final legacyAccess = p.getString('access_token');
@@ -124,15 +195,17 @@ class ApiClient {
   }
 
   Future<void> persistTokens() async {
-    if (_accessToken != null)
-      await _secure.write(key: 'access_token', value: _accessToken!);
-    if (_refreshToken != null)
-      await _secure.write(key: 'refresh_token', value: _refreshToken!);
+    if (_accessToken != null) {
+      await _writeStored('access_token', _accessToken!);
+    }
+    if (_refreshToken != null) {
+      await _writeStored('refresh_token', _refreshToken!);
+    }
   }
 
   Future<void> clearPersisted() async {
-    await _secure.delete(key: 'access_token');
-    await _secure.delete(key: 'refresh_token');
+    await _deleteStored('access_token');
+    await _deleteStored('refresh_token');
   }
 
   Future<ApiResponse<LoginResult>> login(String username, String password,
@@ -163,11 +236,13 @@ class ApiClient {
     required String platform,
     required String current,
     String? did,
+    String? abi,
   }) async {
     final r = await _dio.get('/app/version', queryParameters: {
       'platform': platform,
       'current': current,
       if (did != null) 'did': did,
+      if (abi != null && abi.isNotEmpty) 'abi': abi,
     });
     return ApiResponse.fromJson(
         r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);

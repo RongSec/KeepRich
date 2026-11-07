@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../services/api.dart';
 import '../theme.dart';
+import '../pages/qr_scan.dart';
 
 /// 服务端地址设置弹窗
 ///
@@ -71,6 +73,17 @@ class _ServerAddressDialogState extends State<_ServerAddressDialog> {
     });
   }
 
+  /// 扫码填入：Web 登录页会展示服务端地址二维码，扫完自动填并探测
+  Future<void> _scan() async {
+    final value = await scanServerQr(context);
+    if (value == null || value.isEmpty || !mounted) return;
+    setState(() {
+      _ctrl.text = value;
+      _result = null;
+    });
+    await _test();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -84,10 +97,18 @@ class _ServerAddressDialogState extends State<_ServerAddressDialog> {
               controller: _ctrl,
               autocorrect: false,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'API 地址',
                 hintText: 'http://192.168.1.8:28080',
-                prefixIcon: Icon(Icons.dns_outlined),
+                prefixIcon: const Icon(Icons.dns_outlined),
+                // 手机上支持扫 Web 端的服务端二维码
+                suffixIcon: kIsWeb
+                    ? null
+                    : IconButton(
+                        tooltip: '扫码',
+                        icon: const Icon(Icons.qr_code_scanner),
+                        onPressed: _scan,
+                      ),
               ),
             ),
             const SizedBox(height: 12),

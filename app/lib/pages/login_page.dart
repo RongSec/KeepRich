@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../config.dart';
 import '../services/auth.dart';
@@ -190,15 +192,8 @@ class _LoginPageState extends State<LoginPage>
                           children: [
                             Center(child: _Logo(anim: _anim)),
                             const SizedBox(height: 20),
-                            _GoldTitle('噜噜和噜妹的小金库'),
-                            const SizedBox(height: 6),
-                            const Text(
-                              '让每一枚金币都看得见',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 13, color: AppTheme.textDim),
-                            ),
-                            const SizedBox(height: 26),
+                            _GoldTitle('让资产永续 · 让财富永存'),
+                            const SizedBox(height: 22),
                             TextField(
                               controller: _user,
                               autocorrect: false,
@@ -350,6 +345,11 @@ class _LoginPageState extends State<LoginPage>
                   const SizedBox(height: 14),
                   // 服务端地址（本地联调时点这里切换）
                   _ServerChip(),
+                  // Web 端展示服务端二维码：手机 App 扫码即可自动填入地址
+                  if (kIsWeb) ...[
+                    const SizedBox(height: 16),
+                    const _ServerQrCard(),
+                  ],
                 ],
               ),
             ),
@@ -380,9 +380,9 @@ class _GoldTitle extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          fontSize: 21,
+          fontSize: 19,
           fontWeight: FontWeight.w800,
-          letterSpacing: 1.2,
+          letterSpacing: 1.0,
         ),
       ),
     );
@@ -481,6 +481,45 @@ class _ServerChip extends StatelessWidget {
             const Icon(Icons.edit_outlined, size: 12, color: AppTheme.textDim),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Web 端专属：把当前服务端地址（含分享码）画成二维码，
+/// 手机 App 在「服务端地址 → 扫码」里扫一下即可自动填入。
+class _ServerQrCard extends StatelessWidget {
+  const _ServerQrCard();
+
+  @override
+  Widget build(BuildContext context) {
+    // 完整 URL（含 ?sharecode=），去掉路由 hash 让二维码内容干净：
+    // App 扫码后会截断 query 取地址、单独提取 sharecode
+    var data = Uri.base.toString();
+    final hashIdx = data.indexOf('#');
+    if (hashIdx >= 0) data = data.substring(0, hashIdx);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          QrImageView(
+            data: data,
+            size: 132,
+            backgroundColor: Colors.white,
+            eyeStyle: const QrEyeStyle(color: Color(0xFF1A1A1A)),
+            dataModuleStyle: const QrDataModuleStyle(color: Color(0xFF1A1A1A)),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '手机 App 扫码连接此服务',
+            style: TextStyle(fontSize: 12, color: Color(0xFF5A4A22)),
+          ),
+        ],
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/api.dart';
+import '../../utils/dialog_dispose.dart';
 import '../../services/auth.dart';
 
 /// 解析后端时间字段：兼容 Unix 秒(num) 与 ISO8601 字符串（time.Time 序列化）
@@ -135,15 +136,15 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       ),
     );
     if (ok != true) {
-      pwd.dispose();
+      disposeDialogController(pwd);
       return;
     }
     if (!mounted) {
-      pwd.dispose();
+      disposeDialogController(pwd);
       return;
     }
     final newPwd = pwd.text;
-    pwd.dispose();
+    disposeDialogController(pwd);
     if (newPwd.length < 8) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('密码至少 8 位')));
@@ -307,7 +308,10 @@ class _AdminFamiliesPageState extends State<AdminFamiliesPage> {
     final r = await ApiClient.instance.adminDeleteFamily(f['id'] as int);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
+        .showSnackBar(SnackBar(
+        content: Text(r.ok ? '已删除' : r.message),
+        duration: const Duration(milliseconds: 1100),
+      ));
     _load();
   }
 
@@ -384,7 +388,10 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
     final r = await ApiClient.instance.adminDeleteError(id);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(r.ok ? '已删除' : r.message)));
+        .showSnackBar(SnackBar(
+        content: Text(r.ok ? '已删除' : r.message),
+        duration: const Duration(milliseconds: 1100),
+      ));
     _load();
   }
 
@@ -408,7 +415,10 @@ class _AdminErrorsPageState extends State<AdminErrorsPage> {
     final r = await ApiClient.instance.adminClearErrors();
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(r.ok ? '已清空' : r.message)));
+        .showSnackBar(SnackBar(
+        content: Text(r.ok ? '已清空' : r.message),
+        duration: const Duration(milliseconds: 1100),
+      ));
     _load();
   }
 
