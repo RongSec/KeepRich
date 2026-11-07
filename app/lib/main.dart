@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -23,9 +25,22 @@ import 'widgets/gold_sand.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 先读本地保存的服务端地址，再建连接（否则会先连到默认地址）
-  await AppConfig.init();
-  runApp(const AppRoot());
+  // 全局错误兜底：框架异常与未捕获异步错误（如托管网关不支持 WebSocket 时
+  // 浏览器抛的 onerror）记录即止，绝不让它们打断 UI 或冒成页面级错误
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+  };
+  runZonedGuarded(() async {
+    // 先读本地保存的服务端地址，再建连接（否则会先连到默认地址）
+    await AppConfig.init();
+    runApp(const AppRoot());
+  }, (e, s) {
+    assert(() {
+      // ignore: avoid_print
+      print('[uncaught] $e');
+      return true;
+    }());
+  });
 }
 
 class AppRoot extends StatefulWidget {

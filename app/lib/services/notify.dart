@@ -68,6 +68,10 @@ class NotifyService extends ChangeNotifier {
         },
       );
       _channel = WebSocketChannel.connect(wsUrl);
+      // 连接建立失败走 ready Future：不 catch 会变成未捕获异步异常（浏览器 pageerror）
+      unawaited(_channel!.ready.then((_) {}, onError: (Object e) {
+        debugPrint('[notify] ws ready failed: $e');
+      }));
 
       _sub = _channel!.stream.listen(
         _onMessage,
@@ -93,6 +97,7 @@ class NotifyService extends ChangeNotifier {
     _channel?.sink.close();
     _channel = null;
     _connected = false;
+    _failCount = 0;
     notifyListeners();
   }
 
@@ -160,8 +165,14 @@ class NotifyService extends ChangeNotifier {
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
-    // 指数退避：5s → 10s → 20s → 40s → 上限 60s，避免无效 token 时 5 秒死循环重连
+    // 指数退避：5s → 10s → 20s → 40s → 上限 60s；连续失败 5 次后放弃——
+    // 部分托管网关不支持 WebSocket 升级，无限重连只会反复报错，通知改为
+    // 轮询 /api/notifications 兜底（loadUnreadCount 在各页面已有调用）。
     _failCount = (_failCount + 1).clamp(0, 5);
+    if (_failCount >= 5) {
+      debugPrint('[notify] give up reconnect after $_failCount failures');
+      return;
+    }
     final delay = Duration(seconds: (5 * (1 << (_failCount - 1))).clamp(5, 60));
     _reconnectTimer = Timer(delay, () {
       if (!_connected && ApiClient.instance.hasToken) {
