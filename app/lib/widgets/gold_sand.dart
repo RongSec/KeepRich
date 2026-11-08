@@ -72,6 +72,10 @@ class _GoldSandBackgroundState extends State<GoldSandBackground>
       ).listen(
         (e) {
           _sensorAlive = true;
+          // 传感器真实可用：关闭自动摆动，把沙面交还给陀螺仪驱动。
+          // （此前 autoSway 一旦开启就永不恢复，倾斜手机沙面也不动、
+          //   且静止时一直摆 —— 用户实测的两个症状同一根因）
+          if (_physics.autoSway) _physics.autoSway = false;
           _physics.onAccelerometer(e.x, e.y, e.z);
         },
         onError: (Object _) => _physics.autoSway = true,

@@ -29,6 +29,7 @@ class _LoginPageState extends State<LoginPage>
   bool _busy = false;
   bool _showPwd = false;
   String? _err;
+  int _loginFails = 0; // 连续失败次数：≥3 时显示 MFA 验证码输入框
   late AnimationController _anim;
 
   @override
@@ -68,12 +69,15 @@ class _LoginPageState extends State<LoginPage>
         // 登录成功，保存凭据供生物识别使用
         final biometric = context.read<BiometricService>();
         await biometric.updateCredentials(_user.text.trim(), _pwd.text);
+        _loginFails = 0;
         context.go('/overview');
         return;
       }
       setState(() {
-        _err = '登录失败，请检查账号、密码或 MFA';
+        _err = context.read<AuthState>().lastLoginError ??
+            '登录失败，请检查账号、密码或 MFA';
         _busy = false;
+        _loginFails++;
       });
     } on TimeoutException {
       // 超时后不再等待迟到的登录结果，避免状态被覆盖（竞态）
@@ -87,6 +91,7 @@ class _LoginPageState extends State<LoginPage>
       setState(() {
         _err = friendlyLoginError(e);
         _busy = false;
+        _loginFails++;
       });
     }
   }
@@ -192,7 +197,7 @@ class _LoginPageState extends State<LoginPage>
                           children: [
                             Center(child: _Logo(anim: _anim)),
                             const SizedBox(height: 20),
-                            _GoldTitle('让资产永续 · 让财富永存'),
+                            _GoldTitle('让财务透明，资产永存'),
                             const SizedBox(height: 22),
                             TextField(
                               controller: _user,
@@ -222,13 +227,15 @@ class _LoginPageState extends State<LoginPage>
                               ),
                             ),
                             const SizedBox(height: 12),
-                            TextField(
-                              controller: _mfa,
-                              decoration: const InputDecoration(
-                                labelText: 'MFA 验证码（可选）',
-                                prefixIcon: Icon(Icons.shield_outlined),
+                            // MFA 验证码：默认不出现，连续登录失败 3 次后才要求
+                            if (_loginFails >= 3)
+                              TextField(
+                                controller: _mfa,
+                                decoration: const InputDecoration(
+                                  labelText: 'MFA 验证码',
+                                  prefixIcon: Icon(Icons.shield_outlined),
+                                ),
                               ),
-                            ),
                             if (_err != null) ...[
                               const SizedBox(height: 12),
                               Container(
@@ -426,19 +433,16 @@ class _Logo extends StatelessWidget {
           child: Container(
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: Color(0xFF14141C),
+              // 金色底：图标圆形裁剪后贴满，方形位图不再露出深色圆底"黑边"
+              color: Color(0xFFFFC65C),
             ),
-            padding: const EdgeInsets.all(10),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                const Icon(Icons.savings_rounded, color: AppTheme.goldDeep),
-                Image.asset(
-                  'assets/images/icon.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
-                ),
-              ],
+            padding: const EdgeInsets.all(8),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/icon.png',
+                fit: BoxFit.cover,
+                errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
+              ),
             ),
           ),
         );

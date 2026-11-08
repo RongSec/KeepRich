@@ -90,7 +90,9 @@ class UpdaterService {
         return direct;
       }
       final info = AppUpdateInfo.fromJson(data);
-      return info.updateAvailable ? info : null;
+      // 本地防线：最新版本与当前版本相同（或后端误判）时绝不弹窗
+      if (!info.updateAvailable || info.version == pkg.version) return null;
+      return info;
     } catch (e) {
       debugPrint('[updater] check failed: $e');
       return null;

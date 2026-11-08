@@ -734,10 +734,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             padding: const EdgeInsets.all(12),
                             child: Row(children: [
                               const Icon(Icons.admin_panel_settings,
-                                  color: Colors.amber),
+                                  color: Color(0xFFB8860B)),
                               const SizedBox(width: 8),
                               const Expanded(
-                                  child: Text('你是家庭管理员，可管理成员角色与执行冷静期到期后的家庭删除')),
+                                  child: Text('你是家庭管理员，可管理成员角色与执行冷静期到期后的家庭删除',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: Color(0xFF6B4A00)))),
                               FilledButton.tonal(
                                 onPressed: _forceDeleteFamily,
                                 child: const Text('执行删除'),

@@ -980,6 +980,11 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   /// 表单内联错误提示（余额不足、未选贷款等）
   String? _formError;
   String? _loanRef;
+  _LoanOption? _loanOption;
+  // 偿还贷款三字段：总金额 / 本金 / 利息（可修改，选贷款后按方式自动拆分）
+  final _repayTotal = TextEditingController();
+  final _repayPrincipal = TextEditingController();
+  final _repayInterest = TextEditingController();
   String? _targetBucket; // 收入目标桶
   // 多来源支持：key=来源桶名, value=金额控制器
   final Map<String, TextEditingController> _sourceControllers = {};
@@ -1065,6 +1070,9 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   void dispose() {
     _amount.dispose();
     _note.dispose();
+    _repayTotal.dispose();
+    _repayPrincipal.dispose();
+    _repayInterest.dispose();
     for (final c in _sourceControllers.values) {
       c.dispose();
     }
@@ -1210,16 +1218,59 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       _loadingLoans = false;
       if (r.ok && r.data != null) {
         _futureData = r.data!;
+        // 编辑已有还贷账单：匹配贷款并按方式自动拆分本金/利息
+        if (_loanRef != null && _loanOption == null) {
+          _loanOption = _buildLoanOptions().where((e) => e.ref == _loanRef).firstOrNull;
+          _applyLoanSplit(initialTotal: widget.existing?.amount);
+        }
       }
     });
+  }
+
+  /// 按贷款方式自动拆分本期还款的本金 / 利息。
+  /// 输入本金（如年底冲本）后用户可手动修改任意一项。
+  void _applyLoanSplit({double? initialTotal}) {
+    final o = _loanOption;
+    if (o == null) return;
+    final r = o.annualRate / 100 / 12; // 月利率
+    final remain = o.summary.remainingAmount; // 剩余本金
+    final m = o.summary.monthlyPayment; // 本期月供
+    double principal, interest;
+    switch (o.method) {
+      case 'equal_payment': // 等额本息：利息 = 剩余本金 × 月利率
+        interest = remain * r;
+        principal = (m > 0 ? m : remain) - interest;
+      case 'equal_capital': // 等额本金：每期固定本金 + 剩余本金利息
+        interest = remain * r;
+        principal = o.termMonths > 0 ? o.totalPrincipal / o.termMonths : remain;
+      case 'interest_free': // 先息后本/无息：只还本金
+        interest = 0;
+        principal = m > 0 ? m : remain;
+      default:
+        interest = 0;
+        principal = m > 0 ? m : remain;
+    }
+    if (principal < 0) principal = 0;
+    if (m <= 0) {
+      principal = remain;
+      interest = 0;
+    }
+    _repayPrincipal.text = principal.toStringAsFixed(2);
+    _repayInterest.text = interest.toStringAsFixed(2);
+    _repayTotal.text =
+        (initialTotal ?? (principal + interest)).toStringAsFixed(2);
   }
 
   Future<void> _submit() async {
     // 多来源支出时，金额由各来源自动求和
     final isMultiSource =
         _type == TxType.expense && _selectedSources.length > 1;
-    final v =
-        isMultiSource ? _computeSourceTotal() : double.tryParse(_amount.text);
+    // 偿还贷款：金额 = 总金额（本金 + 利息）
+    final v = _category == TxCategory.expenseLoanRepay
+        ? double.tryParse(_repayTotal.text)
+        : isMultiSource
+            ? _computeSourceTotal()
+            : double.tryParse(_amount.text);
     if (v == null || v <= 0) {
       _showTopSnack('请输入有效金额');
       return;
@@ -1550,8 +1601,78 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             ),
           ],
           const SizedBox(height: 12),
+          // 偿还贷款：三字段（总金额/本金/利息），按贷款方式自动拆分后可修改
+          if (_category == TxCategory.expenseLoanRepay) ...[
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _repayTotal,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                  ],
+                  onChanged: (_) {
+                    // 改总金额：保持利息不变，本金 = 总金额 − 利息
+                    final t = double.tryParse(_repayTotal.text) ?? 0;
+                    final i = double.tryParse(_repayInterest.text) ?? 0;
+                    final p = (t - i) > 0 ? t - i : 0;
+                    _repayPrincipal.text = p.toStringAsFixed(2);
+                  },
+                  decoration: const InputDecoration(
+                    labelText: '总金额',
+                    prefixText: '¥ ',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _repayPrincipal,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                  ],
+                  onChanged: (_) {
+                    // 改本金：总金额 = 本金 + 利息
+                    final p = double.tryParse(_repayPrincipal.text) ?? 0;
+                    final i = double.tryParse(_repayInterest.text) ?? 0;
+                    _repayTotal.text = (p + i).toStringAsFixed(2);
+                  },
+                  decoration: const InputDecoration(
+                    labelText: '本金',
+                    prefixText: '¥ ',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _repayInterest,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                  ],
+                  onChanged: (_) {
+                    // 改利息：总金额 = 本金 + 利息
+                    final p = double.tryParse(_repayPrincipal.text) ?? 0;
+                    final i = double.tryParse(_repayInterest.text) ?? 0;
+                    _repayTotal.text = (p + i).toStringAsFixed(2);
+                  },
+                  decoration: const InputDecoration(
+                    labelText: '利息',
+                    prefixText: '¥ ',
+                  ),
+                ),
+              ),
+            ],
+            ),
+          ]
           // 多来源支出时金额由各来源自动求和，不显示手动输入
-          if (!(_type == TxType.expense && _selectedSources.length > 1))
+          else if (!(_type == TxType.expense && _selectedSources.length > 1) &&
+              _category != TxCategory.expenseLoanRepay)
             TextField(
               controller: _amount,
               keyboardType:
@@ -1620,26 +1741,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
 
   Widget _buildLoanPicker() {
     final data = _futureData!;
-    final items = <_LoanOption>[
-      ...data.housingFundLoans.map((l) => _LoanOption(
-            ref: 'hf:${l.id}',
-            label: '公积金：${l.name}',
-            sub:
-                '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
-          )),
-      ...data.commercialLoans.map((l) => _LoanOption(
-            ref: 'cl:${l.id}',
-            label: '商业：${l.name}',
-            sub:
-                '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
-          )),
-      ...data.borrowedMoneys.map((l) => _LoanOption(
-            ref: 'bm:${l.id}',
-            label: '借款：${l.name}',
-            sub:
-                '本金 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
-          )),
-    ];
+    final items = _buildLoanOptions();
     if (items.isEmpty) return const Text('暂无可偿还贷款，请先在【未来财务】中添加');
     return SizedBox(
       height: 180,
@@ -1653,11 +1755,56 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             title: Text(it.label),
             subtitle: Text(it.sub),
             dense: true,
-            onChanged: (v) => setState(() => _loanRef = v),
+            onChanged: (v) => setState(() {
+              _loanRef = v;
+              _loanOption = items.where((e) => e.ref == v).firstOrNull;
+              // 选定贷款后按还款方式自动拆分本期本金/利息（均可手动修改）
+              _applyLoanSplit();
+            }),
           );
         },
       ),
     );
+  }
+
+  List<_LoanOption> _buildLoanOptions() {
+    final data = _futureData!;
+    if (data == null) return [];
+    return <_LoanOption>[
+      ...data.housingFundLoans.map((l) => _LoanOption(
+            ref: 'hf:${l.id}',
+            label: '公积金：${l.name}',
+            sub:
+                '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
+            annualRate: l.annualRate,
+            method: l.method,
+            termMonths: l.termMonths,
+            totalPrincipal: l.total,
+            summary: l.summary,
+          )),
+      ...data.commercialLoans.map((l) => _LoanOption(
+            ref: 'cl:${l.id}',
+            label: '商业：${l.name}',
+            sub:
+                '总额 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
+            annualRate: l.annualRate,
+            method: l.method,
+            termMonths: l.termMonths,
+            totalPrincipal: l.total,
+            summary: l.summary,
+          )),
+      ...data.borrowedMoneys.map((l) => _LoanOption(
+            ref: 'bm:${l.id}',
+            label: '借款：${l.name}',
+            sub:
+                '本金 ¥${l.total.toStringAsFixed(0)} / 剩余 ¥${l.summary.remainingAmount.toStringAsFixed(0)}',
+            annualRate: l.annualRate,
+            method: l.method,
+            termMonths: l.termMonths,
+            totalPrincipal: l.total,
+            summary: l.summary,
+          )),
+    ];
   }
 }
 
@@ -1665,5 +1812,19 @@ class _LoanOption {
   final String ref;
   final String label;
   final String sub;
-  _LoanOption({required this.ref, required this.label, required this.sub});
+  final double annualRate;
+  final String method;
+  final int termMonths;
+  final double totalPrincipal;
+  final LoanSummary summary;
+  _LoanOption({
+    required this.ref,
+    required this.label,
+    required this.sub,
+    this.annualRate = 0,
+    this.method = 'equal_payment',
+    this.termMonths = 0,
+    this.totalPrincipal = 0,
+    required this.summary,
+  });
 }

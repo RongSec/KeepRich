@@ -37,6 +37,9 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 最后一次登录失败的服务器 message（限流/MFA 必填等），供登录页展示
+  String? lastLoginError;
+
   Future<bool> login(String username, String password,
       {String? mfaCode}) async {
     final r =
@@ -52,9 +55,11 @@ class AuthState extends ChangeNotifier {
         return false;
       }
       _user = me.data;
+      lastLoginError = null;
       notifyListeners();
       return true;
     }
+    lastLoginError = r.message;
     return false;
   }
 

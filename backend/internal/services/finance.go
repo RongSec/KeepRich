@@ -70,7 +70,12 @@ type OverviewData struct {
 	MonthlyConsumable  float64 `json:"monthlyConsumable"`  // 本月可消费（累加机制后）
 	MonthConsumableLeft float64 `json:"monthConsumableLeft"` // 本月剩余可消费（= MonthlyConsumable - DailySpent）
 	SavingCarryOver    float64 `json:"savingCarryOver"`    // 上月剩余沉淀到储蓄的金额
-	RemainingBudget    float64 `json:"remainingBudget"`    // 当月可支配 - 已记账支出
+	RemainingBudget    float64 `json:"remainingBudget"`    // 剩余待支配 = 现金池余额（工资+意外收入+投资收益+过往存款 − 转入桶 − 现金支出）
+
+	// 现金池（待支配）构成明细，供"剩余待支配"弹窗展示
+	CashPoolIncome  float64 `json:"cashPoolIncome"`  // 累计进入待支配的收入（工资+意外+投资收益+过往存款）
+	CashPoolTransfer float64 `json:"cashPoolTransfer"` // 累计分配进桶（转账）
+	CashPoolExpense float64 `json:"cashPoolExpense"`  // 累计现金来源支出
 
 	// 未来财富（不含债务，仅未来利益折现）— 用于 2x2 卡片阵列
 	FutureWealth float64 `json:"futureWealth"`
@@ -292,9 +297,11 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	// 大件前 5 + 预估月数
 	top, _ := s.topPurchaseProjections(scope, uid, familyID, totalCash, plan)
 
-	// 剩余待支配：收入的公积金之外的现金部分 − 本月已记账支出。
-	// 允许为负，透支时如实显示
-	remaining := monthlyIncome - monthExpense
+	// 剩余待支配 = 现金池余额（totalCash）。
+	// 口径（文档口径对齐）：工资、意外收入、投资收益、过往存款进入待支配（现金池）；
+	// 分配进桶（transfer）后即从待支配扣除；花桶的钱只扣桶余额，不再扣减待支配；
+	// 只有直接花现金的钱才扣减待支配；公积金有独立账户，不进入待支配。
+	remaining := totalCash
 
 	// 家庭总财富：现金池 + 投资桶 + 公积金 + 未来利益折现 - 待还款
 	// 现金池 = 累计收入 - 累计日常消费（其余 4 桶已转入对应桶余额，不扣减现金）
@@ -400,6 +407,9 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 		MonthConsumableLeft: monthConsumableLeft,
 		SavingCarryOver:     0,
 		RemainingBudget:     remaining,
+		CashPoolIncome:      utils.Round2(incomeSum - nonSalaryIncome),
+		CashPoolTransfer:    utils.Round2(totalTransfer),
+		CashPoolExpense:     utils.Round2(cumulativeExpense),
 		FutureWealth:        wealthProduct, // 未来财富（仅未来利益折现，不含债务）
 		Allocation:          alloc,
 		TopPurchases:        top,

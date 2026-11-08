@@ -195,6 +195,11 @@ class OverviewData {
   final double savingCarryOver;
   final double remainingBudget;
 
+  // 现金池（待支配）构成明细
+  final double cashPoolIncome; // 累计进入待支配的收入（工资+意外+投资收益+过往存款）
+  final double cashPoolTransfer; // 累计分配进桶
+  final double cashPoolExpense; // 累计现金来源支出
+
   // 未来财富（不含债务，仅未来利益折现）— 用于 2x2 卡片阵列
   final double futureWealth;
 
@@ -214,6 +219,9 @@ class OverviewData {
 
   OverviewData({
     required this.totalCash,
+    required this.cashPoolIncome,
+    required this.cashPoolTransfer,
+    required this.cashPoolExpense,
     required this.totalHousingFund,
     required this.totalWealthProduct,
     required this.savingBalance,
@@ -268,6 +276,9 @@ class OverviewData {
             (json['monthConsumableLeft'] as num? ?? 0).toDouble(),
         savingCarryOver: (json['savingCarryOver'] as num? ?? 0).toDouble(),
         remainingBudget: (json['remainingBudget'] as num? ?? 0).toDouble(),
+        cashPoolIncome: (json['cashPoolIncome'] as num? ?? 0).toDouble(),
+        cashPoolTransfer: (json['cashPoolTransfer'] as num? ?? 0).toDouble(),
+        cashPoolExpense: (json['cashPoolExpense'] as num? ?? 0).toDouble(),
         futureWealth: (json['futureWealth'] as num? ?? 0).toDouble(),
         allocation: Allocation.fromJson(
             json['allocation'] as Map<String, dynamic>? ?? {}),

@@ -144,7 +144,8 @@ class _OverviewPageState extends State<OverviewPage> {
         bg: Colors.green.withValues(alpha: 0.14),
         top: (title: '剩余可消费', value: ov.monthConsumableLeft),
         bottom: (title: '剩余待支配', value: ov.remainingBudget),
-        onTap: () => _showConsumptionDetail(context),
+        onTopTap: () => _showConsumptionDetail(context),
+        onBottomTap: () => _showDisposableDetail(context),
       ),
       _miniCard(
         theme: theme,
@@ -175,7 +176,7 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  /// 上下两行的卡片：上=剩余可消费，下=剩余待支配（收入的公积金之外的现金部分）
+  /// 上下两行的卡片：上=剩余可消费（月度配额口径），下=剩余待支配（现金池口径）
   Widget _splitCard({
     required ThemeData theme,
     required IconData icon,
@@ -183,10 +184,11 @@ class _OverviewPageState extends State<OverviewPage> {
     required Color bg,
     required ({String title, double value}) top,
     required ({String title, double value}) bottom,
-    required VoidCallback onTap,
+    required VoidCallback onTopTap,
+    required VoidCallback onBottomTap,
   }) {
     final f = NumberFormat('#,##0.00');
-    Widget row(({String title, double value}) item) => InkWell(
+    Widget row(({String title, double value}) item, VoidCallback onTap) => InkWell(
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
@@ -212,7 +214,7 @@ class _OverviewPageState extends State<OverviewPage> {
       color: Color.alphaBlend(bg, AppTheme.glass),
       elevation: 0,
       child: InkWell(
-        onTap: onTap,
+        onTap: onTopTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -234,9 +236,9 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
               ]),
               const SizedBox(height: 6),
-              row(top),
+              row(top, onTopTap),
               Divider(height: 6, thickness: 0.6, color: Colors.white.withValues(alpha: 0.10)),
-              row(bottom),
+              row(bottom, onBottomTap),
             ],
           ),
         ),
@@ -899,6 +901,82 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
+  /// "剩余待支配"弹窗：现金池口径明细
+  ///
+  /// 待支配 = 工资 + 意外收入 + 投资收益 + 过往存款（进现金池）
+  ///        − 分配进桶（转账）− 现金来源的支出
+  /// 花桶的钱只扣桶余额，不影响待支配；公积金有独立账户，不参与。
+  Future<void> _showDisposableDetail(BuildContext context) async {
+    if (_ov == null) return;
+    final ov = _ov!;
+    final f = NumberFormat('#,##0.00');
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.account_balance_wallet_outlined,
+              color: Colors.green.shade400),
+          const SizedBox(width: 8),
+          const Text('剩余待支配明细'),
+        ]),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('进入待支配的收入（累计）',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: AppTheme.textDim)),
+              _detailRow('  工资 + 意外收入 + 投资收益 + 过往存款',
+                  f.format(ov.cashPoolIncome), Colors.green),
+              const Divider(),
+              Text('已分配与已支出（累计）',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: AppTheme.textDim)),
+              _detailRow('  分配进桶（储蓄/投资/应急/养老）',
+                  f.format(ov.cashPoolTransfer), Colors.orange),
+              _detailRow('  现金来源的支出',
+                  f.format(ov.cashPoolExpense), Colors.red),
+              const Divider(),
+              _detailRow('剩余待支配（现金池余额）', f.format(ov.remainingBudget),
+                  ov.remainingBudget >= 0 ? Colors.green : Colors.red),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(children: [
+                  Icon(Icons.info_outline,
+                      size: 14, color: Colors.green.shade700),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      '分配进桶后的钱属于桶；花桶里的钱不会再扣减待支配。公积金有独立账户，不计入待支配。',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF2E7D32)),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                context.push('/plan');
+              },
+              child: const Text('去分配')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showWealthDetail(BuildContext context) async {
     if (_ov == null) return;
     final ov = _ov!;
@@ -921,7 +999,7 @@ class _OverviewPageState extends State<OverviewPage> {
               Text('资产构成',
                   style: TextStyle(
                       fontWeight: FontWeight.w600, color: AppTheme.textDim)),
-              _detailRow('  可支配额度', f.format(ov.remainingBudget), Colors.green),
+              _detailRow('  待支配额度（现金池）', f.format(ov.remainingBudget), Colors.green),
               _detailRow('  公积金', f.format(ov.totalHousingFund), Colors.blue),
               _detailRow('  储蓄桶', f.format(ov.savingBalance), Colors.orange),
               _detailRow(
@@ -945,7 +1023,7 @@ class _OverviewPageState extends State<OverviewPage> {
                   const SizedBox(width: 6),
                   Expanded(
                       child: Text(
-                    '总财富 = 可支配额度 + 公积金 + 储蓄桶 + 投资桶 + 应急桶 + 养老桶 − 待还款',
+                    '总财富 = 待支配额度 + 公积金 + 储蓄桶 + 投资桶 + 应急桶 + 养老桶 − 待还款',
                     style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
                   )),
                 ]),
