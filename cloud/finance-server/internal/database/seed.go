@@ -10,10 +10,14 @@ import (
 )
 
 // SeedAdmin 启动时检查并创建默认管理员账号
-// 账号信息从环境变量读取；不存在则跳过。
+// 账号信息从环境变量读取；未设置时回退默认 admin/admin123456
+// （全新空库部署的初始化入口，部署后请立即在「账号安全」里改密码）。
 func SeedAdmin(username, password string) error {
-	if username == "" || password == "" {
-		return nil
+	if username == "" {
+		username = "admin"
+	}
+	if password == "" {
+		password = "admin123456"
 	}
 	var u models.User
 	err := DB.Where("username = ?", username).First(&u).Error

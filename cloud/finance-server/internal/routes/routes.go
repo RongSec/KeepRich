@@ -129,6 +129,10 @@ func Register(r *gin.Engine) {
 			admin.POST("/app-versions", handlers.AdminCreateAppVersion)
 			admin.PUT("/app-versions/:id", handlers.AdminUpdateAppVersion)
 			admin.DELETE("/app-versions/:id", handlers.AdminDeleteAppVersion)
+
+			// 数据备份：沙箱临时库重置保险（发布前导出 / 发布后导入）
+			admin.GET("/backup", handlers.AdminExportBackup)
+			admin.POST("/backup/restore", handlers.AdminRestoreBackup)
 		}
 	}
 }
