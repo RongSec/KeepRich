@@ -1740,7 +1740,6 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   }
 
   Widget _buildLoanPicker() {
-    final data = _futureData!;
     final items = _buildLoanOptions();
     if (items.isEmpty) return const Text('暂无可偿还贷款，请先在【未来财务】中添加');
     return SizedBox(
@@ -1768,7 +1767,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   }
 
   List<_LoanOption> _buildLoanOptions() {
-    final data = _futureData!;
+    final data = _futureData;
     if (data == null) return [];
     return <_LoanOption>[
       ...data.housingFundLoans.map((l) => _LoanOption(
