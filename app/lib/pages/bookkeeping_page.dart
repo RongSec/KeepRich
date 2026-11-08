@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../services/api.dart';
 import '../theme.dart';
+import '../services/data_bus.dart';
 
 class BookkeepingPage extends StatefulWidget {
   const BookkeepingPage({super.key});
@@ -15,6 +16,16 @@ class BookkeepingPage extends StatefulWidget {
 }
 
 class _BookkeepingPageState extends State<BookkeepingPage> {
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   List<TxRecord> _list = [];
   bool _loading = true;
   String _scope = 'personal';
@@ -65,6 +76,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
     _loadMembers();
   }

@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/api.dart';
 import 'loan_calculator_page.dart';
 import '../theme.dart';
+import '../services/data_bus.dart';
 
 class FutureFinancePage extends StatefulWidget {
   const FutureFinancePage({super.key});
@@ -15,6 +16,16 @@ class FutureFinancePage extends StatefulWidget {
 }
 
 class _FutureFinancePageState extends State<FutureFinancePage> {
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   bool _loading = true;
   String _scope = 'personal';
   FutureFinanceData? _data;
@@ -24,6 +35,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
   }
 

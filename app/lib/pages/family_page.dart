@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../utils/dialog_dispose.dart';
 import '../theme.dart';
+import '../services/data_bus.dart';
 
 class FamilyManagePage extends StatefulWidget {
   const FamilyManagePage({super.key});
@@ -11,6 +12,16 @@ class FamilyManagePage extends StatefulWidget {
 }
 
 class _FamilyManagePageState extends State<FamilyManagePage> {
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   Map<String, dynamic>? _family;
   List<Map<String, dynamic>> _requests = [];
   Map<String, dynamic>? _deleteVote;
@@ -19,6 +30,7 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
   }
 

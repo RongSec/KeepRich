@@ -11,6 +11,7 @@ import '../services/notify.dart';
 import '../services/updater.dart';
 import '../theme.dart';
 import '../widgets/update_banner.dart';
+import '../services/data_bus.dart';
 
 class HomePage extends StatefulWidget {
   final int tab;
@@ -20,6 +21,16 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  void _onDataChanged() {
+    if (mounted) _loadWorryFree();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   late int _index = widget.tab;
   double _worryFreePersonal = 0;
   double _worryFreeFamily = 0;
@@ -28,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _loadWorryFree();
     // 启动静默检查在线更新（延迟 2s 让首屏先渲染）
     Future.delayed(const Duration(seconds: 2), () {

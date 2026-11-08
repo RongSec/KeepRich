@@ -50,8 +50,6 @@ class _GoldSandBackgroundState extends State<GoldSandBackground>
 
   StreamSubscription<AccelerometerEvent>? _accSub;
   Duration _lastTick = Duration.zero;
-  Timer? _sensorFallbackTimer;
-  bool _sensorAlive = false;
   double _time = 0;
 
   @override
@@ -60,9 +58,6 @@ class _GoldSandBackgroundState extends State<GoldSandBackground>
     _physics.fillRatio = widget.fillRatio;
     _ticker = createTicker(_onTick)..start();
     _listenSensors();
-    _sensorFallbackTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (!_sensorAlive) _physics.autoSway = true;
-    });
   }
 
   void _listenSensors() {
@@ -71,19 +66,15 @@ class _GoldSandBackgroundState extends State<GoldSandBackground>
         samplingPeriod: SensorInterval.gameInterval,
       ).listen(
         (e) {
-          _sensorAlive = true;
           // 传感器真实可用：关闭自动摆动，把沙面交还给陀螺仪驱动。
           // （此前 autoSway 一旦开启就永不恢复，倾斜手机沙面也不动、
           //   且静止时一直摆 —— 用户实测的两个症状同一根因）
-          if (_physics.autoSway) _physics.autoSway = false;
           _physics.onAccelerometer(e.x, e.y, e.z);
         },
-        onError: (Object _) => _physics.autoSway = true,
+        onError: (Object _) {},
         cancelOnError: false,
       );
-    } catch (_) {
-      _physics.autoSway = true;
-    }
+    } catch (_) {}
   }
 
   void _onTick(Duration elapsed) {
@@ -109,7 +100,6 @@ class _GoldSandBackgroundState extends State<GoldSandBackground>
   void dispose() {
     _ticker.dispose();
     _accSub?.cancel();
-    _sensorFallbackTimer?.cancel();
     _physics.dispose();
     super.dispose();
   }
@@ -269,9 +259,6 @@ class _Spark {
 }
 
 class _SandPhysics extends ChangeNotifier {
-  /// 扬起后落回的重力
-  static const double _gravity = 1500;
-
   /// 入场下落的重力：比自由落体慢，沙帘才看得清（真实沙子有空气阻力+颗粒互撞）
   static const double _fallGravity = 620;
 
@@ -305,13 +292,10 @@ class _SandPhysics extends ChangeNotifier {
   double _flow = 0;
 
   /// 上一帧坡度，用来判断沙面是否还在动
-  double _prevSlope = 0;
 
   double _gx = 0, _gy = 0;
   double _tx = 0, _ty = 0;
 
-  bool autoSway = false;
-  double _swayPhase = 0;
   double _t = 0;
 
   DateTime _lastKick = DateTime.fromMillisecondsSinceEpoch(0);
@@ -365,7 +349,7 @@ class _SandPhysics extends ChangeNotifier {
     }
 
     final area = _size.width * _size.height;
-    final grainCount = ((area / 46) * _density).round().clamp(2500, 12000);
+    final grainCount = ((area / 46) * _density).round().clamp(2500, 8000);
     final sparkCount = (grainCount / 7).round().clamp(60, 420);
 
     _grains.clear();
@@ -456,84 +440,84 @@ class _SandPhysics extends ChangeNotifier {
     if (!_built) rebuild();
     _t = t;
 
-    if (autoSway) {
-      _swayPhase += dt * 0.30;
-      _tx = math.sin(_swayPhase) * 0.30;
-      _ty = math.sin(_swayPhase * 0.71 + 1.2) * 0.12;
-    }
-
+    // 传感器值平滑跟随（去抖动，沙子有惯性）
     final k = math.min(1.0, dt * 5.0);
     _gx += (_tx - _gx) * k;
     _gy += (_ty - _gy) * k;
 
-    // 入场：沙面高度由落地的沙粒数决定，不需要额外的计时
+    // 入场：沙面高度由落地的沙粒数决定
     final landing = _landed < _grains.length;
 
-    // 坡度追随倾斜：慢一点，沙子有惯性
+    // 坡度追随倾斜
     final targetSlope = (-_gx).clamp(-1.0, 1.0) * 0.62;
     _slope += (targetSlope - _slope) * math.min(1.0, dt * 2.6);
 
-    // 沙丘起伏只在倾斜时推移：手机放平就完全静止
-    final tiltMag = _gx.abs() + (_gy.abs() - 1.0).abs() * 0.35;
+    // 沙丘起伏与坡度只在倾斜时推移：手机放平就完全静止
+    // （此前 (_gy.abs()-1).abs() 在平放时也产生 0.35 的流量，是"静止还流动"的根因）
+    final tiltMag = (_gx.abs() + _gy.abs()).clamp(0.0, 1.5);
     _flow += dt * tiltMag * 1.3;
 
-    var active = landing || _gx.abs() > 0.02 || (_slope - _prevSlope).abs() > 0.0008;
-    _prevSlope = _slope;
+    var active = landing || tiltMag > 0.015;
 
     final w = _size.width;
     final h = _size.height;
-    final dampFast = math.pow(0.02, dt).toDouble();
+
+    // ===== 沙漏式流动：每一颗沙都在沙堆体内自由运动 =====
+    // 倾斜方向即重力方向；静止时阻尼把速度吃干净，一帧都不再动。
+    const flowGravity = 900.0;
+    final viscous = math.pow(0.10, dt).toDouble(); // 黏性阻尼：手机放平立即停住
 
     for (final g in _grains) {
-      if (g.merged) continue;
-      final sy = surfaceY(g.x) - g.depth * 0.35;
+      final surface = surfaceY(g.x) - g.depth * 0.35;
 
       if (!g.landed) {
-        // 下落：越来越快，触到沙面就并入沙堆
+        // 入场倾泻：越来越快，触到沙面就钻进沙堆体内部（不是贴表面）
         g.vy += _fallGravity * dt;
         g.y += g.vy * dt;
         g.x += _gx * 22 * dt;
-        if (g.y >= sy) {
-          g.y = sy;
-          g.vy = 0;
+        if (g.y >= surface) {
           g.landed = true;
           _landed++;
-          // 大部分沙粒落到沙面就并入沙堆，只留少数在表面继续流动
-          g.merged = _rand.nextDouble() < 0.80;
+          final body = (h - surface).clamp(0.0, h);
+          g.y = surface + _rand.nextDouble() * body * 0.9;
+          g.vy = _rand.nextDouble() * 30;
+          g.phase = _rand.nextDouble() * math.pi * 2;
         }
         active = true;
-      } else {
-        // 落在沙面上：沿坡滑落 + 局部涡流
-        g.phase += dt * tiltMag * 2.6;
-        final slide = -_slope * 26; // 坡度越大滑得越快
-        g.x += (slide + math.sin(g.phase) * g.swirl + g.vx) * dt;
-        g.vx *= dampFast;
-        if (g.vx.abs() < 0.25) g.vx = 0;
+      } else if (tiltMag > 0.008) {
+        // 体相流动：所有颗粒一起朝倾斜侧涌动、翻滚，像沙漏里的沙
+        // （水平由 _gx 驱动，前后倾 _gy 叠加下沉；涡流让流动不呆板）
+        g.phase += dt * tiltMag * 3.2;
+        g.vx += (_gx * flowGravity + math.sin(g.phase) * g.swirl * 7) * dt;
+        g.vy += (_gy * flowGravity * 0.55 + flowGravity * 0.10) * dt;
+        g.vx *= viscous;
+        g.vy *= viscous;
+        g.x += g.vx * dt;
+        g.y += g.vy * dt;
 
-        // 贴回沙面（沙面在长高/倾斜，颗粒必须跟着走）
-        g.y = surfaceY(g.x) - g.depth * 0.35 - g.z;
-
-        if (g.z > 0 || g.vz > 0) {
-          g.vz -= _gravity * dt;
-          g.z += g.vz * dt;
-          if (g.z <= 0) {
-            g.z = 0;
-            g.vz = 0;
-          }
-          active = true;
+        // 沙面上界：不能浮出沙堆；底壁与侧壁：反弹/绕回，沙量守恒
+        final top = surfaceY(g.x) - g.depth * 0.35;
+        if (g.y < top) {
+          g.y = top + _rand.nextDouble() * 2;
+          g.vy = g.vy.abs() * 0.22;
         }
+        if (g.y > h - 1) {
+          g.y = h - 1 - _rand.nextDouble() * 2;
+          g.vy = -g.vy.abs() * 0.18;
+        }
+        if (g.vx.abs() + g.vy.abs() > 0.5) active = true;
+      } else {
+        // 完全静止：速度清零，不再重绘
+        g.vx = 0;
+        g.vy = 0;
       }
 
-      // 横向绕回：从一侧滑出就从另一侧流进来
+      // 横向绕回：从一侧流出去就从另一侧流进来（沙漏循环）
       if (g.x < -10) {
         g.x += w + 20;
-        if (g.landed) g.y = surfaceY(g.x) - g.depth * 0.35 - g.z;
       } else if (g.x > w + 10) {
         g.x -= w + 20;
-        if (g.landed) g.y = surfaceY(g.x) - g.depth * 0.35 - g.z;
       }
-
-      // 视口剔除
       if (g.y > h + 40) g.y = h + 40;
     }
 
@@ -697,7 +681,6 @@ class _SandPhysics extends ChangeNotifier {
       b.clear();
     }
     for (final g in _grains) {
-      if (g.merged) continue;
       if (g.x < -6 || g.x > w + 6) continue;
       if (g.y < -60 || g.y > h + 10) continue;
       _buckets[g.tone].add(Offset(g.x, g.y));

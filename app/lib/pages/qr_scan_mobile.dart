@@ -27,15 +27,29 @@ class _QrScanPageState extends State<QrScanPage> {
   bool _done = false;
 
   bool _torchOn = false;
-  late final MobileScannerController _controller;
+  int _attempt = 0;
+  bool _cameraError = false;
+  late MobileScannerController _controller;
+
+  MobileScannerController _newController() => MobileScannerController(
+        formats: const [BarcodeFormat.qrCode],
+        detectionSpeed: DetectionSpeed.normal,
+      );
+
+  /// 权限被拒或相机异常后重建控制器并重新申请权限
+  void _retry() {
+    _controller.dispose();
+    _controller = _newController();
+    setState(() {
+      _cameraError = false;
+      _attempt++;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _controller = MobileScannerController(
-      formats: const [BarcodeFormat.qrCode],
-      detectionSpeed: DetectionSpeed.normal,
-    );
+    _controller = _newController();
   }
 
   @override
@@ -87,22 +101,52 @@ class _QrScanPageState extends State<QrScanPage> {
       body: Stack(
         children: [
           MobileScanner(
+            key: ValueKey(_attempt),
             controller: _controller,
             onDetect: _onDetect,
-            errorBuilder: (ctx, err, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  '相机不可用：$err\n\n请检查是否已授予相机权限',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: AppTheme.textDim, fontSize: 14),
+            errorBuilder: (ctx, err, _) {
+              if (!_cameraError) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _cameraError = true);
+                });
+              }
+              final denied = err.errorCode == MobileScannerErrorCode.permissionDenied;
+              final unsupported = err.errorCode == MobileScannerErrorCode.unsupported;
+              final hint = denied
+                  ? '相机权限被拒绝。请到「系统设置 → 应用 → 永远富裕 → 权限」开启相机，然后点下方重试。'
+                  : unsupported
+                      ? '当前设备不支持相机扫码，请返回手动输入服务端地址。'
+                      : '相机启动失败：$err。请确认没有其他应用占用相机，然后点下方重试。';
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(hint,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppTheme.textDim, fontSize: 14)),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: _retry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('重试 / 重新申请权限'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('返回手动输入'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
-          // 取景框：纯装饰，不参与手势
-          const IgnorePointer(
+          // 取景框：纯装饰，不参与手势；相机报错时隐藏以免压住提示文字
+          if (!_cameraError)
+            const IgnorePointer(
             child: Center(
               child: SizedBox(
                 width: 240,

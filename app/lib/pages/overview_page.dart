@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../services/api.dart';
 import '../theme.dart';
+import '../services/data_bus.dart';
 
 class OverviewPage extends StatefulWidget {
   const OverviewPage({super.key});
@@ -14,6 +15,16 @@ class OverviewPage extends StatefulWidget {
 }
 
 class _OverviewPageState extends State<OverviewPage> {
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   bool _loading = true;
   OverviewData? _ov;
   ChartData? _chart;
@@ -24,6 +35,7 @@ class _OverviewPageState extends State<OverviewPage> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
   }
 

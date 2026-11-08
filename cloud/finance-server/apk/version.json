@@ -6,20 +6,20 @@
     {
       "abi": "arm64-v8a",
       "file": "app-arm64-v8a-release.apk",
-      "sha256": "703b46ed259c2935f08bd66862580f2c5b667fae4e9e0c047394dc7d37e29e2b",
-      "size": 27471132
+      "sha256": "3821942a6107bc76e7acefcb360a178828982da263ad9372f8d33a70a21b45a8",
+      "size": 27474908
     },
     {
       "abi": "armeabi-v7a",
       "file": "app-armeabi-v7a-release.apk",
-      "sha256": "9973986c8d456e1f85f934e180e67e5bcde952eaa26629bbe14bc1249c1f44c1",
-      "size": 23564500
+      "sha256": "67ca8ccdfcd8530b9f53e589b0a2883a15c6e020ce4d4e1300dde37707da98f1",
+      "size": 23568276
     },
     {
       "abi": "x86_64",
       "file": "app-x86_64-release.apk",
-      "sha256": "de0834341bd31bfafc27149479dbce1014abbe29a8008ec51e4521415ab662ce",
-      "size": 30224498
+      "sha256": "38c003ea5566fccb1eb158ee31a0c5746d921acc4573ab78f2b79ae423c8f4c9",
+      "size": 30228274
     }
   ]
 }

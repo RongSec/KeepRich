@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/api.dart';
+import '../services/data_bus.dart';
 
 class BigPurchasePage extends StatefulWidget {
   const BigPurchasePage({super.key});
@@ -12,6 +13,16 @@ class BigPurchasePage extends StatefulWidget {
 }
 
 class _BigPurchasePageState extends State<BigPurchasePage> {
+  void _onDataChanged() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    dataVersion.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
   String _scope = 'personal';
   List<PurchaseItem> _list = [];
   bool _loading = true;
@@ -19,6 +30,7 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
   @override
   void initState() {
     super.initState();
+    dataVersion.addListener(_onDataChanged);
     _load();
   }
 

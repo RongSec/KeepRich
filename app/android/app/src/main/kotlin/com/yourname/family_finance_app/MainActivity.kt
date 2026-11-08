@@ -3,24 +3,17 @@ package com.yourname.family_finance_app
 import android.app.AlertDialog
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
-import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import java.io.File
 
 class MainActivity : FlutterFragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 截图 / 录屏防护：财务数据不允许被截取
-        // （系统最近任务预览、第三方截屏、录屏都会得到黑屏）
-        // 仅正式包启用 —— debug 包要能截屏调试
+        // 按用户要求：允许截屏 / 录屏（不再设置 FLAG_SECURE）
+        // root 环境提示保留：财务 App 在 root 设备上，本地加密数据可能被直接读取
         val isDebuggable =
             (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         if (!isDebuggable) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-            // root 环境提示：财务 App 在 root 设备上，本地加密数据可能被直接读取
             if (isDeviceRooted()) {
                 AlertDialog.Builder(this)
                     .setTitle("设备环境异常")

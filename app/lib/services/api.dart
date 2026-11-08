@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
+import 'data_bus.dart';
 import '../models.dart';
 
 /// 云托管网关实测会让部分 JSON 响应的 body 落成 String（dio 未自动解码，
@@ -110,6 +111,13 @@ class ApiClient {
       // 一次都没发出过，token 过期后整屏只剩 "invalid or expired token"。
       onResponse: (resp, handler) async {
         decodeStringResponseBody(resp);
+        // 写操作成功 → 广播数据变更，所有财务页面自动重载（无需手动刷新）
+        final d = resp.data;
+        if (resp.requestOptions.method != 'GET' &&
+            d is Map &&
+            d['code'] == 0) {
+          markDataChanged();
+        }
         if (resp.statusCode != 401) {
           handler.next(resp);
           return;

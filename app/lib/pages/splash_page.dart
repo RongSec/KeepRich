@@ -130,22 +130,17 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                       child: Container(
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFF101018),
+                          color: Color(0xFFFFC65C),
                         ),
-                        padding: const EdgeInsets.all(12),
-                        // 图标解码完成前先垫一个金色存钱罐，避免出现黑圈
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            const Icon(Icons.savings_rounded,
-                                color: AppTheme.goldDeep),
-                            Image.asset(
-                              'assets/images/icon.png',
-                              fit: BoxFit.contain,
-                              errorBuilder: (ctx, err, st) =>
-                                  const SizedBox.shrink(),
-                            ),
-                          ],
+                        padding: const EdgeInsets.all(8),
+                        // 与登录页一致：圆形裁剪 + cover，方形位图不再露出黑边
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/images/icon.png',
+                            fit: BoxFit.cover,
+                            errorBuilder: (ctx, err, st) =>
+                                const SizedBox.shrink(),
+                          ),
                         ),
                       ),
                     ),
