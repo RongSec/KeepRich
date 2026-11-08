@@ -37,7 +37,15 @@ PY
 
 # Web 构建产物
 if [ -d "$WEB" ]; then
+  rm -rf "$DST/web"
   cp -R "$WEB" "$DST/web"
+fi
+
+# 管理后台构建产物（--base-href=/admin/）：放进 web/admin 随 web 一起上传
+ADMIN_BUILD=$ROOT/admin/build/web
+if [ -d "$ADMIN_BUILD" ]; then
+  rm -rf "$DST/web/admin"
+  cp -R "$ADMIN_BUILD" "$DST/web/admin"
 fi
 
 # 配置：SQLite 不读 database 段，清掉本地连接信息

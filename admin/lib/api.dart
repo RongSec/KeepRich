@@ -1,7 +1,31 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+
+/// 云托管网关会把 Authorization 头替换成平台自身 JWT（实测确认），
+/// 自定义头 X-Finance-Token 可原样透传，后端 JWT 中间件优先读取它；
+/// 另外网关要求每个请求都带 sharecode（或浏览器已种 __wb_rsc cookie）
+void _adaptCloudGateway(RequestOptions options, String? token) {
+  if (token != null) {
+    options.headers['Authorization'] = 'Bearer $token';
+    options.headers['X-Finance-Token'] = token;
+  }
+}
+
+Map<String, dynamic> _asMap(dynamic d) {
+  if (d is Map<String, dynamic>) return d;
+  if (d is Map) return d.map((k, v) => MapEntry(k.toString(), v));
+  if (d is String && d.isNotEmpty) {
+    final decoded = jsonDecode(d);
+    if (decoded is Map) {
+      return decoded.map((k, v) => MapEntry(k.toString(), v));
+    }
+  }
+  throw const FormatException('unexpected response body');
+}
 
 class ApiClient {
   ApiClient._() {
@@ -15,10 +39,20 @@ class ApiClient {
     ));
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        if (_accessToken != null) {
-          options.headers['Authorization'] = 'Bearer $_accessToken';
-        }
+        _adaptCloudGateway(options, _accessToken);
+        final sc = AppConfig.shareCode;
+        if (sc != null) options.queryParameters['sharecode'] = sc;
         handler.next(options);
+      },
+      onResponse: (resp, handler) {
+        // 部分网关场景 JSON body 会落成 String，统一兜底解码
+        final d = resp.data;
+        if (d is String && d.isNotEmpty) {
+          try {
+            resp.data = _asMap(d);
+          } catch (_) {}
+        }
+        handler.next(resp);
       },
       onError: (e, handler) async {
         // 401 → 用 refresh token 换新后重试一次（access token 过期免重登）
@@ -29,7 +63,9 @@ class ApiClient {
             final ok = await _refreshAccessToken();
             if (ok) {
               e.requestOptions.extra['retried'] = true;
-              e.requestOptions.headers['Authorization'] = 'Bearer $_accessToken';
+              _adaptCloudGateway(e.requestOptions.headers.isEmpty
+                  ? e.requestOptions
+                  : e.requestOptions, _accessToken);
               final clone = await _dio.fetch(e.requestOptions);
               return handler.resolve(clone);
             }
@@ -48,13 +84,17 @@ class ApiClient {
 
   Future<bool> _refreshAccessToken() async {
     try {
+      final sc = AppConfig.shareCode;
       final r = await Dio(BaseOptions(
         baseUrl: AppConfig.apiBaseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
-      )).post('/auth/refresh', data: {'refreshToken': _refreshToken});
-      final d = r.data as Map<String, dynamic>?;
-      if (d != null && d['code'] == 0 && d['data'] != null) {
+      )).post('/auth/refresh',
+          queryParameters:
+              (sc == null || sc.isEmpty) ? null : {'sharecode': sc},
+          data: {'refreshToken': _refreshToken});
+      final d = _asMap(r.data);
+      if (d['code'] == 0 && d['data'] != null) {
         final data = d['data'] as Map<String, dynamic>;
         _accessToken = data['accessToken'] as String?;
         if (_accessToken != null) {
@@ -96,7 +136,7 @@ class ApiClient {
 
   Future<Map<String, dynamic>> login(String username, String password) async {
     final r = await _dio.post('/auth/login', data: {'username': username, 'password': password});
-    final d = r.data as Map<String, dynamic>;
+    final d = _asMap(r.data);
     if (d['code'] == 0) {
       await setTokens(d['data']['accessToken'], d['data']['refreshToken']);
     }
@@ -105,16 +145,16 @@ class ApiClient {
 
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async {
     final r = await _dio.get(path, queryParameters: query);
-    return r.data as Map<String, dynamic>;
+    return _asMap(r.data);
   }
 
   Future<Map<String, dynamic>> post(String path, {Object? data}) async {
     final r = await _dio.post(path, data: data);
-    return r.data as Map<String, dynamic>;
+    return _asMap(r.data);
   }
 
   Future<Map<String, dynamic>> delete(String path) async {
     final r = await _dio.delete(path);
-    return r.data as Map<String, dynamic>;
+    return _asMap(r.data);
   }
 }

@@ -85,7 +85,7 @@ class _LoginPageState extends State<LoginPage>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _err = '登录失败: $e';
+        _err = friendlyLoginError(e);
         _busy = false;
       });
     }
@@ -523,4 +523,27 @@ class _ServerQrCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 把登录异常翻译成用户能直接行动的提示。
+///
+/// 实测两类高频坑：
+/// 1. 服务端地址连不上（默认 10.0.2.2:28080 在真机上无意义）
+/// 2. 云托管地址缺 ?sharecode= → 网关返回 403 的 HTML 页 → dio 把 body
+///    落成 String → type cast 错误（对用户完全不可读）
+String friendlyLoginError(Object e) {
+  final s = e.toString();
+  if (s.contains('Connection refused') ||
+      s.contains('Failed host lookup') ||
+      s.contains('Network is unreachable') ||
+      s.contains('connection error') ||
+      s.contains('Connection timed out')) {
+    return '无法连接服务端：请点击底部地址栏确认服务端地址'
+        '（真机上默认的 10.0.2.2 不可用，请填云托管地址或电脑局域网 IP）';
+  }
+  if (s.contains('not a subtype') || s.contains('type cast')) {
+    return '服务端返回异常：云托管地址必须附带 ?sharecode=分享码，'
+        '请在「服务端地址」里填入完整地址，或直接扫描 Web 端登录页的二维码';
+  }
+  return '登录失败: $e';
 }

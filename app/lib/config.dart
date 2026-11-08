@@ -147,16 +147,24 @@ class AppConfig {
     }
     try {
       var probeUrl = Uri.parse('$host/healthz');
-      // 云托管域名需要 sharecode 才放行，探测时也要带上
-      if (_shareCode != null && _shareCode!.isNotEmpty) {
+      // 云托管域名需要 sharecode 才放行：优先用本次输入地址里的分享码，
+      // 其次用已保存的（保存前的"测试连接"也要能通）
+      final inputCode = _extractShareCode(rawHost);
+      final code = (inputCode != null && inputCode.isNotEmpty)
+          ? inputCode
+          : _shareCode;
+      if (code != null && code.isNotEmpty) {
         probeUrl = probeUrl.replace(queryParameters: {
           ...probeUrl.queryParameters,
-          'sharecode': _shareCode!,
+          'sharecode': code,
         });
       }
       final resp =
           await http.get(probeUrl).timeout(timeout);
       if (resp.statusCode == 200) return null;
+      if (resp.statusCode == 403) {
+        return '服务可达但被网关拦截(403)：地址需附带 ?sharecode=分享码';
+      }
       return '服务返回 HTTP ${resp.statusCode}';
     } catch (e) {
       return '连接失败：$e';

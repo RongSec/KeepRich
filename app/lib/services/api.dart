@@ -1,10 +1,26 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 import '../models.dart';
+
+/// 云托管网关实测会让部分 JSON 响应的 body 落成 String（dio 未自动解码，
+/// 直接 `as Map<String, dynamic>` 就抛 type cast 错误），统一在此兜底解码
+void decodeStringResponseBody(Response resp) {
+  final d = resp.data;
+  if (d is String && d.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(d);
+      if (decoded is Map) resp.data = decoded;
+    } catch (e) {
+      debugPrint('[dio] decode fail: $e; head=${d.substring(0, d.length > 120 ? 120 : d.length)}');
+    }
+  }
+}
 
 /// API 客户端
 class ApiClient {
@@ -93,6 +109,7 @@ class ApiClient {
       // Dio 会把 401 当成"成功响应"，onError 永远不会触发 —— 之前 refresh
       // 一次都没发出过，token 过期后整屏只剩 "invalid or expired token"。
       onResponse: (resp, handler) async {
+        decodeStringResponseBody(resp);
         if (resp.statusCode != 401) {
           handler.next(resp);
           return;
@@ -165,6 +182,7 @@ class ApiClient {
             (sc == null || sc.isEmpty) ? null : {'sharecode': sc},
         data: {'refreshToken': _refreshToken},
       );
+      decodeStringResponseBody(r);
       final data = r.data as Map<String, dynamic>?;
       if (data != null && data['code'] == 0 && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
