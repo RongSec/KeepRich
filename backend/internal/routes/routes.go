@@ -24,6 +24,7 @@ func Register(r *gin.Engine) {
 		api.POST("/auth/login", authLimiter, handlers.Login)
 		api.POST("/auth/refresh", authLimiter, handlers.Refresh)
 		api.GET("/app/version", handlers.GetAppVersion) // 在线更新版本检查
+		api.GET("/app/download", handlers.AppDownload) // 云服务代理 APK 下载（设备无需直连 GitHub）
 		api.GET("/app/web-version", handlers.GetWebVersion) // Web 端在线更新检查
 
 		// 需要登录

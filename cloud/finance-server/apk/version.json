@@ -1,0 +1,25 @@
+{
+  "version": "0.3.0",
+  "repo": "RongSec/KeepRich",
+  "notes": "v0.3.0 新版本：可在 App 内直接更新（设备访问不了 GitHub 时走云服务分发）",
+  "assets": [
+    {
+      "abi": "arm64-v8a",
+      "file": "app-arm64-v8a-release.apk",
+      "sha256": "703b46ed259c2935f08bd66862580f2c5b667fae4e9e0c047394dc7d37e29e2b",
+      "size": 27471132
+    },
+    {
+      "abi": "armeabi-v7a",
+      "file": "app-armeabi-v7a-release.apk",
+      "sha256": "9973986c8d456e1f85f934e180e67e5bcde952eaa26629bbe14bc1249c1f44c1",
+      "size": 23564500
+    },
+    {
+      "abi": "x86_64",
+      "file": "app-x86_64-release.apk",
+      "sha256": "de0834341bd31bfafc27149479dbce1014abbe29a8008ec51e4521415ab662ce",
+      "size": 30224498
+    }
+  ]
+}

@@ -48,6 +48,36 @@ if [ -d "$ADMIN_BUILD" ]; then
   cp -R "$ADMIN_BUILD" "$DST/web/admin"
 fi
 
+# 在线更新：随部署分发 release APK + version.json 清单。
+# 设备访问不了 GitHub 时，云服务端自己就能完成版本检查与安装包下载（兜底自包含）。
+APK_BUILD=$ROOT/app/build/app/outputs/flutter-apk
+if ls "$APK_BUILD"/app-*-release.apk >/dev/null 2>&1; then
+  rm -rf "$DST/apk"
+  mkdir -p "$DST/apk"
+  cp "$APK_BUILD"/app-*-release.apk "$DST/apk/"
+  python3 - "$APK_BUILD" "$DST/apk/version.json" "$ROOT/app/pubspec.yaml" <<'PY'
+import glob, hashlib, json, os, re, sys
+
+build, out, pubspec = sys.argv[1], sys.argv[2], sys.argv[3]
+version = re.search(r'^version:\s*([0-9.]+)', open(pubspec).read(), re.M).group(1)
+abis = {'arm64-v8a', 'armeabi-v7a', 'x86_64'}
+assets = []
+for path in sorted(glob.glob(os.path.join(build, 'app-*-release.apk'))):
+    name = os.path.basename(path)
+    abi = next((a for a in abis if a in name), '')
+    if not abi:
+        continue
+    data = open(path, 'rb').read()
+    assets.append({'abi': abi, 'file': name,
+                   'sha256': hashlib.sha256(data).hexdigest(),
+                   'size': len(data)})
+json.dump({'version': version, 'repo': 'RongSec/KeepRich',
+           'notes': 'v%s 新版本：可在 App 内直接更新（设备访问不了 GitHub 时走云服务分发）' % version,
+           'assets': assets}, open(out, 'w'), ensure_ascii=False, indent=2)
+print('bundle: %s, %d apks' % (version, len(assets)))
+PY
+fi
+
 # 配置：SQLite 不读 database 段，清掉本地连接信息
 python3 - "$DST/config/config.yaml" <<'PY'
 import re, sys

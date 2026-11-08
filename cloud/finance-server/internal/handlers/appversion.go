@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -179,6 +180,116 @@ func fetchChecksum(repo, tag, filename string) string {
 	return ""
 }
 
+// ===== 随部署分发的更新包（GitHub 不可达时的云服务端兜底） =====
+//
+// sync.sh 发版时把 3 个 ABI 的 release APK + version.json 放进部署目录 ./apk/。
+// 版本检查与下载都能完全脱离 GitHub 完成：设备只需能访问本服务域名。
+
+const apkDirDefault = "./apk"
+
+type bundleAsset struct {
+	ABI    string `json:"abi"`
+	File   string `json:"file"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+type bundleVersion struct {
+	Version string         `json:"version"`
+	Notes   string         `json:"notes"`
+	Repo    string         `json:"repo"`
+	Assets  []bundleAsset `json:"assets"`
+}
+
+func apkDir() string {
+	if d := os.Getenv("APK_DIR"); d != "" {
+		return d
+	}
+	return apkDirDefault
+}
+
+func loadBundle() (*bundleVersion, error) {
+	data, err := os.ReadFile(apkDir() + "/version.json")
+	if err != nil {
+		return nil, err
+	}
+	var b bundleVersion
+	if err := json.Unmarshal(data, &b); err != nil {
+		return nil, err
+	}
+	if b.Version == "" || len(b.Assets) == 0 {
+		return nil, fmt.Errorf("bundle version.json 不完整")
+	}
+	return &b, nil
+}
+
+func bundleAssetFor(b *bundleVersion, abi string) *bundleAsset {
+	var first, arm64 *bundleAsset
+	for i := range b.Assets {
+		a := &b.Assets[i]
+		if first == nil {
+			first = a
+		}
+		if a.ABI == "arm64-v8a" {
+			arm64 = a
+		}
+		if abi != "" && a.ABI == abi {
+			return a
+		}
+	}
+	if arm64 != nil {
+		return arm64
+	}
+	return first
+}
+
+// bundleVersionResponse 用本地清单构造与 GitHub 路径一致的响应
+func bundleVersionResponse(b *bundleVersion, current, abi string) gin.H {
+	a := bundleAssetFor(b, abi)
+	if a == nil {
+		return nil
+	}
+	ghURL := ""
+	if b.Repo != "" {
+		ghURL = "https://github.com/" + b.Repo + "/releases/download/v" + b.Version + "/" + a.File
+	}
+	return gin.H{
+		"version":         b.Version,
+		"buildNumber":     0,
+		"notes":           b.Notes,
+		"apkUrl":          ghURL, // 设备能访问 GitHub 时优先直连
+		"downloadUrl":     "/api/app/download?abi=" + url.QueryEscape(abi), // 云服务端兜底
+		"sha256":          a.SHA256,
+		"sizeBytes":       a.Size,
+		"minSupported":    "",
+		"updateAvailable": compareVersion(current, b.Version) < 0,
+		"forceUpdate":     false,
+		"source":          "cloud-bundle",
+		"githubRepo":      b.Repo,
+	}
+}
+
+// AppDownload 从随部署分发的本地 APK 读取（不依赖 GitHub 出网）
+func AppDownload(c *gin.Context) {
+	b, err := loadBundle()
+	if err != nil {
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "更新包未随部署分发："+err.Error())
+		return
+	}
+	a := bundleAssetFor(b, c.Query("abi"))
+	if a == nil {
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "没有匹配的安装包")
+		return
+	}
+	path := apkDir() + "/" + a.File
+	if st, err := os.Stat(path); err != nil || st.Size() == 0 {
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "安装包文件缺失")
+		return
+	}
+	c.Header("Content-Type", "application/vnd.android.package-archive")
+	c.FileAttachment(path, a.File)
+}
+
 // GetAppVersion 版本检查（公开接口，App 启动时调用）
 // GET /api/app/version?platform=android&channel=stable&current=0.1.0&did=<设备ID>&abi=arm64-v8a
 func GetAppVersion(c *gin.Context) {
@@ -200,6 +311,9 @@ func GetAppVersion(c *gin.Context) {
 					"buildNumber":     0,
 					"notes":           rel.Body,
 					"apkUrl":          asset.URL,
+					// 云服务代理下载地址（相对路径，App 拼 serverHost）：
+					// 设备访问不了 GitHub 也能完成更新
+					"downloadUrl":     "/api/app/download?abi=" + url.QueryEscape(abi),
 					"sha256":          fetchChecksum(repo, rel.TagName, asset.Name),
 					"sizeBytes":       asset.Size,
 					"minSupported":    "",
@@ -211,7 +325,14 @@ func GetAppVersion(c *gin.Context) {
 				return
 			}
 		}
-		// GitHub 拉取失败或没有 APK 资产 → 走下方数据库回退
+		// GitHub API 限流/不可达 → 用随部署分发的本地清单兜底
+	}
+
+	if b, e := loadBundle(); e == nil {
+		if resp := bundleVersionResponse(b, current, abi); resp != nil {
+			utils.OK(c, resp)
+			return
+		}
 	}
 
 	var v models.AppVersion

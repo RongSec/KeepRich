@@ -10,6 +10,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config.dart';
+
 import 'api.dart';
 
 /// 版本检查结果
@@ -18,6 +20,8 @@ class AppUpdateInfo {
   final int buildNumber;
   final String notes;
   final String apkUrl;
+  /// 云服务代理下载地址（GitHub 直连失败时的兜底，设备只需能访问服务端）
+  final String fallbackUrl;
   final String sha256;
   final int sizeBytes;
   final bool updateAvailable;
@@ -28,6 +32,7 @@ class AppUpdateInfo {
     required this.buildNumber,
     required this.notes,
     required this.apkUrl,
+    this.fallbackUrl = '',
     required this.sha256,
     required this.sizeBytes,
     required this.updateAvailable,
@@ -39,6 +44,11 @@ class AppUpdateInfo {
         buildNumber: ((j['buildNumber'] as num?) ?? 0).toInt(),
         notes: (j['notes'] as String?) ?? '',
         apkUrl: (j['apkUrl'] as String?) ?? '',
+        fallbackUrl: (() {
+          final dl = (j['downloadUrl'] as String?) ?? '';
+          if (dl.isEmpty) return '';
+          return dl.startsWith('/') ? '${AppConfig.serverHost}$dl' : dl;
+        })(),
         sha256: (j['sha256'] as String?) ?? '',
         sizeBytes: ((j['sizeBytes'] as num?) ?? 0).toInt(),
         updateAvailable: (j['updateAvailable'] as bool?) ?? false,
@@ -92,6 +102,7 @@ class UpdaterService {
       final info = AppUpdateInfo.fromJson(data);
       // 本地防线：最新版本与当前版本相同（或后端误判）时绝不弹窗
       if (!info.updateAvailable || info.version == pkg.version) return null;
+      // apkUrl 保持 GitHub 直连（优先路径），downloadUrl 作为云服务兜底
       return info;
     } catch (e) {
       debugPrint('[updater] check failed: $e');
@@ -227,16 +238,27 @@ class UpdaterService {
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(minutes: 10),
       ));
-      await dio.download(
-        info.apkUrl,
-        savePath,
-        onReceiveProgress: (rec, total) {
-          if (total > 0) {
-            progress = rec / total;
-            dlg.value = progress;
-          }
-        },
-      );
+      Future<void> fetch(String url) => dio.download(
+            url,
+            savePath,
+            onReceiveProgress: (rec, total) {
+              if (total > 0) {
+                progress = rec / total;
+                dlg.value = progress;
+              }
+            },
+          );
+
+      // 优先 GitHub 直连（CDN 快、省服务端带宽）；
+      // 设备访问不了 GitHub 时自动切云服务代理下载（只需能访问服务端域名）。
+      try {
+        await fetch(info.apkUrl);
+      } catch (e) {
+        if (info.fallbackUrl.isEmpty) rethrow;
+        debugPrint('[updater] GitHub 直连失败，切换云服务代理下载: $e');
+        dlg.value = 0;
+        await fetch(info.fallbackUrl);
+      }
 
       // sha256 校验（服务端提供时必检）
       if (info.sha256.isNotEmpty) {
