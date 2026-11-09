@@ -16,6 +16,10 @@ type AppConfig struct {
 	Timezone string `mapstructure:"timezone"`
 	// GitHub 仓库（owner/repo）：设置后 App 在线更新从 Releases 拉取
 	GitHubRepo string `mapstructure:"githubRepo"`
+	// 云托管分享码：网关要求每个请求带 ?sharecode=，且会在转发前把它吃掉，
+	// 导致后端无法从请求里取到。配置后可在 /api/app/version 里回一个
+	// 「带码的绝对下载地址」，让 v0.4.0 及更早的客户端也能更新。
+	ShareCode string `mapstructure:"shareCode"`
 }
 
 type DatabaseConfig struct {

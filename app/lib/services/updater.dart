@@ -47,7 +47,9 @@ class AppUpdateInfo {
         fallbackUrl: (() {
           final dl = (j['downloadUrl'] as String?) ?? '';
           if (dl.isEmpty) return '';
-          return dl.startsWith('/') ? '${AppConfig.serverHost}$dl' : dl;
+          // 云托管网关要求每个请求带 sharecode，缺了必然 403（裸 Dio 不走 ApiClient 拦截器）
+          return AppConfig.withShareCode(
+              dl.startsWith('/') ? '${AppConfig.serverHost}$dl' : dl);
         })(),
         sha256: (j['sha256'] as String?) ?? '',
         sizeBytes: ((j['sizeBytes'] as num?) ?? 0).toInt(),
@@ -285,9 +287,28 @@ class UpdaterService {
     } catch (e) {
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop(); // 关进度框
-        _toast(context, '更新失败：$e');
+        _toast(context, '更新失败：${_friendlyError(e)}');
       }
     }
+  }
+
+  /// 把 Dio 的原始异常翻成用户能看懂的话（别把 HTTP 状态码长文甩给用户）
+  static String _friendlyError(Object e) {
+    final s = e.toString();
+    if (s.contains('403')) {
+      return '下载被服务端拒绝（403）。请把 App 服务端地址重新扫一次二维码，或稍后重试';
+    }
+    if (s.contains('404')) {
+      return '安装包不存在（404），请稍后重试';
+    }
+    if (s.contains('SocketException') ||
+        s.contains('Timeout') ||
+        s.contains('timeout') ||
+        s.contains('Failed host lookup')) {
+      return '网络不可用，请检查网络后重试';
+    }
+    if (s.contains('sha256')) return s.replaceFirst('Exception: ', '');
+    return s.replaceFirst('DioException', '下载出错');
   }
 
   static void _toast(BuildContext context, String msg) {

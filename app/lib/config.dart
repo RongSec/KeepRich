@@ -27,7 +27,7 @@ class AppConfig {
 
   /// 应用版本号（与 pubspec.yaml 保持一致；构建脚本会用 --dart-define 覆盖）
   static const String appVersion =
-      String.fromEnvironment('APP_VERSION', defaultValue: '0.4.0');
+      String.fromEnvironment('APP_VERSION', defaultValue: '0.4.1');
 
   /// Android 模拟器映射到宿主机
   static const String androidEmulatorHost = 'http://10.0.2.2:28080';
@@ -175,6 +175,26 @@ class AppConfig {
     // 未显式指定地址时，Web 走同源相对路径（部署到任意域名都不用改配置）
     if (kIsWeb && !hasOverride && _envServerHost.isEmpty) return '/api';
     return '$serverHost/api';
+  }
+
+  /// 给「指向本服务端」的地址补上 sharecode。
+  ///
+  /// 云托管网关对每个请求都要求 `?sharecode=`，缺了直接 403 —— 而在线更新用的是
+  /// 裸 Dio（不走 ApiClient 的统一拦截器），曾因此让"云兜底下载"必然 403。
+  /// 非本服务端的地址（如 GitHub Releases 直链）原样返回。
+  static String withShareCode(String url) {
+    final code = _shareCode;
+    if (code == null || code.isEmpty) return url;
+    final host = _normalize(serverHost);
+    if (host.isEmpty || !url.toLowerCase().startsWith(host.toLowerCase())) {
+      return url;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url;
+    return uri.replace(queryParameters: {
+      ...uri.queryParameters,
+      'sharecode': code,
+    }).toString();
   }
 
   /// WebSocket 地址

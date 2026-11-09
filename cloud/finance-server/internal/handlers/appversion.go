@@ -280,7 +280,7 @@ func bundleAssetFor(b *bundleVersion, abi string) *bundleAsset {
 }
 
 // bundleVersionResponse 用本地清单构造与 GitHub 路径一致的响应
-func bundleVersionResponse(b *bundleVersion, current, abi string, currentBuild int) gin.H {
+func bundleVersionResponse(b *bundleVersion, current, abi string, currentBuild int, downloadURL string) gin.H {
 	a := bundleAssetFor(b, abi)
 	if a == nil {
 		return nil
@@ -295,7 +295,7 @@ func bundleVersionResponse(b *bundleVersion, current, abi string, currentBuild i
 		"buildNumber":     buildNumber,
 		"notes":           b.Notes,
 		"apkUrl":          ghURL, // 设备能访问 GitHub 时优先直连
-		"downloadUrl":     "/api/app/download?abi=" + url.QueryEscape(abi), // 云服务端兜底
+		"downloadUrl":     downloadURL, // 云服务端兜底（老客户端直接拼接使用，故带 sharecode）
 		"sha256":          a.SHA256,
 		"sizeBytes":       a.Size,
 		"minSupported":    "",
@@ -304,6 +304,30 @@ func bundleVersionResponse(b *bundleVersion, current, abi string, currentBuild i
 		"source":          "cloud-bundle",
 		"githubRepo":      b.Repo,
 	}
+}
+
+// downloadURLFor 构造云兜底下载地址（相对路径 + sharecode）。
+//
+// 云托管网关要求每个请求都带 sharecode；而 v0.4.0 及更早的客户端是
+// “serverHost + downloadUrl” 直接拼地址（不会补码），缺码必然 403 —— 于是
+// 一断 GitHub 就更新失败。这里把码直接拼进相对地址，老客户端拼上 serverHost
+// 就是一条可用的公网地址；新客户端再用 withShareCode 覆盖同一个参数，不会重复。
+//
+// 注意不能返回绝对地址：c.Request.Host 在沙箱里是内网域名，手机不可达。
+func downloadURLFor(c *gin.Context, abi string) string {
+	path := "/api/app/download?abi=" + url.QueryEscape(abi)
+	code := strings.TrimSpace(c.Query("sharecode"))
+	if code == "" {
+		code = strings.TrimSpace(c.GetHeader("X-Share-Code"))
+	}
+	if code == "" {
+		// 网关会在转发前移除 sharecode，所以常规请求读不到；以配置为准
+		code = strings.TrimSpace(config.C.App.ShareCode)
+	}
+	if code == "" {
+		return path
+	}
+	return path + "&sharecode=" + url.QueryEscape(code)
 }
 
 // AppDownload 从随部署分发的本地 APK 读取（不依赖 GitHub 出网）
@@ -349,6 +373,17 @@ func GetAppVersion(c *gin.Context) {
 					buildNumber = splitBuildNumber(b.BuildNumber, abi, currentBuild)
 				}
 				updateAvailable := newerVersion(current, version, currentBuild, buildNumber)
+				// 校验和优先取 Release 附件的 SHA256SUMS.txt；
+				// 沙箱/受限网络取不到 GitHub 时，退化为随部署分发的本地清单
+				// （APK 是同一份构建，sha256 天然一致），避免客户端跳过完整性校验。
+				sum := fetchChecksum(repo, rel.TagName, asset.Name)
+				if sum == "" {
+					if lb, e := loadBundle(); e == nil && lb.Version == version {
+						if la := bundleAssetFor(lb, abi); la != nil && la.File == asset.Name {
+							sum = la.SHA256
+						}
+					}
+				}
 				utils.OK(c, gin.H{
 					"version":         version,
 					"buildNumber":     buildNumber,
@@ -356,8 +391,8 @@ func GetAppVersion(c *gin.Context) {
 					"apkUrl":          asset.URL,
 					// 云服务代理下载地址（相对路径，App 拼 serverHost）：
 					// 设备访问不了 GitHub 也能完成更新
-					"downloadUrl":     "/api/app/download?abi=" + url.QueryEscape(abi),
-					"sha256":          fetchChecksum(repo, rel.TagName, asset.Name),
+					"downloadUrl":     downloadURLFor(c, abi),
+					"sha256":          sum,
 					"sizeBytes":       asset.Size,
 					"minSupported":    "",
 					"updateAvailable": updateAvailable,
@@ -372,7 +407,7 @@ func GetAppVersion(c *gin.Context) {
 	}
 
 	if b, e := loadBundle(); e == nil {
-		if resp := bundleVersionResponse(b, current, abi, currentBuild); resp != nil {
+		if resp := bundleVersionResponse(b, current, abi, currentBuild, downloadURLFor(c, abi)); resp != nil {
 			utils.OK(c, resp)
 			return
 		}
