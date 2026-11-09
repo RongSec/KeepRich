@@ -1,0 +1,236 @@
+%% ===========================================================================
+%% KeepRich v0.4.0 — 数据闭环主时序（App → Go → SQLite ↔ 云快照）
+%% 说明：三段时序合并在一个文件里，按标题分段；每段都是可直接渲染的独立 diagram
+%% ===========================================================================
+
+%% ---------------------------------------------------------------------------
+%% 【段 1】启动拉取（服务起来之前必须完成，否则客户端会看到空库）
+%% ---------------------------------------------------------------------------
+sequenceDiagram
+    autonumber
+    participant M as main.go
+    participant CFG as config.Load
+    participant DB as database
+    participant CS as cloudsync.Manager
+    participant SN as 云 finance_snapshot
+    participant BK as internal/backup
+
+    M->>CFG: Load()（config.yaml → merge cloudsync.local.yaml → env 覆盖）
+    CFG-->>M: Config（cloudSync 缺失则降级 enabled=false）
+    M->>DB: Init() → Migrate()（含新建 sync_state 表）
+    M->>DB: SeedAdmin()（空库建 admin）
+    M->>CS: Init(cfg.CloudSync); cloudSync = M()
+    M->>CS: StartupPull(ctx, 8s)
+    CS->>CS: stateGet(dirty, last_remote_exported_at, last_local_write_at)
+    CS->>SN: GET ?id=eq.1&select=id,payload,updated_at<br/>（仅 x-wb-webapp-access-key，绝不发 Origin）
+    alt 200 + payload 合法
+        SN-->>CS: [{id:1, payload:{exportedAt,counts,tables}, updated_at}]
+        CS->>CS: decide() 判定表 P0..P9
+        alt PullReplaced（云端为准）
+            CS->>BK: Import(mode=Replace, KeepTables=[users])
+            BK->>DB: BEGIN → 逆序 DELETE → 正序 Create → COMMIT
+            CS->>DB: stateSet(dirty=0, last_pull_at, last_remote_exported_at)
+        else PullNeedPush（本地为准）
+            CS->>CS: needPush = true
+        else PullSkipped（已同步 / 损坏 / 失败）
+            CS->>DB: stateSet(last_error)  ← 不写任何业务数据
+        end
+    else 404 / 空数组
+        SN-->>CS: []
+        Note over CS: 远端无快照：localHasBusiness ? needPush : 无动作
+    else 超时 / 5xx / 网络错误
+        SN-->>CS: error
+        Note over CS: 只记 lastError + 日志；<br/>绝不推送（禁止拿本地覆盖云端）
+    end
+    CS-->>M: Result{Action, Inserted, Deleted, ExportedAt, Err}
+    M->>DB: SeedAdmin()（快照可能不含 admin，幂等再跑一次）
+    M->>M: routes.Register(r) / serveWebApp / serveAdminApp
+    M->>M: 启动 http.Server + logs "listening on :8080"
+    M->>CS: go Manager.Run(ctx)（60s 兜底 ticker）
+    opt needPush
+        CS->>SN: POST / PATCH（首推）
+    end
+
+%% ---------------------------------------------------------------------------
+%% 【段 2】写操作 → 防抖合并 → 推送（不阻塞用户请求）
+%% ---------------------------------------------------------------------------
+sequenceDiagram
+    autonumber
+    participant APP as App 或 Web
+    participant MW as cloudsync.Middleware
+    participant H as handlers 账目计划家庭
+    participant DB as SQLite
+    participant CS as Manager.Run loop
+    participant BK as internal/backup
+    participant SN as 云 finance_snapshot
+
+    loop 100 次连续写操作
+        APP->>MW: POST /api/transactions（200 期望）
+        MW->>H: c.Next()
+        H->>DB: INSERT
+        H-->>MW: 200 {code:0}
+        MW-->>APP: 200（耗时与 v0.3.1 相比 ≤+150ms）
+        MW->>CS: MarkDirty()（非阻塞写 chan，缓冲 1）
+        CS->>DB: stateSet(dirty=1, last_local_write_at=now)
+    end
+    Note over CS: kick 触发 → 开 1.5s 防抖窗口<br/>窗口内所有 kick 被合并（最多延长 5s）
+    CS->>BK: Export(Exclude=[audit_logs,error_reports])  ← 必须重新导出最新本地状态
+    BK->>DB: 18 表 Unscoped().Order("id").Find
+    BK-->>CS: payload（≈207KB, exportedAt=now）
+    CS->>SN: PATCH ?id=eq.1 {payload, updated_at:RFC3339}
+    alt 204
+        SN-->>CS: 204
+        CS->>DB: stateSet(dirty=0, last_push_at, last_remote_exported_at)
+    else 404（行被清空）
+        CS->>SN: POST（重建 id=1）
+    else 5xx / 超时
+        CS->>CS: consecutiveFailures++，退避 1/2/4/8/16/32/60s，最多 8 次
+        CS->>DB: stateSet(last_error, last_error_at)
+        Note over CS: 8 次后置 pending=true，交给 60s 兜底 ticker
+    end
+    Note over APP,CS: 连续 3 次失败 → App 顶部横条「云端同步失败，本地数据已保留」
+
+%% ---------------------------------------------------------------------------
+%% 【段 3】优雅退出前的最后一次推送
+%% ---------------------------------------------------------------------------
+sequenceDiagram
+    autonumber
+    participant OS as 沙箱 / 运维
+    participant M as main.go
+    participant CS as Manager
+    participant SN as 云 finance_snapshot
+
+    OS->>M: SIGTERM / SIGINT
+    Note over M: 若为 SIGKILL 则此段不执行 ——<br/>真正的兜底是 debounce 只有 1.5s
+    M->>CS: Flush(ctx 8s)
+    CS->>CS: if dirty == 0 → 直接返回
+    CS->>SN: PATCH（最后一次全量）
+    SN-->>CS: 204
+    CS-->>M: nil
+    M->>M: srv.Shutdown(ctx 5s)
+
+%% ---------------------------------------------------------------------------
+%% 【段 4】邮箱注册（R-05）
+%% ---------------------------------------------------------------------------
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant RP as RegisterPage
+    participant API as ApiClient
+    participant RT as routes
+    participant RG as handlers.Register
+    participant DB as SQLite
+    participant JWT as utils.GenerateToken
+
+    U->>RP: 输入邮箱/密码/确认密码/昵称
+    RP->>RP: 本地校验（格式 / ≥8 含字母数字 / 两次一致）→ 就地报错
+    RP->>API: register(email, password, nickname)
+    API->>RT: POST /api/auth/register?sharecode=XXX
+    RT->>RT: authLimiter(5min/30 IP) + Allow("register-ip:"+ip, 1h, 20)
+    alt 限流超限
+        RT-->>API: 429 {code:40300,"注册过于频繁，请稍后再试"}
+    end
+    RT->>RG: Register(c)
+    RG->>RG: NormalizeEmail(trim+lower) / IsValidEmail / ValidatePasswordStrength
+    RG->>DB: WHERE username = ? OR (email <> '' AND email = ?)
+    alt 已存在
+        DB-->>RG: 命中
+        RG-->>API: 409 {code:40900,"该邮箱已注册"}
+    else 不存在
+        RG->>DB: INSERT users{username=email, email=email, nickname=默认, role=user}
+        Note over DB: username 的 uniqueIndex 是并发兜底<br/>（Email 只有普通索引，历史空串不能加唯一）
+        RG->>JWT: 签发 access + refresh（与登录同一函数）
+        RG->>DB: UPDATE users SET last_login_at = now
+        RG-->>API: 200 {code:0, data:{accessToken, refreshToken, uid, role, nickname, familyId:null}}
+        API-->>RP: 直接 setTokens + 进入 /overview（无需二次登录）
+    end
+
+%% ---------------------------------------------------------------------------
+%% 【段 5】扫码失败态（R-10）
+%% ---------------------------------------------------------------------------
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant QP as QrScanPage
+    participant MS as mobile_scanner MLKit
+    participant API as ApiClient
+    participant SV as 后端 /api/errors
+
+    U->>QP: 进入「扫描服务端二维码」
+    QP->>MS: 初始化 MobileScannerController
+    alt 初始化成功
+        MS-->>QP: 取景画面（3s 内）
+        U->>MS: 对准 Web 登录页二维码
+        MS-->>QP: rawValue
+        QP->>QP: Navigator.pop(value) → 回填服务端地址
+    else permissionDenied
+        MS-->>QP: MobileScannerException
+        QP->>QP: mapScanError → ScanFailure.permissionDenied
+        QP-->>U: 「相机权限未开启。请在…允许使用相机。」<br/>[重新申请权限] [手动输入服务端地址]
+        QP->>API: reportError("scan_failed:permissionDenied", extra={errorCode,model,sdkInt})
+        API->>SV: POST /api/errors（一次页面生命周期内只报一次）
+    else unsupported / cameraInUse / initFailed
+        MS-->>QP: MobileScannerException
+        QP-->>U: 对应中文文案 + [重试] + [手动输入]<br/>（隐藏取景框装饰层，不出现任何异常类名）
+    end
+
+%% ---------------------------------------------------------------------------
+%% 【段 6】v0.4.0 一次性数据接续（真实线上数据 → 新云应用）
+%% 幂等：restore 走 ImportMerge（已存在主键跳过），可重复执行；
+%% 判定"已完成"= 重跑时 inserted 全 0。
+%% ---------------------------------------------------------------------------
+sequenceDiagram
+    autonumber
+    participant OP as 运维
+    participant SY as cloud/sync.sh
+    participant SRV as 新云后端
+    participant DB as SQLite 空库冷启
+    participant SN as 新云 finance_snapshot
+    participant LIVE as 合并包 finance-migration-restore.json
+
+    Note over OP,LIVE: 前置：合并包 = 线上 live 业务数据 + admin/alice/bob/test 的真实 bcrypt 哈希<br/>（只有 webuser 无哈希）
+    OP->>SY: bash cloud/sync.sh
+    SY->>SY: 注入 config/cloudsync.local.yaml（来自不入库的 cloud/secrets/）
+    SY->>SY: data/finance.db 置为 0 字节（不再继承旧 db）
+    SY-->>OP: SYNC_OK + "cloudsync sidecar: installed" + "data/finance.db reset to empty"
+    OP->>SRV: 发布 cloud/finance-server
+    SRV->>DB: Init → Migrate（建 18 表 + sync_state）→ SeedAdmin(admin 口令可用)
+    SRV->>SN: StartupPull（GET ?id=eq.1）
+    SN-->>SRV: 404 / 空数组 → 远端无快照，本地也空 → 什么都不做
+    OP->>SRV: curl /healthz
+    SRV-->>OP: {"ok":true}
+
+    OP->>SRV: 登录 admin 取 token
+    OP->>LIVE: 读取 tables + exportedAt（兼容 {data:…} 与扁平两种外层）
+    OP->>OP: 断言"至少有一个用户带 60 位哈希"（防误用无哈希的 live 原文）
+    OP->>SRV: POST /api/admin/backup/restore {tables, exportedAt, force:true}
+    SRV->>SRV: gateExportTs(reqTs, remoteTs=0, force=true) → forced
+    SRV->>SRV: users 表反序列化为 userImportRow → toModel() 回填 passwordHash
+    SRV->>DB: BEGIN → 按主键查-插（users id=1 已被 SeedAdmin 建好→skipped；id=2/3/4/5 插入，带哈希）→ COMMIT
+    SRV-->>OP: 200 {inserted:{transactions:160,users:4,...}, skipped:{users:1,...}, overwritten:0, gate:{decision:"forced"}}
+    Note over OP: 脚本硬断言 transactions>=160 / purchase_plans>=19 / housing_fund_loans>=16<br/>任一不达标 → exit 1（多半是 db 没置空，R14）
+
+    SRV->>SRV: cloudsync.Middleware 捕获 restore 成功 → MarkDirty
+    SRV->>SN: 1.5s 防抖后 PATCH/POST 全量 payload（首次即建 id=1）
+    SN-->>SRV: 201 / 204
+    OP->>SRV: POST /api/admin/sync/push（显式补推，不依赖防抖）
+    SRV->>SN: PATCH ?id=eq.1
+    SRV-->>OP: {ok:true, payloadBytes, exportedAt}
+
+    Note over OP: admin 的哈希被 merge 跳过 → 口令仍以 SeedAdmin 为准（预期）<br/>只有 webuser 无哈希
+    OP->>SRV: POST /api/admin/users/5/reset-password（仅 webuser，一次）
+    SRV-->>OP: ok（token_version+1）
+
+    OP->>SRV: GET /api/sync/status
+    SRV-->>OP: {lastPushAt>0, payloadBytes>0, lastError:""}
+
+    OP->>SRV: 重启沙箱
+    SRV->>DB: 空库冷启（0 字节 db）
+    SRV->>SN: StartupPull → 200 + payload
+    SRV->>SRV: decide() → P6 本地为空 → PullReplaced
+    SRV->>DB: Import(replace) 全量灌回（users 走 userImportRow.toModel()，哈希进库）
+    OP->>SRV: 用 alice 的原口令登录 + 查账目
+    SRV-->>OP: 登录成功（证明哈希往返没丢）<br/>160 笔账目 / 家庭「永远富裕之家」(V7K3BFZL) / 19 条大件计划 全部在 ✅
+
+    OP->>SRV: 重跑接续脚本（幂等校验）
+    SRV-->>OP: inserted 全 0 / skipped 全量 → 接续已完成

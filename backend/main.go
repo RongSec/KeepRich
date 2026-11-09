@@ -7,15 +7,21 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yourname/family-finance/backend/config"
+	"github.com/yourname/family-finance/backend/internal/cloudsync"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/routes"
@@ -35,6 +41,22 @@ func main() {
 		log.Printf("seed admin: %v", err)
 	}
 
+	// ---- 云快照同步：Init → StartupPull ----
+	// 启动时先拉一次，把"云端是唯一事实源"落实到进程启动顺序里。
+	// 拉取失败只打日志 + 记 lastError，**绝不 fatal、绝不清空本地**（红线 5.3.3）。
+	cloudsync.Init(config.C.CloudSync)
+	pullCtx, pullCancel := context.WithTimeout(context.Background(), 8*time.Second)
+	pullRes := cloudsync.M().StartupPull(pullCtx)
+	pullCancel()
+	log.Printf("[cloudsync] startup pull: action=%s reason=%s remoteExportedAt=%d err=%s",
+		pullRes.Action, pullRes.Reason, pullRes.RemoteExportedAt, pullRes.Error)
+
+	// 快照可能没有 admin（或换过口令）→ 幂等补建一次。
+	// 注意：接续场景下 admin 以 SeedAdmin 为准（Q-M5），这是预期行为。
+	if err := database.SeedAdmin(os.Getenv("ADMIN_USERNAME"), os.Getenv("ADMIN_PASSWORD")); err != nil {
+		log.Printf("seed admin (after pull): %v", err)
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), middleware.Recovery(), middleware.CORS())
@@ -43,11 +65,47 @@ func main() {
 	serveAdminApp(r)
 	serveWebApp(r)
 
+	// 后台推送循环（60s 兜底 ticker + 防抖 + 退避）
+	runCtx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+	go cloudsync.M().Run(runCtx)
+
+	// 显式 http.Server（r.Run() 无法在退出前 flush 最后一次推送）
 	addr := ":" + strconv.Itoa(config.C.App.Port)
-	log.Printf("listening on %s (env=%s)", addr, config.C.App.Env)
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("server: %v", err)
+	srv := &http.Server{Addr: addr, Handler: r}
+
+	go func() {
+		log.Printf("listening on %s (env=%s)", addr, config.C.App.Env) // 保持原格式，验收依赖它
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server: %v", err)
+		}
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	sig := <-sigCh
+	log.Printf("[shutdown] signal %v received", sig)
+
+	// 先停后台循环，避免与新的一次 Flush 互相竞争
+	runCancel()
+
+	// 退出前最后一次推送（best-effort：只在 dirty==1 / pending 时推）。
+	// 真正的保障是 debounce 只有 1.5s —— 沙箱被 SIGKILL 时丢失窗口极小。
+	log.Println("[shutdown] flushing cloud snapshot ...")
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 8*time.Second)
+	if err := cloudsync.M().Flush(flushCtx); err != nil {
+		log.Printf("[shutdown] flush failed: %v", err)
+	} else {
+		log.Println("[shutdown] flush done")
 	}
+	flushCancel()
+
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := srv.Shutdown(shutCtx); err != nil {
+		log.Printf("[shutdown] server shutdown: %v", err)
+	}
+	shutCancel()
+	log.Println("[shutdown] bye")
 }
 
 // serveWebApp 托管 Flutter Web 构建产物（存在时才挂载）
@@ -144,4 +202,3 @@ func serveWebApp(r *gin.Engine) {
 		c.File(indexPath)
 	})
 }
-

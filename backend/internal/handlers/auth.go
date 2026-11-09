@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
 type LoginReq struct {
@@ -21,13 +24,13 @@ type LoginReq struct {
 }
 
 type LoginResp struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	ExpiresIn    int    `json:"expiresIn"`
-	UID          uint64 `json:"uid"`
-	Role         string `json:"role"`
-	Nickname     string `json:"nickname"`
-	Avatar       string `json:"avatar"`
+	AccessToken  string  `json:"accessToken"`
+	RefreshToken string  `json:"refreshToken"`
+	ExpiresIn    int     `json:"expiresIn"`
+	UID          uint64  `json:"uid"`
+	Role         string  `json:"role"`
+	Nickname     string  `json:"nickname"`
+	Avatar       string  `json:"avatar"`
 	FamilyID     *uint64 `json:"familyId,omitempty"`
 }
 
@@ -41,8 +44,8 @@ type LoginResp struct {
 // @Router /api/auth/login [post]
 // 登录失败锁定：同一账号/ IP 5 分钟内失败 5 次即锁 15 分钟
 var (
-	loginFailsMu   sync.Mutex
-	loginFails     = map[string]*loginFailState{}
+	loginFailsMu sync.Mutex
+	loginFails   = map[string]*loginFailState{}
 )
 
 type loginFailState struct {
@@ -94,20 +97,39 @@ func Login(c *gin.Context) {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
 		return
 	}
+	// 归一化输入：`username` 字段语义已扩为「用户名 **或** 邮箱」，大小写不敏感。
+	// 限流键必须用归一化后的值 —— 否则 A@B.com 与 a@b.com 各占一个额度，
+	// 锁定形同虚设（DESIGN §2.C.4）。
+	ident := strings.TrimSpace(req.Username)
+	lower := strings.ToLower(ident)
+	if ident == "" {
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号或密码错误")
+		return
+	}
+
 	// 登录失败锁定：同一账号+IP 5 分钟内失败 5 次锁 15 分钟
-	failKey := loginFailKey(req.Username, c.ClientIP())
+	failKey := loginFailKey(lower, c.ClientIP())
 	if locked, d := checkLoginLocked(failKey); locked {
 		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden,
 			fmt.Sprintf("登录失败次数过多，请 %d 分钟后再试", int(d.Minutes())+1))
 		return
 	}
 	// 账号维度限流：单账号 5 分钟最多 10 次尝试（防 TOTP/密码暴力破解）
-	if !middleware.Allow("login-acct:"+req.Username, 5*time.Minute, 10) {
+	if !middleware.Allow("login-acct:"+lower, 5*time.Minute, 10) {
 		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden, "尝试次数过多，请稍后再试")
 		return
 	}
+
+	// 两段式查询（索引友好，不用 LOWER(email) —— 函数包住列会放弃索引）：
+	//   ① 先打 users.username 唯一索引：覆盖所有老用户名 + 所有新注册的邮箱账号
+	//   ② 再按 email 精确查：覆盖"注册后被 admin 改了 email"或历史 email 账号
 	var u models.User
-	if err := database.DB.Where("username = ?", req.Username).First(&u).Error; err != nil {
+	err := database.DB.Where("username = ?", ident).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = database.DB.Where("email = ? AND email <> ''", lower).First(&u).Error
+	}
+	if err != nil {
+		// 不区分「账号不存在」与「密码错」—— 防账号枚举（DESIGN §2.C.4）
 		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号或密码错误")
 		return
 	}
@@ -127,27 +149,44 @@ func Login(c *gin.Context) {
 			return
 		}
 	}
-	access, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeAccess, config.C.JWT.AccessSecret, config.C.JWT.AccessTTL, u.TokenVersion)
+	resp, err := issueTokens(&u)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "签发 access token 失败")
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
 	}
-	refresh, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeRefresh, config.C.JWT.RefreshSecret, config.C.JWT.RefreshTTL, u.TokenVersion)
+	utils.OK(c, resp)
+}
+
+// issueTokens 签发 access + refresh 并组装登录响应（Login 与 Register 共用）。
+//
+// 抽出来的原因：注册成功后要**直接**返回 token（R-05 ①，不需要二次登录），
+// 若各自复制一份签发逻辑，token 版本号/家庭信息这些细节迟早漂移。
+func issueTokens(u *models.User) (LoginResp, error) {
+	var out LoginResp
+	access, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeAccess,
+		config.C.JWT.AccessSecret, config.C.JWT.AccessTTL, u.TokenVersion)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "签发 refresh token 失败")
-		return
+		return out, errors.New("签发 access token 失败")
 	}
+	refresh, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeRefresh,
+		config.C.JWT.RefreshSecret, config.C.JWT.RefreshTTL, u.TokenVersion)
+	if err != nil {
+		return out, errors.New("签发 refresh token 失败")
+	}
+
 	now := time.Now()
-	database.DB.Model(&u).Update("last_login_at", &now)
+	database.DB.Model(u).Update("last_login_at", &now)
 
 	// 查询当前所在家庭（仅取一个 active 家庭）
 	var member models.FamilyMember
 	var familyID *uint64
-	if err := database.DB.Where("user_id = ? AND status = ?", u.ID, models.MemberStatusActive).First(&member).Error; err == nil {
-		familyID = &member.FamilyID
+	if err := database.DB.Where("user_id = ? AND status = ?", u.ID, models.MemberStatusActive).
+		First(&member).Error; err == nil {
+		fid := member.FamilyID
+		familyID = &fid
 	}
 
-	utils.OK(c, LoginResp{
+	return LoginResp{
 		AccessToken:  access,
 		RefreshToken: refresh,
 		ExpiresIn:    config.C.JWT.AccessTTL,
@@ -156,7 +195,7 @@ func Login(c *gin.Context) {
 		Nickname:     u.Nickname,
 		Avatar:       u.Avatar,
 		FamilyID:     familyID,
-	})
+	}, nil
 }
 
 type RefreshReq struct {

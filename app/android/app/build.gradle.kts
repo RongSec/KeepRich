@@ -57,6 +57,16 @@ android {
                 // 未配置正式签名时回退 debug 签名，保证 `flutter build apk --release` 可用
                 signingConfigs.getByName("debug")
             }
+
+            // R8 混淆裁剪：mlkit 内部包被改名 → 扫码在 release 包必崩（v0.3.1 线上问题）
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            // ⚠️ 必须用 proguardFile(...)（Collection 的"追加成员"语义），
+            //    不能用 proguardFiles(...)（赋值，会整体覆盖 AGP/Flutter 注入的
+            //    proguard-android-optimize.txt 与各插件自带的 consumer 规则，
+            //    导致构建失败或运行时其它崩溃）。
+            proguardFile("proguard-rules.pro")
         }
     }
 }

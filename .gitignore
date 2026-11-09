@@ -59,3 +59,19 @@ logs/
 *.jks
 *.keystore
 key.properties
+
+# 部署目录的运行时数据库（含真实用户数据，禁止入库）
+cloud/finance-server/data/*.db
+# 云端快照密钥（严禁入库）
+# 用 `cloud/secrets/*` 而不是 `cloud/secrets/`：目录本身不能被整体排除，
+# 否则里面的模板 cloudsync.local.yaml.example（只有占位符，应当入库）也跟着被忽略，
+# 接手的人就看不到"该怎么配"。
+cloud/secrets/*
+!cloud/secrets/cloudsync.local.yaml.example
+cloud/finance-server/config/*.local.yaml
+# 本地开发若把 sidecar 放在 backend/config/ 下，同样严禁入库
+backend/config/cloudsync.local.yaml
+
+# 含真实用户数据 / 口令哈希的迁移与备份包（禁止入库）
+docs/backups/finance-migration-restore.json
+docs/backups/finance-backup-20261109-live.json

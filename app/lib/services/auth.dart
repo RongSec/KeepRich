@@ -63,6 +63,33 @@ class AuthState extends ChangeNotifier {
     return false;
   }
 
+  /// 邮箱注册（R-05）：接口直接返回 token，注册成功即视为已登录。
+  ///
+  /// 与 [login] 一样必须再走一次 `me()` —— 路由守卫用的是 `isLoggedIn`
+  /// （`_user != null`），少了这一步会"注册成功又闪回登录页"。
+  Future<bool> register(String email, String password,
+      {String? nickname}) async {
+    final r = await ApiClient.instance
+        .register(email: email, password: password, nickname: nickname);
+    if (!r.ok || r.data == null) {
+      lastLoginError = r.message;
+      return false;
+    }
+    final me = await ApiClient.instance.me();
+    if (!me.ok || me.data == null) {
+      ApiClient.instance.clearTokens();
+      await ApiClient.instance.clearPersisted();
+      _user = null;
+      lastLoginError = me.message;
+      notifyListeners();
+      return false;
+    }
+    _user = me.data;
+    lastLoginError = null;
+    notifyListeners();
+    return true;
+  }
+
   Future<void> logout() async {
     ApiClient.instance.clearTokens();
     await ApiClient.instance.clearPersisted();

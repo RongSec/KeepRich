@@ -28,29 +28,12 @@ type UpdateProfileReq struct {
 	Phone    *string `json:"phone"`
 }
 
-// validatePasswordStrength 密码强度：至少 8 位，且同时含字母和数字
-func validatePasswordStrength(pw string) string {
-	if len(pw) < 8 {
-		return "密码至少 8 位"
-	}
-	var hasLetter, hasDigit bool
-	for _, r := range pw {
-		switch {
-		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
-			hasLetter = true
-		case r >= '0' && r <= '9':
-			hasDigit = true
-		}
-	}
-	if !hasLetter || !hasDigit {
-		return "密码需同时包含字母和数字"
-	}
-	return ""
-}
+// 密码强度校验已抽到 utils.ValidatePasswordStrength（注册 / 改密 / 管理员重置共用），
+// 这里只保留调用点，避免三份实现文案漂移（DESIGN §2.C.1）。
 
 type ChangePasswordReq struct {
 	OldPassword string `json:"oldPassword" binding:"required"`
-	// 长度/复杂度统一交给 validatePasswordStrength，避免 gin 的英文校验文案
+	// 长度/复杂度统一交给 utils.ValidatePasswordStrength，避免 gin 的英文校验文案
 	// （"failed on the 'min' tag"）直接弹给用户
 	NewPassword string `json:"newPassword" binding:"required"`
 }
@@ -62,7 +45,7 @@ func CreateUser(c *gin.Context) {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
 		return
 	}
-	if msg := validatePasswordStrength(req.Password); msg != "" {
+	if msg := utils.ValidatePasswordStrength(req.Password); msg != "" {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}
@@ -177,7 +160,7 @@ func ChangePassword(c *gin.Context) {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
 		return
 	}
-	if msg := validatePasswordStrength(req.NewPassword); msg != "" {
+	if msg := utils.ValidatePasswordStrength(req.NewPassword); msg != "" {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}

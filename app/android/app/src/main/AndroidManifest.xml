@@ -2,6 +2,11 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- 扫码连接服务端：相机权限 -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 相机是可选硬件：R-10 要求"设备不支持"时给出可读文案而不是崩溃。
+         不加 required="false" 时 CAMERA 权限会隐含 required=true，
+         无相机设备会被应用商店过滤，且代码里 hasSystemFeature 的判断形同虚设。 -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>

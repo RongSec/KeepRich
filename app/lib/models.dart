@@ -1073,3 +1073,52 @@ class NotifyType {
   };
   static String labelOf(String t) => labels[t] ?? '通知';
 }
+
+/// 云端快照同步状态（`GET /api/sync/status`，R-11）
+///
+/// 后端返回：
+/// `{"enabled":true,"lastPullAt":0,"lastPushAt":1794193800,
+///   "remoteExportedAt":1794193712,"payloadBytes":225775,
+///   "pending":false,"lastError":""}`
+class SyncStatusData {
+  /// 服务端是否启用了云端快照同步（密钥缺失时会降级为 false）
+  final bool enabled;
+
+  /// 最近一次从云端拉取成功的时间（Unix 秒，0 = 从未）
+  final int lastPullAt;
+
+  /// 最近一次推送成功的时间（Unix 秒，0 = 从未）
+  final int lastPushAt;
+
+  /// 云端快照的 exportedAt（Unix 秒）
+  final int remoteExportedAt;
+
+  /// 上次推送的 payload 字节数
+  final int payloadBytes;
+
+  /// 是否有"已写入本地但尚未推送出去"的变更
+  final bool pending;
+
+  /// 最近一次同步失败原因（空串 = 无失败）
+  final String lastError;
+
+  SyncStatusData({
+    required this.enabled,
+    required this.lastPullAt,
+    required this.lastPushAt,
+    required this.remoteExportedAt,
+    required this.payloadBytes,
+    required this.pending,
+    required this.lastError,
+  });
+
+  factory SyncStatusData.fromJson(Map<String, dynamic> json) => SyncStatusData(
+        enabled: json['enabled'] == true,
+        lastPullAt: _parseNum(json['lastPullAt']).toInt(),
+        lastPushAt: _parseNum(json['lastPushAt']).toInt(),
+        remoteExportedAt: _parseNum(json['remoteExportedAt']).toInt(),
+        payloadBytes: _parseNum(json['payloadBytes']).toInt(),
+        pending: json['pending'] == true,
+        lastError: json['lastError'] as String? ?? '',
+      );
+}

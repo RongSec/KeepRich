@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -17,14 +19,14 @@ type AppConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	Name     string `mapstructure:"name"`
-	Charset  string `mapstructure:"charset"`
-	ParseTime bool  `mapstructure:"parseTime"`
-	Loc      string `mapstructure:"loc"`
+	Host      string `mapstructure:"host"`
+	Port      int    `mapstructure:"port"`
+	User      string `mapstructure:"user"`
+	Password  string `mapstructure:"password"`
+	Name      string `mapstructure:"name"`
+	Charset   string `mapstructure:"charset"`
+	ParseTime bool   `mapstructure:"parseTime"`
+	Loc       string `mapstructure:"loc"`
 }
 
 type JWTConfig struct {
@@ -40,25 +42,42 @@ type MFAConfig struct {
 }
 
 type NotifyConfig struct {
-	WSEnabled   bool   `mapstructure:"wsEnabled"`
-	FCMEnabled  bool   `mapstructure:"fcmEnabled"`
+	WSEnabled    bool   `mapstructure:"wsEnabled"`
+	FCMEnabled   bool   `mapstructure:"fcmEnabled"`
 	FCMServerKey string `mapstructure:"fcmServerKey"`
 }
 
 type PlanConfig struct {
-	EmergencyTarget float64 `mapstructure:"emergencyTarget"`
-	PensionTarget   float64 `mapstructure:"pensionTarget"`
+	EmergencyTarget  float64 `mapstructure:"emergencyTarget"`
+	PensionTarget    float64 `mapstructure:"pensionTarget"`
 	BigPurchaseRatio float64 `mapstructure:"bigPurchaseRatio"`
 	InvestAnnualRate float64 `mapstructure:"investAnnualRate"`
 }
 
+// CloudSyncConfig 云端快照同步配置（DESIGN v0.4.0 §2.E.1）。
+//
+// ⚠️ 真实 apiKey **永不入库**：config.yaml 里只有 enabled:false 或干脆没有这一节，
+// 真实值来自不入库的 sidecar（config/cloudsync.local.yaml，由 cloud/sync.sh 注入）
+// 或环境变量（CLOUD_SYNC_*）。仓库是公开的，任何真实 key 写进受控文件都是事故。
+type CloudSyncConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Endpoint string `mapstructure:"endpoint"` // 含表名的完整 REST URL
+	APIKey   string `mapstructure:"apiKey"`
+	// SnapshotID 云端快照行主键。默认 1；测试时可用 999 而不污染线上那行。
+	SnapshotID     int64    `mapstructure:"snapshotId"`
+	DebounceMS     int      `mapstructure:"debounceMs"`     // 默认 1500
+	PushTimeoutSec int      `mapstructure:"pushTimeoutSec"` // 默认 5
+	ExcludeTables  []string `mapstructure:"excludeTables"`  // 默认 ["audit_logs","error_reports"]
+}
+
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	Database DatabaseConfig `mapstructure:"database"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	MFA      MFAConfig      `mapstructure:"mfa"`
-	Notify   NotifyConfig   `mapstructure:"notify"`
-	Plan     PlanConfig     `mapstructure:"plan"`
+	App       AppConfig       `mapstructure:"app"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	MFA       MFAConfig       `mapstructure:"mfa"`
+	Notify    NotifyConfig    `mapstructure:"notify"`
+	Plan      PlanConfig      `mapstructure:"plan"`
+	CloudSync CloudSyncConfig `mapstructure:"cloudSync"`
 }
 
 var C *Config
@@ -89,9 +108,32 @@ func Load() error {
 	_ = viper.BindEnv("jwt.refreshTTL", "JWT_REFRESH_TTL")
 	_ = viper.BindEnv("mfa.cooldownDays", "MFA_COOLDOWN_DAYS")
 	_ = viper.BindEnv("notify.fcmServerKey", "FCM_SERVER_KEY")
+	// 云端快照：环境变量优先级最高（应急覆盖，不用改文件）
+	_ = viper.BindEnv("cloudSync.enabled", "CLOUD_SYNC_ENABLED")
+	_ = viper.BindEnv("cloudSync.endpoint", "CLOUD_SYNC_ENDPOINT")
+	_ = viper.BindEnv("cloudSync.apiKey", "CLOUD_SYNC_API_KEY")
+	_ = viper.BindEnv("cloudSync.snapshotId", "CLOUD_SYNC_SNAPSHOT_ID")
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("read config: %w", err)
+	}
+
+	// 密钥 sidecar：本地/部署目录里不入库的 cloudsync.local.yaml。
+	// 用 MergeConfig(io.Reader) 而**不是** SetConfigFile —— 后者会把已读到的
+	// config.yaml 换掉，导致 app/jwt 等字段全丢（DESIGN §2.E.1）。
+	for _, p := range []string{"./config/cloudsync.local.yaml", "./cloudsync.local.yaml"} {
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		if err := viper.MergeConfig(f); err != nil {
+			_ = f.Close()
+			log.Printf("[config][WARN] merge sidecar %s: %v", p, err)
+			continue
+		}
+		_ = f.Close()
+		log.Printf("[config] merged sidecar %s", p)
+		break
 	}
 
 	C = &Config{}
@@ -118,6 +160,26 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("jwt 密钥仍为默认开发值，生产环境必须通过 JWT_ACCESS_SECRET / JWT_REFRESH_SECRET 环境变量注入强随机密钥")
 		}
 		fmt.Println("[config][WARN] JWT 密钥为开发默认值，仅限本地开发使用；部署生产前必须更换")
+	}
+
+	// ---- 云端快照同步：降级而不是 fatal ----
+	// 配错密钥绝不能让服务起不来（R-02 ② / §6.4）：降级为 disabled 并打 WARN，
+	// 代价只是"数据不持久化"，而不是"整个服务不可用"。
+	if c.CloudSync.Enabled && (c.CloudSync.Endpoint == "" || c.CloudSync.APIKey == "") {
+		fmt.Println("[config][WARN] cloudSync 已启用但 endpoint/apiKey 缺失 → 自动降级为 disabled（数据不会持久化）")
+		c.CloudSync.Enabled = false
+	}
+	if c.CloudSync.SnapshotID <= 0 {
+		c.CloudSync.SnapshotID = 1
+	}
+	if c.CloudSync.DebounceMS <= 0 {
+		c.CloudSync.DebounceMS = 1500
+	}
+	if c.CloudSync.PushTimeoutSec <= 0 {
+		c.CloudSync.PushTimeoutSec = 5
+	}
+	if len(c.CloudSync.ExcludeTables) == 0 {
+		c.CloudSync.ExcludeTables = []string{"audit_logs", "error_reports"}
 	}
 	return nil
 }

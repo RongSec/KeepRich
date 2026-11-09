@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -36,16 +37,25 @@ type ReportErrorReq struct {
 	Extra    string `json:"extra"`
 }
 
-// ReportError 客户端错误上报（任意登录用户可调用）
+// ReportError 客户端错误上报。
+//
+// 该接口已从「需要登录」组移到公开组（V0.4.0 R-01/R-10 的配套修复）：
+// 扫码失败恰恰常发生在**登录之前/登录态失效时**，此前挂在 auth 组下会先返回 401，
+// 错误永远上报不上来（App 同事反馈的真实缺口）。
+//
+// 因此 UID 取不到时必须按 0 处理，**不能**依赖 MustUID 的"必须有登录态"语义；
+// 请求/响应结构完全不变，旧客户端零改动。
 func ReportError(c *gin.Context) {
-	uid := middleware.MustUID(c)
+	uid := optionalUID(c)
 	var req ReportErrorReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		// 不直出 err.Error()：Go 的编解码错误是英文（"unexpected EOF" 等），
+		// 会被 App 原样弹给用户，违反 §6.3「错误文案禁英文/异常类名」。
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请求格式不正确")
 		return
 	}
 	if req.Message == "" {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "message required")
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "缺少 message 字段")
 		return
 	}
 	if req.Platform == "" {
@@ -65,10 +75,24 @@ func ReportError(c *gin.Context) {
 		Extra:    req.Extra,
 	}
 	if err := database.DB.Create(&e).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		// 同上：DB 错误也是英文，不透传给客户端，只留服务端日志
+		log.Printf("[errors] 保存客户端错误上报失败: %v", err)
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "错误上报保存失败，请稍后重试")
 		return
 	}
 	utils.OK(c, gin.H{"id": e.ID, "ok": true})
+}
+
+// optionalUID 读取登录态里的 UID；公开接口未登录时返回 0（不 panic、不中断请求）。
+func optionalUID(c *gin.Context) uint64 {
+	v, ok := c.Get(middleware.CtxUID)
+	if !ok {
+		return 0
+	}
+	if uid, ok := v.(uint64); ok {
+		return uid
+	}
+	return 0
 }
 
 // AdminListAudit 审计日志列表
@@ -164,7 +188,7 @@ func AdminResetPassword(c *gin.Context) {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
 		return
 	}
-	if msg := validatePasswordStrength(req.NewPassword); msg != "" {
+	if msg := utils.ValidatePasswordStrength(req.NewPassword); msg != "" {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}
@@ -197,8 +221,8 @@ func AdminResetMFA(c *gin.Context) {
 		return
 	}
 	if err := database.DB.Model(&u).Updates(map[string]interface{}{
-		"mfa_enabled":    false,
-		"mfa_secret":     "",
+		"mfa_enabled":      false,
+		"mfa_secret":       "",
 		"mfa_backup_codes": "",
 	}).Error; err != nil {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())

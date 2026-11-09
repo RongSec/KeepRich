@@ -8,13 +8,15 @@ SRC=$ROOT/backend
 DST=$ROOT/cloud/finance-server
 WEB=$ROOT/app/build/web
 
-# 旧目录整个搬走（不 rm），数据文件从旧目录拿回
+# 旧目录整个搬走（不 rm）。
+# ⚠️ 不再沿用旧 data/finance.db：v0.4.0 起数据以云端快照为唯一事实源，
+# 每次发布都必须是全新空库。否则部署目录里带一版旧行，云端新数据导入时
+# 会因"同主键跳过"被整批丢弃（R14，会静默丢账）。
 if [ -d "$DST" ]; then
   OLD=/tmp/finance-server-old-$(date +%s)
   mv "$DST" "$OLD"
   if [ -f "$OLD/data/finance.db" ]; then
-    mkdir -p "$DST/data"
-    cp "$OLD/data/finance.db" "$DST/data/finance.db"
+    echo "data/finance.db: 旧库已归档到 ${OLD}，本轮从空库启动"
   fi
   if [ -d "$OLD/web" ] && [ ! -d "$WEB" ]; then
     echo "WARN: web build missing, reusing old"
@@ -22,9 +24,13 @@ if [ -d "$DST" ]; then
 fi
 
 mkdir -p "$DST/data"
+# 0 字节是合法的空 SQLite 库：首启自动建表，再由云端快照 / 一次性接续灌数据
+: > "$DST/data/finance.db"
 cp "$SRC/main.go" "$SRC/go.mod" "$SRC/go.sum" "$DST/"
 cp -R "$SRC/config" "$DST/config"
 cp -R "$SRC/internal" "$DST/internal"
+# 部署目录是发布产物，不携带单元测试（_test.go 里会引用仓库内 docs/ 下的数据文件）
+find "$DST/internal" -name '*_test.go' -delete
 # 剔除 MySQL：部署目录只保留 SQLite 实现，并去掉其构建标签
 rm -f "$DST/internal/database/database_mysql.go"
 python3 - "$DST/internal/database/database_sqlite.go" <<'PY'
@@ -90,6 +96,21 @@ s = re.sub(r'database:\n(  .*\n)+', 'database: {}\n', s, count=1)
 open(p, 'w', encoding='utf-8').write(s)
 PY
 
+# ---- 云端快照 sidecar 注入（密钥永不进 git）----
+# 必须放在 `cp -R "$SRC/config"` 之后（否则会被源目录覆盖掉）。
+# 母本放在 cloud/secrets/（不入库），因为它不在 $DST 里，
+# 不会被执行开头的 `mv "$DST" "$OLD"` 搬走。
+SIDECAR_SRC="$ROOT/cloud/secrets/cloudsync.local.yaml"
+SIDECAR_DST="$DST/config/cloudsync.local.yaml"
+mkdir -p "$DST/config"
+if [ -f "$SIDECAR_SRC" ]; then
+  cp "$SIDECAR_SRC" "$SIDECAR_DST"
+  echo "cloudsync sidecar: installed ($(grep -c apiKey "$SIDECAR_DST") apiKey line)"
+else
+  echo "WARN: $SIDECAR_SRC 不存在 → 云端快照同步将 disabled，沙箱重启后新增数据会丢"
+  echo "      修复：cp cloud/secrets/cloudsync.local.yaml.example cloud/secrets/cloudsync.local.yaml 并填 key"
+fi
+
 cd "$DST"
 # go 指令降到 1.22：沙箱自带 Go 即可编译，避免现场下载 go1.26 工具链超时
 python3 "$ROOT/cloud/set_go.py" "$DST/go.mod"
@@ -114,4 +135,11 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOFLAGS=-mod=vendor \
   go build -o "$DST/finance-app-x64" .
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOFLAGS=-mod=vendor \
   go build -o "$DST/finance-app-arm64" .
+
+# ---- 硬校验：sidecar 不能还是模板占位符（避免漏填 key 就打发布）----
+if [ -f "$SIDECAR_DST" ] && grep -q 'apiKey: "<publishableKey' "$SIDECAR_DST"; then
+  echo "FAIL: cloudsync.local.yaml 仍是模板占位符 → 请填真实 key（${SIDECAR_SRC}）"
+  exit 1
+fi
+
 echo "SYNC_OK"

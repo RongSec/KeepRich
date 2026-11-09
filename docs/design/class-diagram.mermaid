@@ -1,0 +1,348 @@
+%% ===========================================================================
+%% KeepRich v0.4.0 — 类图（后端新增/变更 + App 新增）
+%% ===========================================================================
+
+classDiagram
+    direction LR
+
+    %% ======================= 后端：数据层 internal/backup =======================
+    class Table {
+        +string Name
+        +any Model
+    }
+
+    class Snapshot {
+        +int SchemaVersion
+        +string AppVersion
+        +int64 ExportedAt
+        +map~string,int64~ Counts
+        +map~string,json.RawMessage~ Tables
+    }
+
+    class ExportOptions {
+        +[]string Exclude
+        +bool IncludeAudit
+        +string AppVersion
+    }
+
+    class ImportOptions {
+        +ImportMode Mode
+        +[]string KeepTables
+    }
+
+    class ImportResult {
+        +map~string,int64~ Inserted
+        +map~string,int64~ Skipped
+        +map~string,int64~ Deleted
+        +bool Replaced
+    }
+
+    class ImportMode {
+        <<enumeration>>
+        ImportMerge
+        ImportReplace
+    }
+
+    class UserExportRow {
+        <<导出专用，仅 users 表>>
+        +models.User User
+        +string PasswordHash
+        +string MFASecret
+        +string MFABackupCodes
+    }
+
+    class UserImportRow {
+        <<导入专用，仅 users 表>>
+        +models.User User
+        +string PasswordHash
+        +string MFASecret
+        +string MFABackupCodes
+        +toModel() models.User
+    }
+
+    class BackupPkg {
+        <<package>>
+        +Tables() []Table
+        +Export(db *gorm.DB, opt ExportOptions) (*Snapshot, error)
+        +Import(db *gorm.DB, tables map[string]json.RawMessage, opt ImportOptions) (ImportResult, error)
+    }
+
+    %% ======================= 后端：服务层 internal/cloudsync =======================
+    class Manager {
+        -CloudSyncConfig cfg
+        -Client cli
+        -chan~struct~ kick
+        -Status st
+        -bool started
+        +Enabled() bool
+        +StartupPull(ctx) Result
+        +MarkDirty(reason string)
+        +Run(ctx)
+        +PushNow(ctx) Result
+        +PullNow(ctx, force bool) Result
+        +Flush(ctx) error
+        +Status() Status
+        +Middleware() gin.HandlerFunc
+        -decide(remote *Row, snap *Snapshot, local LocalState) (PullAction, string)
+        -pushOnce(ctx) error
+        -pushWithRetry(ctx)
+    }
+
+    class Client {
+        -string endpoint
+        -string apiKey
+        -http.Client http
+        +Get(ctx) (*Row, []byte, error)
+        +Create(ctx, payload []byte, now time.Time) error
+        +Update(ctx, payload []byte, now time.Time) error
+    }
+
+    class Row {
+        +int64 ID
+        +json.RawMessage Payload
+        +string UpdatedAt
+    }
+
+    class Status {
+        +bool Enabled
+        +string EndpointHost
+        +int64 LastPullAt
+        +int64 LastPushAt
+        +int64 RemoteExportedAt
+        +int PayloadBytes
+        +bool Pending
+        +int ConsecutiveFailures
+        +string LastError
+        +int64 LastErrorAt
+        +bool RowExists
+    }
+
+    class LocalState {
+        +int Dirty
+        +int64 LastRemoteExportedAt
+        +int64 LastLocalWriteAt
+        +bool HasBusiness
+    }
+
+    class PullAction {
+        <<enumeration>>
+        PullSkipped
+        PullReplaced
+        PullNeedPush
+    }
+
+    class SyncState {
+        +string Key
+        +string Value
+    }
+
+    class SyncStateKeys {
+        <<constants>>
+        dirty
+        last_pull_at
+        last_push_at
+        last_remote_exported_at
+        last_local_write_at
+        last_error
+        last_error_at
+        row_exists
+    }
+
+    %% ======================= 后端：配置与模型 =======================
+    class CloudSyncConfig {
+        +bool Enabled
+        +string Endpoint
+        +string APIKey
+        +int DebounceMS
+        +int PushTimeoutSec
+        +[]string ExcludeTables
+    }
+
+    class Config {
+        +AppConfig App
+        +DatabaseConfig Database
+        +JWTConfig JWT
+        +CloudSyncConfig CloudSync
+        +Load() error
+        +Validate() error
+    }
+
+    class User {
+        +uint64 ID
+        +string Username
+        +string PasswordHash
+        +string Nickname
+        +string Email
+        +string Role
+        +bool MFAEnabled
+        +bool Disabled
+    }
+
+    %% ======================= 后端：handler（薄协议层） =======================
+    class SyncHandlers {
+        <<handlers/sync.go>>
+        +SyncStatus(c)
+        +AdminSyncPush(c)
+        +AdminSyncPull(c)
+    }
+
+    class RegisterHandler {
+        <<handlers/register.go>>
+        +Register(c)
+        -issueTokens(u *models.User) (LoginResp, error)
+    }
+
+    class BackupHandlers {
+        <<handlers/backup.go>>
+        +AdminExportBackup(c)
+        +AdminRestoreBackup(c)
+    }
+
+    class GateResult {
+        <<闸门唯一实现>>
+        +bool Allowed
+        +string Decision
+        +string Reason
+    }
+
+    class RestoreResult {
+        +map~string,int64~ Inserted
+        +map~string,int64~ Skipped
+        +map~string,int64~ Deleted
+        +bool Replaced
+        +int Overwritten
+        +GateEcho Gate
+    }
+
+    class GateEcho {
+        +string Decision
+        +bool Forced
+        +int64 RequestExportedAt
+        +int64 RemoteExportedAt
+        +int64 At
+    }
+
+    class AuthHandler {
+        <<handlers/auth.go>>
+        +Login(c)
+        +Refresh(c)
+        +Me(c)
+        -findByIdentifier(ident string) (*models.User, error)
+        -issueTokens(u *models.User) (LoginResp, error)
+    }
+
+    class ValidateUtils {
+        <<utils/validate.go>>
+        +NormalizeEmail(s string) string
+        +IsValidEmail(s string) bool
+        +ValidatePasswordStrength(pw string) string
+        +DefaultNickname(email string) string
+    }
+
+    %% ======================= App（Flutter） =======================
+    class HourglassSandBackground {
+        <<widget>>
+        +bool dimmed
+        +double density
+        +initState()
+        +dispose()
+        +build()
+    }
+
+    class HourglassPhysics {
+        <<ChangeNotifier>>
+        +double sTop
+        +double sBottom
+        +double tiltTargetX
+        +double tiltTargetY
+        +Float32List points
+        +void step(double dt)
+        -double _levelFor(double s, Float32List cum, double y0, double y1)
+        -void _buildTopSurface(double level)
+        -void _buildBottomCone(double coneH)
+        -void _emitStreamParticle()
+        -void _integrateParticles(double dt)
+        -void _advanceFlip(double dt)
+    }
+
+    class HourglassPainter {
+        <<CustomPainter>>
+        -ui.Image sandNoise
+        -ui.Image sandBed
+        +paint(Canvas, Size)
+        +shouldRepaint(old) bool
+        -void _prewarmTextures()
+    }
+
+    class SyncStatusService {
+        <<ChangeNotifier>>
+        +bool failing
+        +Status status
+        +start()
+        +stop()
+        -void _poll()
+    }
+
+    class ApiClient {
+        +register(email, password, nickname)
+        +syncStatus()
+        +reportError(message, extra, platform, app, version)
+        +login(username, password, mfaCode)
+    }
+
+    class RegisterPage
+    class LoginPage
+    class QrScanPage {
+        +ScanFailure mapScanError(MobileScannerException e)
+        -void _reportOnce(ScanFailure f)
+    }
+    class ScanFailure {
+        <<enumeration>>
+        permissionDenied
+        unsupported
+        cameraInUse
+        initFailed
+    }
+
+    %% ======================= 关系 =======================
+    BackupPkg ..> Table : uses
+    BackupPkg ..> Snapshot : produces
+    BackupPkg ..> ExportOptions : consumes
+    BackupPkg ..> ImportOptions : consumes
+    BackupPkg ..> ImportResult : produces
+    ImportOptions --> ImportMode
+    Snapshot *-- Table : tables 映射
+    BackupPkg ..> UserExportRow : "users 导出"
+    BackupPkg ..> UserImportRow : "users 导入 → toModel()"
+
+    Manager --> Client : "1"
+    Manager --> Status : holds
+    Manager --> LocalState : reads
+    Manager ..> BackupPkg : "Export / Import"
+    Manager ..> PullAction : returns
+    Manager ..> SyncState : "stateGet/stateSet"
+    Manager ..> CloudSyncConfig : configured by
+    Client ..> Row : GET 返回
+
+    Config *-- CloudSyncConfig
+
+    SyncHandlers --> Manager
+    RegisterHandler ..> ValidateUtils
+    RegisterHandler ..> User : creates
+    AuthHandler ..> ValidateUtils
+    AuthHandler ..> User : reads
+    BackupHandlers ..> BackupPkg
+    BackupHandlers ..> Manager : "读 RemoteExportedAt（闸门）"
+    BackupHandlers ..> GateResult : "gateExportTs 返回"
+    BackupHandlers ..> RestoreResult : "restore 响应"
+    RestoreResult *-- GateEcho
+
+    HourglassSandBackground *-- HourglassPhysics
+    HourglassSandBackground *-- HourglassPainter
+    HourglassPhysics ..> HourglassPainter : "repaint: ChangeNotifier"
+
+    RegisterPage --> ApiClient
+    LoginPage --> ApiClient
+    QrScanPage --> ApiClient
+    QrScanPage ..> ScanFailure
+    ApiClient ..> SyncStatusService : "GET /api/sync/status"

@@ -10,6 +10,7 @@ import '../services/api.dart';
 import '../services/notify.dart';
 import '../services/updater.dart';
 import '../theme.dart';
+import '../widgets/sync_status_banner.dart';
 import '../widgets/update_banner.dart';
 import '../services/data_bus.dart';
 
@@ -113,6 +114,10 @@ class _HomePageState extends State<HomePage> {
   // ===== 宽屏：侧边栏 =====
   Widget _wideLayout(BuildContext context, BoxConstraints c) {
     return Scaffold(
+      // 容器 Scaffold 不自己刷底色：下面每个 tab 页各自是 Scaffold，
+      // 主题底色（0xB8）已经由它们提供。这一层再刷一次会把沙漏
+      // 再压掉 72%（实测概览页峰值亮度 15.9/255 → 肉眼不可辨）。
+      backgroundColor: Colors.transparent,
       body: Row(
         children: [
           NavigationRail(
@@ -143,17 +148,26 @@ class _HomePageState extends State<HomePage> {
           ),
           const VerticalDivider(width: 1),
           // IndexedStack 保活：切换 tab 不销毁页面状态
+          // 顶部提示条（更新提示 / 云端同步失败）必须避开系统状态栏，
+          // 否则文案会被系统时间压住（QA 复核 P2）。
+          // SafeArea 会把 top padding 从子树的 MediaQuery 里扣除，
+          // 所以下面各页自带的 AppBar 不会再重复留一次状态栏高度 ——
+          // 没有横幅时布局与改前完全一致。
           Expanded(
-            child: Column(
-              children: [
-                const WebUpdateBanner(),
-                Expanded(
-                  child: IndexedStack(
-                    index: _index,
-                    children: _pages,
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  const WebUpdateBanner(),
+                  const SyncStatusBanner(),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _index,
+                      children: _pages,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -165,17 +179,25 @@ class _HomePageState extends State<HomePage> {
   Widget _narrowLayout(BuildContext context) {
     final unreadCount = context.watch<NotifyService>().unreadCount;
     return Scaffold(
+      // 同宽屏：容器不刷底色，避免与各 tab 页的 Scaffold 底色叠加把沙漏压死
+      backgroundColor: Colors.transparent,
       // IndexedStack 保活：切换 tab 不销毁页面状态
-      body: Column(
-        children: [
-          const WebUpdateBanner(),
-          Expanded(
-            child: IndexedStack(
-              index: _index,
-              children: _pages,
+      // 顶部提示条必须避开系统状态栏（QA 复核 P2）：SafeArea 扣掉 top padding，
+      // 各页 AppBar 因此不会重复留状态栏高度，无横幅时布局与改前一致。
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            const WebUpdateBanner(),
+            const SyncStatusBanner(),
+            Expanded(
+              child: IndexedStack(
+                index: _index,
+                children: _pages,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: _BottomNavWithBall(
         index: _index,

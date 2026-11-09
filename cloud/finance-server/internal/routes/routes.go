@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yourname/family-finance/backend/internal/cloudsync"
 	"github.com/yourname/family-finance/backend/internal/handlers"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 )
@@ -18,14 +19,25 @@ func Register(r *gin.Engine) {
 	})
 
 	api := r.Group("/api")
+	// 云端快照：挂在 /api 组最外层，捕获**所有**业务写操作 → MarkDirty（非阻塞）。
+	// /healthz 不在 /api 下 → 天然不触发。
+	api.Use(cloudsync.M().Middleware())
 	{
 		// 公开（登录/刷新限流：单 IP 5 分钟 30 次）
 		authLimiter := middleware.RateLimit(5*time.Minute, 30, "auth-ip")
 		api.POST("/auth/login", authLimiter, handlers.Login)
 		api.POST("/auth/refresh", authLimiter, handlers.Refresh)
-		api.GET("/app/version", handlers.GetAppVersion) // 在线更新版本检查
-		api.GET("/app/download", handlers.AppDownload) // 云服务代理 APK 下载（设备无需直连 GitHub）
+		// 邮箱注册（R-05）：公开 + authLimiter；另有 register-ip 维度限流在 handler 内
+		api.POST("/auth/register", authLimiter, handlers.Register)
+
+		api.GET("/app/version", handlers.GetAppVersion)     // 在线更新版本检查
+		api.GET("/app/download", handlers.AppDownload)      // 云服务代理 APK 下载（设备无需直连 GitHub）
 		api.GET("/app/web-version", handlers.GetWebVersion) // Web 端在线更新检查
+
+		// 客户端错误上报：**公开**（不再要求登录）。
+		// 扫码失败常发生在登录前/登录态失效时，此前挂在 auth 组下会先 401，
+		// 错误永远上报不上来；接口结构不变，旧客户端零改动。
+		api.POST("/errors", middleware.RateLimit(5*time.Minute, 30, "err-ip"), handlers.ReportError)
 
 		// 需要登录
 		auth := api.Group("")
@@ -103,8 +115,9 @@ func Register(r *gin.Engine) {
 			auth.POST("/profile", handlers.UpdateProfile)
 			auth.POST("/profile/password", handlers.ChangePassword)
 
-			// 客户端错误上报（任意登录用户）
-			auth.POST("/errors", handlers.ReportError)
+			// 云端同步状态（登录用户可读：App 靠它驱动"同步失败"横条；
+			// 只回主机名，不回完整 URL/key）
+			auth.GET("/sync/status", handlers.SyncStatus)
 		}
 
 		// 系统管理员
@@ -134,6 +147,10 @@ func Register(r *gin.Engine) {
 			// 数据备份：沙箱临时库重置保险（发布前导出 / 发布后导入）
 			admin.GET("/backup", handlers.AdminExportBackup)
 			admin.POST("/backup/restore", handlers.AdminRestoreBackup)
+
+			// 云端快照运维口（管理员显式触发；日常由后台 goroutine 自动做）
+			admin.POST("/sync/push", handlers.AdminSyncPush)
+			admin.POST("/sync/pull", handlers.AdminSyncPull)
 		}
 	}
 }

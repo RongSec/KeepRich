@@ -251,6 +251,38 @@ class ApiClient {
     return resp;
   }
 
+  /// 邮箱注册（R-05，`POST /api/auth/register`）
+  ///
+  /// 契约：入参 `email` / `password` / `nickname?`；200 直接返回 token（与登录同构），
+  /// 因此这里**落盘逻辑与 [login] 完全一致**，调用方不需要再登录一次。
+  /// 失败时响应体仍是 `{code,message}` 信封（400/409/429），由调用方取 `message`。
+  Future<ApiResponse<LoginResult>> register({
+    required String email,
+    required String password,
+    String? nickname,
+  }) async {
+    final r = await _dio.post('/auth/register', data: {
+      'email': email,
+      'password': password,
+      if (nickname != null && nickname.isNotEmpty) 'nickname': nickname,
+    });
+    final resp = ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => LoginResult.fromJson(d as Map<String, dynamic>));
+    if (resp.ok && resp.data != null) {
+      setTokens(
+          access: resp.data!.accessToken, refresh: resp.data!.refreshToken);
+      await persistTokens();
+    }
+    return resp;
+  }
+
+  /// 云端快照同步状态（R-11，`GET /api/sync/status`）
+  Future<ApiResponse<SyncStatusData>> syncStatus() async {
+    final r = await _dio.get('/sync/status');
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => SyncStatusData.fromJson(d as Map<String, dynamic>));
+  }
+
   Future<ApiResponse<UserProfile>> me() async {
     final r = await _dio.get('/auth/me');
     return ApiResponse.fromJson(r.data as Map<String, dynamic>,
@@ -524,6 +556,14 @@ class ApiClient {
     });
   }
 
+  /// 客户端错误上报（`POST /api/errors`）
+  ///
+  /// [errorCode] 是结构化的错误码（如 `permissionDenied`），后端
+  /// `ReportErrorReq` 未声明该字段时会被 JSON 解码忽略，不影响入库；
+  /// [extra] 是自由格式的 JSON 字符串，后端已入库并在 `/api/admin/errors` 可见。
+  ///
+  /// 注意：该接口需要登录态（后端 `middleware.MustUID`）。未登录场景
+  /// （如登录页扫码前置失败）上报会 401，调用方必须自己 try/catch 静默处理。
   Future<ApiResponse<Map<String, dynamic>>> reportError({
     required String message,
     String? stack,
@@ -531,6 +571,8 @@ class ApiClient {
     String? platform,
     String? app,
     String? version,
+    String? errorCode,
+    String? extra,
   }) async {
     final r = await _dio.post('/errors', data: {
       'message': message,
@@ -539,6 +581,8 @@ class ApiClient {
       'platform': platform ?? 'web',
       'app': app ?? 'client',
       'version': version ?? '',
+      if (errorCode != null && errorCode.isNotEmpty) 'errorCode': errorCode,
+      if (extra != null && extra.isNotEmpty) 'extra': extra,
     });
     return ApiResponse.fromJson(
         r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);

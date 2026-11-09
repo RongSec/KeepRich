@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -87,6 +88,9 @@ var rules = []rule{
 	{"/api/admin/users", "/toggle", "admin.toggle_user"},
 	{"/api/admin/users", "", "admin.create_user"},
 	{"/api/admin/families", "", "admin.delete_family"}, // /api/admin/families/:id
+	// 数据恢复是最高风险的写操作（可能覆盖全库），必须留痕；
+	// gate.decision（forced/allowed/rejected_*）会被追加进 Detail（见下方 Audit）。
+	{"/api/admin/backup", "/restore", "admin.restore_backup"},
 }
 
 // Audit 通用审计中间件
@@ -137,6 +141,18 @@ func Audit() gin.HandlerFunc {
 		_ = role
 
 		detail := sanitizeDetail(bodyBytes)
+		// restore 的闸门判定（forced / allowed / rejected_*）只在**响应**里，
+		// 请求体里没有；单独抽出来追加到 Detail，事后能查"谁用 force 覆盖过"。
+		// 放在**最前面**：restore 的请求体本身就能吃掉 1000 字符配额，
+		// 追加在尾部会被截断掉（那样审计就白记了）。
+		if action == "admin.restore_backup" {
+			if g := responseGateSummary(bw.buf.Bytes()); g != "" {
+				detail = "gate=" + g + " | " + detail
+				if len(detail) > 1000 {
+					detail = detail[:1000]
+				}
+			}
+		}
 
 		entry := models.AuditLog{
 			UID:       uid,
@@ -153,6 +169,35 @@ func Audit() gin.HandlerFunc {
 			database.DB.Create(&l)
 		}(entry)
 	}
+}
+
+// responseGateSummary 从 restore 的响应体里抽出闸门判定摘要（供审计 Detail 用）。
+//
+// 响应形如 {"code":0,"data":{"gate":{"decision":"forced","forced":true,...}}}
+// 解析失败一律返回空串 —— 审计绝不能因为它把主流程搞挂。
+func responseGateSummary(respBody []byte) string {
+	if len(respBody) == 0 {
+		return ""
+	}
+	var resp struct {
+		Data struct {
+			Gate struct {
+				Decision          string `json:"decision"`
+				Forced            bool   `json:"forced"`
+				RequestExportedAt int64  `json:"requestExportedAt"`
+				RemoteExportedAt  int64  `json:"remoteExportedAt"`
+			} `json:"gate"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return ""
+	}
+	g := resp.Data.Gate
+	if g.Decision == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s(forced=%v,req=%d,remote=%d)",
+		g.Decision, g.Forced, g.RequestExportedAt, g.RemoteExportedAt)
 }
 
 func matchAction(path string) string {

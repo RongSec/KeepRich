@@ -12,6 +12,7 @@ import 'pages/family_page.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/plan_page.dart';
+import 'pages/register_page.dart';
 import 'pages/security_page.dart';
 import 'pages/settings_page.dart' show UserManagementPage;
 import 'pages/splash_page.dart';
@@ -19,9 +20,10 @@ import 'services/api.dart';
 import 'services/auth.dart';
 import 'services/biometric.dart';
 import 'services/notify.dart';
+import 'services/sync_status.dart';
 import 'services/web_updater.dart';
 import 'theme.dart';
-import 'widgets/gold_sand.dart';
+import 'widgets/hourglass_sand.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,8 +78,11 @@ class _AppRootState extends State<AppRoot> {
     if (_auth.isLoggedIn) {
       _notify.connect();
       _notify.loadUnreadCount();
+      // 云端快照同步状态：登录后开始 60s 轮询（R-11）
+      SyncStatusService.instance.start();
     } else {
       _notify.disconnect();
+      SyncStatusService.instance.stop();
     }
   }
 
@@ -125,13 +130,17 @@ class _AppShell extends StatelessWidget {
           if (auth.user?.role != 'admin') return '/admin/login';
           return null;
         }
-        if (!auth.isLoggedIn && loc != '/login') return '/login';
-        if (auth.isLoggedIn && loc == '/login') return '/overview';
+        // 未登录可进：登录页 + 注册页（R-05/R-09）
+        final openWhenLoggedOut = loc == '/login' || loc == '/register';
+        if (!auth.isLoggedIn) return openWhenLoggedOut ? null : '/login';
+        // 已登录还停在登录/注册页 → 直接进概览
+        if (openWhenLoggedOut) return '/overview';
         return null;
       },
       routes: [
         GoRoute(path: '/splash', builder: (_, __) => const SplashPage()),
         GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
+        GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
         GoRoute(
             path: '/admin/login', builder: (_, __) => const AdminLoginPage()),
         GoRoute(path: '/admin', builder: (_, __) => const AdminShell()),
@@ -158,11 +167,12 @@ class _AppShell extends StatelessWidget {
       theme: AppTheme.dark(),
       darkTheme: AppTheme.dark(),
       routerConfig: router,
-      // 金沙背景铺在最底层：登录前饱满、登录后变淡
+      // 沙漏背景铺在最底层：登录前饱满、登录后变淡
+      // （v0.4.0 换成真沙漏；回退只需把这里换回 GoldSandBackground）
       builder: (ctx, child) => Stack(
         fit: StackFit.expand,
         children: [
-          GoldSandBackground(dimmed: auth.isLoggedIn),
+          HourglassSandBackground(dimmed: auth.isLoggedIn, density: 1.0),
           if (child != null) child,
         ],
       ),

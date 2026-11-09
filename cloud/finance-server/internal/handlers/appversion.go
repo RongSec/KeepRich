@@ -42,6 +42,41 @@ func compareVersion(a, b string) int {
 	return 0
 }
 
+// newerVersion 判断 latest 是否比 current 新。
+//
+// 除三段版本号外还比较 buildNumber：即使发版时误复用同一个版本号（同 tag
+// 覆盖上传新 APK），只要构建号递增，旧客户端仍能收到更新，不会永久卡在
+// 「当前已是最新版本」。
+func newerVersion(current, latest string, currentBuild, latestBuild int) bool {
+	cmp := compareVersion(current, latest)
+	if cmp < 0 {
+		return true
+	}
+	return cmp == 0 && latestBuild > 0 && latestBuild > currentBuild
+}
+
+// splitBuildNumber 把 pubspec 的基础构建号（version: X.Y.Z+N 的 N）换算成
+// 设备实际读到的 Android versionCode。Flutter --split-per-abi 会按 ABI 加前缀：
+// armeabi-v7a=1000、arm64-v8a=2000、x86_64=4000（例 +4 在 arm64 上是 2004）。
+// PackageInfo.buildNumber 上报的就是带前缀的值，服务端必须用同一口径比较，
+// 否则「同版本号 + 新构建」的兜底判断会永远为 false。
+func splitBuildNumber(base int, abi string, currentBuild int) int {
+	offset := 0
+	switch strings.ToLower(strings.TrimSpace(abi)) {
+	case "armeabi-v7a":
+		offset = 1000
+	case "arm64-v8a":
+		offset = 2000
+	case "x86_64":
+		offset = 4000
+	default:
+		if currentBuild >= 1000 {
+			offset = currentBuild - currentBuild%1000
+		}
+	}
+	return base + offset
+}
+
 // grayIn 灰度判定：确定性哈希（同设备结果稳定）
 func grayIn(identifier string, percent int) bool {
 	if percent >= 100 {
@@ -195,10 +230,11 @@ type bundleAsset struct {
 }
 
 type bundleVersion struct {
-	Version string         `json:"version"`
-	Notes   string         `json:"notes"`
-	Repo    string         `json:"repo"`
-	Assets  []bundleAsset `json:"assets"`
+	Version     string         `json:"version"`
+	BuildNumber int            `json:"buildNumber"`
+	Notes       string         `json:"notes"`
+	Repo        string         `json:"repo"`
+	Assets      []bundleAsset `json:"assets"`
 }
 
 func apkDir() string {
@@ -244,7 +280,7 @@ func bundleAssetFor(b *bundleVersion, abi string) *bundleAsset {
 }
 
 // bundleVersionResponse 用本地清单构造与 GitHub 路径一致的响应
-func bundleVersionResponse(b *bundleVersion, current, abi string) gin.H {
+func bundleVersionResponse(b *bundleVersion, current, abi string, currentBuild int) gin.H {
 	a := bundleAssetFor(b, abi)
 	if a == nil {
 		return nil
@@ -253,16 +289,17 @@ func bundleVersionResponse(b *bundleVersion, current, abi string) gin.H {
 	if b.Repo != "" {
 		ghURL = "https://github.com/" + b.Repo + "/releases/download/v" + b.Version + "/" + a.File
 	}
+	buildNumber := splitBuildNumber(b.BuildNumber, abi, currentBuild)
 	return gin.H{
 		"version":         b.Version,
-		"buildNumber":     0,
+		"buildNumber":     buildNumber,
 		"notes":           b.Notes,
 		"apkUrl":          ghURL, // 设备能访问 GitHub 时优先直连
 		"downloadUrl":     "/api/app/download?abi=" + url.QueryEscape(abi), // 云服务端兜底
 		"sha256":          a.SHA256,
 		"sizeBytes":       a.Size,
 		"minSupported":    "",
-		"updateAvailable": compareVersion(current, b.Version) < 0,
+		"updateAvailable": newerVersion(current, b.Version, currentBuild, buildNumber),
 		"forceUpdate":     false,
 		"source":          "cloud-bundle",
 		"githubRepo":      b.Repo,
@@ -298,6 +335,7 @@ func GetAppVersion(c *gin.Context) {
 	current := c.Query("current")
 	did := c.Query("did")
 	abi := c.Query("abi")
+	currentBuild, _ := strconv.Atoi(c.Query("build"))
 
 	// 优先 GitHub Releases：仓库发布新 Release 后 App 即可拉到，无需后台登记
 	if repo := strings.TrimSpace(config.C.App.GitHubRepo); repo != "" && platform == "android" {
@@ -305,10 +343,15 @@ func GetAppVersion(c *gin.Context) {
 			version := strings.TrimPrefix(strings.TrimPrefix(rel.TagName, "v"), "V")
 			asset := pickAPKAsset(rel, abi)
 			if version != "" && asset != nil {
-				updateAvailable := compareVersion(current, version) < 0
+				// 构建号只在本地分发清单与 GitHub tag 一致时启用，避免二者错配误判
+				buildNumber := 0
+				if b, e := loadBundle(); e == nil && b.Version == version {
+					buildNumber = splitBuildNumber(b.BuildNumber, abi, currentBuild)
+				}
+				updateAvailable := newerVersion(current, version, currentBuild, buildNumber)
 				utils.OK(c, gin.H{
 					"version":         version,
-					"buildNumber":     0,
+					"buildNumber":     buildNumber,
 					"notes":           rel.Body,
 					"apkUrl":          asset.URL,
 					// 云服务代理下载地址（相对路径，App 拼 serverHost）：
@@ -329,7 +372,7 @@ func GetAppVersion(c *gin.Context) {
 	}
 
 	if b, e := loadBundle(); e == nil {
-		if resp := bundleVersionResponse(b, current, abi); resp != nil {
+		if resp := bundleVersionResponse(b, current, abi, currentBuild); resp != nil {
 			utils.OK(c, resp)
 			return
 		}
@@ -346,7 +389,8 @@ func GetAppVersion(c *gin.Context) {
 		return
 	}
 
-	updateAvailable := compareVersion(current, v.Version) < 0
+	publishedBuild := splitBuildNumber(v.BuildNumber, abi, currentBuild)
+	updateAvailable := newerVersion(current, v.Version, currentBuild, publishedBuild)
 	forceUpdate := false
 	if v.MinSupported != "" {
 		forceUpdate = compareVersion(current, v.MinSupported) < 0
@@ -355,7 +399,7 @@ func GetAppVersion(c *gin.Context) {
 
 	utils.OK(c, gin.H{
 		"version":         v.Version,
-		"buildNumber":     v.BuildNumber,
+		"buildNumber":     publishedBuild,
 		"notes":           v.Notes,
 		"apkUrl":          v.APKUrl,
 		"sha256":          v.SHA256,

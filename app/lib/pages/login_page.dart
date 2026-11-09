@@ -55,11 +55,14 @@ class _LoginPageState extends State<LoginPage>
       _busy = true;
       _err = null;
     });
+    // 邮箱统一 trim + 小写：后端把邮箱归一化后同时写 username/email，
+    // 大小写混输也必须能登录（R-06 ③），这里先归一化能省掉一次往返
+    final account = _user.text.trim().toLowerCase();
     try {
       final ok = await context
           .read<AuthState>()
           .login(
-            _user.text.trim(),
+            account,
             _pwd.text,
             mfaCode: _mfa.text.trim().isEmpty ? null : _mfa.text.trim(),
           )
@@ -68,7 +71,7 @@ class _LoginPageState extends State<LoginPage>
       if (ok) {
         // 登录成功，保存凭据供生物识别使用
         final biometric = context.read<BiometricService>();
-        await biometric.updateCredentials(_user.text.trim(), _pwd.text);
+        await biometric.updateCredentials(account, _pwd.text);
         _loginFails = 0;
         context.go('/overview');
         return;
@@ -202,11 +205,14 @@ class _LoginPageState extends State<LoginPage>
                             TextField(
                               controller: _user,
                               autocorrect: false,
+                              enableSuggestions: false,
+                              keyboardType: TextInputType.emailAddress,
+                              textCapitalization: TextCapitalization.none,
                               textInputAction: TextInputAction.next,
                               decoration: const InputDecoration(
-                                labelText: '账号',
-                                hintText: '用户名 / 邮箱',
-                                prefixIcon: Icon(Icons.person_outline),
+                                labelText: '邮箱',
+                                hintText: 'you@example.com',
+                                prefixIcon: Icon(Icons.alternate_email),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -331,6 +337,17 @@ class _LoginPageState extends State<LoginPage>
                               },
                             ),
                             const SizedBox(height: 14),
+                            // 注册入口（R-09 ①）：未登录即可进入 /register
+                            Center(
+                              child: TextButton(
+                                onPressed:
+                                    _busy ? null : () => context.push('/register'),
+                                child: const Text(
+                                  '还没有账号？立即注册',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -351,7 +368,7 @@ class _LoginPageState extends State<LoginPage>
                   ),
                   const SizedBox(height: 14),
                   // 服务端地址（本地联调时点这里切换）
-                  _ServerChip(),
+                  const _ServerChip(),
                   // Web 端展示服务端二维码：手机 App 扫码即可自动填入地址
                   if (kIsWeb) ...[
                     const SizedBox(height: 16),
@@ -452,13 +469,28 @@ class _Logo extends StatelessWidget {
 }
 
 /// 底部服务端地址指示（点击修改）
-class _ServerChip extends StatelessWidget {
+///
+/// 必须是 StatefulWidget：对话框里保存新地址后要 `setState` 重建，
+/// 否则 chip 一直显示旧地址，得退出页面重进才更新（QA 复核 P3）。
+class _ServerChip extends StatefulWidget {
+  const _ServerChip();
+
+  @override
+  State<_ServerChip> createState() => _ServerChipState();
+}
+
+class _ServerChipState extends State<_ServerChip> {
   @override
   Widget build(BuildContext context) {
     final host = AppConfig.serverHost;
     return InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () => showServerAddressDialog(context),
+      // 对话框关掉后重建一次，让 chip 立即显示新地址（不必退出页面重进）
+      onTap: () async {
+        await showServerAddressDialog(context);
+        if (!mounted) return;
+        setState(() {});
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
