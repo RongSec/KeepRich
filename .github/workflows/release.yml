@@ -14,6 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 防止「同版本号反复覆盖发布」：App 的版本比较只看 version+buildNumber，
+      # 若 tag 与 pubspec 不一致（或忘了 bump），已安装用户会永远收到"已是最新版本"。
+      - name: Verify tag matches pubspec version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PUB=$(grep -E '^version:' app/pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          echo "tag=$TAG  pubspec=$PUB"
+          if [ "$TAG" != "$PUB" ]; then
+            echo "::error::tag v$TAG 与 pubspec version $PUB 不一致。发版必须先 bump app/pubspec.yaml 的版本号，禁止同号覆盖。"
+            exit 1
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -51,7 +63,9 @@ jobs:
 
       - name: Build APK (split per ABI)
         working-directory: app
-        run: flutter build apk --release --split-per-abi --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://103.236.92.33:28080' }}
+        # 不注入 API_BASE_URL：服务端地址由用户在 App 内配置/扫码，硬编码公网 IP
+        # 会让 CI 包与随部署分发的包不一致（且该地址未必可达）
+        run: flutter build apk --release --split-per-abi
 
       - name: Generate checksums
         run: |

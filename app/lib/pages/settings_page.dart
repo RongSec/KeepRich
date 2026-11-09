@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../config.dart';
@@ -177,8 +178,15 @@ class _SettingsPageState extends State<SettingsPage> {
               if (info != null) {
                 UpdaterService.checkAndPrompt(context);
               } else {
+                // 带上本机版本号：出现「服务端明明发了新版却提示已是最新」时，
+                // 一眼就能看出是不是版本号没递增导致的
+                final pkg = await PackageInfo.fromPlatform();
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('当前已是最新版本')),
+                  SnackBar(
+                    content: Text(
+                        '当前已是最新版本 v${pkg.version}+${pkg.buildNumber}（服务端无更新构建）'),
+                  ),
                 );
               }
             },

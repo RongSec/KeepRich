@@ -60,6 +60,8 @@ import glob, hashlib, json, os, re, sys
 
 build, out, pubspec = sys.argv[1], sys.argv[2], sys.argv[3]
 version = re.search(r'^version:\s*([0-9.]+)', open(pubspec).read(), re.M).group(1)
+bm = re.search(r'^version:\s*[0-9.]+\+(\d+)', open(pubspec).read(), re.M)
+build_number = int(bm.group(1)) if bm else 0
 abis = {'arm64-v8a', 'armeabi-v7a', 'x86_64'}
 assets = []
 for path in sorted(glob.glob(os.path.join(build, 'app-*-release.apk'))):
@@ -71,10 +73,11 @@ for path in sorted(glob.glob(os.path.join(build, 'app-*-release.apk'))):
     assets.append({'abi': abi, 'file': name,
                    'sha256': hashlib.sha256(data).hexdigest(),
                    'size': len(data)})
-json.dump({'version': version, 'repo': 'RongSec/KeepRich',
+json.dump({'version': version, 'buildNumber': build_number,
+           'repo': 'RongSec/KeepRich',
            'notes': 'v%s 新版本：可在 App 内直接更新（设备访问不了 GitHub 时走云服务分发）' % version,
            'assets': assets}, open(out, 'w'), ensure_ascii=False, indent=2)
-print('bundle: %s, %d apks' % (version, len(assets)))
+print('bundle: %s+%d, %d apks' % (version, build_number, len(assets)))
 PY
 fi
 

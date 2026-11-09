@@ -16,6 +16,19 @@ App 启动 ──► GET /api/app/version?platform=android&current=x.y.z&did=设
              App 弹窗 → 下载 APK → sha256 校验 → 调起系统安装
 ```
 
+## 铁律：版本号必须递增，禁止同号覆盖
+
+App 判定更新的依据是 `version`（三段数字）+ `buildNumber`。**只要版本号没变，已安装该版本的用户就收不到更新**——即便把 GitHub Release 里的 APK 覆盖成新构建也一样。曾因一直用 `v0.3.0` 反复 `--clobber` 覆盖资产，导致用户点「检查更新」始终显示「当前已是最新版本」。
+
+因此每次交付新 APK 都必须：
+
+1. `app/pubspec.yaml` 的 `version: X.Y.Z+N` **递增**（改内容就升 `Z`，`N` 也 +1）
+2. 打**新的** `vX.Y.Z` tag（release workflow 会校验 tag 与 pubspec 一致，不一致直接失败）
+3. 跑 `cloud/sync.sh` 重新生成云端 `apk/version.json`（含 buildNumber 与 sha256）并发布
+4. 云端清单与 GitHub Release **必须是同一次构建**（sha256 一致）
+
+buildNumber 是第二道保险：即使版本号被误复用，只要 `N` 递增，后端仍会判定为可更新。
+
 ## 发版步骤（vX.Y.Z）
 
 1. **升版本号**：`app/pubspec.yaml` 的 `version: X.Y.Z+N`（N 为 buildNumber，每次发版 +1）

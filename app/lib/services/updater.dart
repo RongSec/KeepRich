@@ -89,6 +89,7 @@ class UpdaterService {
         current: pkg.version,
         did: did,
         abi: abi,
+        build: pkg.buildNumber,
       );
       if (!r.ok || r.data == null) return null;
       final data = r.data!;
@@ -100,9 +101,14 @@ class UpdaterService {
         return direct;
       }
       final info = AppUpdateInfo.fromJson(data);
-      // 本地防线：最新版本与当前版本相同（或后端误判）时绝不弹窗
-      if (!info.updateAvailable || info.version == pkg.version) return null;
-      // apkUrl 保持 GitHub 直连（优先路径），downloadUrl 作为云服务兜底
+      // 本地防线：后端误判或同版本同构建时绝不弹窗。
+      // 注意不能只比 version —— 若发版时误复用版本号但 buildNumber 递增，
+      // 仍要让客户端收到更新（后端已按 version + build 判定）。
+      if (!info.updateAvailable) return null;
+      final localBuild = int.tryParse(pkg.buildNumber) ?? 0;
+      if (info.version == pkg.version && info.buildNumber <= localBuild) {
+        return null;
+      }
       return info;
     } catch (e) {
       debugPrint('[updater] check failed: $e');

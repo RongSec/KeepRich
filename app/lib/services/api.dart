@@ -263,12 +263,15 @@ class ApiClient {
     required String current,
     String? did,
     String? abi,
+    String? build,
   }) async {
     final r = await _dio.get('/app/version', queryParameters: {
       'platform': platform,
       'current': current,
       if (did != null) 'did': did,
       if (abi != null && abi.isNotEmpty) 'abi': abi,
+      // 构建号：版本号被误复用时仍可识别"同号新构建"
+      if (build != null && build.isNotEmpty) 'build': build,
     });
     return ApiResponse.fromJson(
         r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
