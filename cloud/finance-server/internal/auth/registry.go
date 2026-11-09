@@ -25,10 +25,11 @@ type SessionState struct {
 	IdleDeadline int64
 }
 
-// liveSession 内存态：只保存「待刷盘的 last_seen」与行主键。
+// liveSession 内存态：只保存「待刷盘的 last_seen」、行主键与上次看到的 DB 值。
 type liveSession struct {
-	dbID      uint64
-	dirtySeen int64
+	dbID       uint64
+	dirtySeen  int64
+	lastDBSeen int64
 }
 
 // Registry 会话热路径注册表。
@@ -79,8 +80,6 @@ func (r *Registry) Get(sid string) SessionState {
 	st.Revoked = s.RevokedAt != nil || s.DeletedAt.Valid
 
 	ttl := int64(config.AuthParams().SessionIdleTTL)
-	st.IdleDeadline = s.LastSeenAt + ttl
-	st.Idle = time.Now().Unix() > st.IdleDeadline
 
 	r.mu.Lock()
 	live, ok := r.m[sid]
@@ -89,7 +88,29 @@ func (r *Registry) Get(sid string) SessionState {
 		r.m[sid] = live
 	}
 	live.dbID = s.ID
+
+	// DB 的 last_seen_at 被外部回拨（手工推前 25h 模拟真实闲置 / 运维改库）时，
+	// DB 是唯一权威：丢弃待刷盘的旧 touch，按 DB 值判定，绝不把真实闲置放过去。
+	rolledBack := live.lastDBSeen > 0 && s.LastSeenAt < live.lastDBSeen
+	if rolledBack {
+		live.dirtySeen = 0
+	}
+	live.lastDBSeen = s.LastSeenAt
+
+	// 关键修复（QA P2-1）：两次 Flush 之间 last_seen 只存在于内存
+	// （Touch 只写内存，60s 才批量刷盘）。若只用 DB 的 s.LastSeenAt，
+	// 当 SessionIdleTTL <= TouchFlushSec 时，正在活跃使用的会话会被误判闲置。
+	// 因此 IdleDeadline 取 max(DB last_seen, 内存 dirtySeen) + ttl；
+	// live 不存在（dirtySeen=0）时自然退回 DB 值，保持既有行为。
+	// 读取仍在锁内、只读不写，批量刷盘语义完全不变。
+	lastSeen := s.LastSeenAt
+	if !rolledBack && live.dirtySeen > lastSeen {
+		lastSeen = live.dirtySeen
+	}
 	r.mu.Unlock()
+
+	st.IdleDeadline = lastSeen + ttl
+	st.Idle = time.Now().Unix() > st.IdleDeadline
 	return st
 }
 
