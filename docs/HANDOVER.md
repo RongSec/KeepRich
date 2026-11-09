@@ -1,8 +1,31 @@
 # KeepRich 项目交接文档
 
 > 交接时间：2026-11-09 · 项目根目录：`/Users/rongsec/Developer/finance`
-> 当前版本：**v0.3.1（0.3.1+4）**，CI 全绿，云上服务正常。
+> 当前版本：**v0.4.0（0.4.0+5）**，已迁移到本账号新云应用，CI 全绿。
+> 历史版本：v0.3.1（旧账号 `family-finance-34705`，已停用）
 > **安全提示**：本文含开发/演示口令与密钥路径。若要随仓库交接，先把「账号口令 / MySQL 与 JWT 开发密钥 / 分享码」替换为占位符再提交；或加入 `.gitignore`，通过单独的安全通道传递。
+
+---
+
+## 零、v0.4.0 现状（2026-11-09 账号迁移后，**以此为准**）
+
+| 项 | 值 |
+|----|----|
+| 主应用 Web | `https://keeprich-finance.app.workbuddy.host/?sharecode=A2OVQW6LVY` |
+| 管理后台 | `https://keeprich-finance.app.workbuddy.host/admin/?sharecode=A2OVQW6LVY` |
+| 云应用 | appId `wbapp_y6guj7h419fuquBPApQZYO`（名称「永远富裕」），resourceId `wbcs_gsP5OQ5xmwRlYSO5Fyh2DB` |
+| 旧应用（已停用，勿再用） | appId `wbapp_Wb18t2EDvXDMyVcNeOC4nZ` / `family-finance-34705.app.workbuddy.host`（属**另一个账号**，本账号无权发布） |
+| 数据持久化 | **云端快照 `finance_snapshot(id=1)` 为唯一事实源**；服务启动自动拉取、写操作后 1.5s 防抖自动推送、SIGTERM 前 flush |
+| 快照密钥 | `cloud/secrets/cloudsync.local.yaml`（**不入库**，`sync.sh` 复制到部署目录）；env `CLOUD_SYNC_*` 可覆盖 |
+| 账号口令 | `admin/admin123456`（SeedAdmin 口径）；`webuser/KeepRich@2026`（迁移时重置）；`alice`/`bob`/`test` 保留原密码 |
+| 数据规模（迁移后） | 160 笔账 / 5 用户 / 4 家庭 / 19 条大件计划 / 16 笔公积金贷 / 428 条审计（审计与错误上报**不进快照**） |
+| 发版 | 已打 `v0.4.0` tag；APK 版本 `0.4.0+5`，云端分包 versionCode `2005` |
+
+**迁移期踩过的两个平台坑（下一次换账号会再遇到）**：
+1. 目录 → 应用的绑定**不在仓库里**，存在 `~/.workbuddy/cloudstudio-deploy-history/*.json`（字段 `absolutePath` → `appId`）。只改 `.genie` / `.workbuddy/applications.yaml` 不够，会一直报 `SITES_ACCOUNT_MISMATCH`；需要先备份再清掉该目录的旧记录，然后显式传新 `appId` 发布。
+2. 云服务激活时 `applicationMode=create` 需要 `domainPrefix`，且会话内**同名应用会冲突**（旧账号的「家庭财务系统」已占用该名），新账号改名「永远富裕」才建成功。
+
+**数据接续**：迁移包 `docs/backups/finance-migration-restore.json`（不入库）含 admin/alice/bob/test 的真实 bcrypt 哈希（来自曾被误提交的旧 `data/finance.db`），`webuser` 为空需重置。接续命令见 `docs/design/DESIGN_v0.4.0_incremental.md` §2.F，核心为 `POST /api/admin/backup/restore` + `force=true`（时间闸门下必须先 force）。
 
 ---
 
