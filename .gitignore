@@ -75,3 +75,6 @@ backend/config/cloudsync.local.yaml
 # 含真实用户数据 / 口令哈希的迁移与备份包（禁止入库）
 docs/backups/finance-migration-restore.json
 docs/backups/finance-backup-20261109-live.json
+
+# 所有导出的备份包都含真实账目/口令哈希，一律不入库
+docs/backups/*.json
