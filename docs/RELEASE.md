@@ -29,6 +29,21 @@ App 判定更新的依据是 `version`（三段数字）+ `buildNumber`。**只�
 
 buildNumber 是第二道保险：即使版本号被误复用，只要 `N` 递增，后端仍会判定为可更新。
 
+注意口径：Flutter `--split-per-abi` 会给 Android `versionCode` 加架构前缀（armeabi-v7a=1000、arm64-v8a=2000、x86_64=4000），所以 `+4` 在 arm64 设备上读到的 `PackageInfo.buildNumber` 是 `2004`。`version.json` 里只写基础号 `4`，由后端 `splitBuildNumber()` 按请求的 `abi` 换算成设备口径后再比较，App 端无需特殊处理。
+
+## GitHub Release 与云端分发必须同构建
+
+`cloud/sync.sh` 会用**本地构建产物**生成云端 `apk/`（3 个 ABI + `version.json`，含 buildNumber 与 sha256），这是在线更新的唯一真源。打 tag 触发的 `release` workflow 会在校验通过后自动创建 Release 骨架并上传它自己构建的 APK；**发版收尾时必须用 `cloud/finance-server/apk/` 里的资产 `--clobber` 覆盖 Release 资产**，否则 GitHub 直连与云服务兜底会给出两份 sha256 不同的包。
+
+```bash
+cd cloud/finance-server/apk
+gh release upload vX.Y.Z --repo RongSec/KeepRich \
+  app-arm64-v8a-release.apk app-armeabi-v7a-release.apk app-x86_64-release.apk \
+  SHA256SUMS.txt --clobber
+```
+
+验收三条：`current=旧版本` → `updateAvailable=true`；`current=新版本&build=N` → `false`；云端 `/api/app/download` 的文件 sha256 与 GitHub 资产一致。
+
 ## 发版步骤（vX.Y.Z）
 
 1. **升版本号**：`app/pubspec.yaml` 的 `version: X.Y.Z+N`（N 为 buildNumber，每次发版 +1）

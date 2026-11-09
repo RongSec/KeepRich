@@ -55,6 +55,28 @@ func newerVersion(current, latest string, currentBuild, latestBuild int) bool {
 	return cmp == 0 && latestBuild > 0 && latestBuild > currentBuild
 }
 
+// splitBuildNumber 把 pubspec 的基础构建号（version: X.Y.Z+N 的 N）换算成
+// 设备实际读到的 Android versionCode。Flutter --split-per-abi 会按 ABI 加前缀：
+// armeabi-v7a=1000、arm64-v8a=2000、x86_64=4000（例 +4 在 arm64 上是 2004）。
+// PackageInfo.buildNumber 上报的就是带前缀的值，服务端必须用同一口径比较，
+// 否则「同版本号 + 新构建」的兜底判断会永远为 false。
+func splitBuildNumber(base int, abi string, currentBuild int) int {
+	offset := 0
+	switch strings.ToLower(strings.TrimSpace(abi)) {
+	case "armeabi-v7a":
+		offset = 1000
+	case "arm64-v8a":
+		offset = 2000
+	case "x86_64":
+		offset = 4000
+	default:
+		if currentBuild >= 1000 {
+			offset = currentBuild - currentBuild%1000
+		}
+	}
+	return base + offset
+}
+
 // grayIn 灰度判定：确定性哈希（同设备结果稳定）
 func grayIn(identifier string, percent int) bool {
 	if percent >= 100 {
@@ -267,16 +289,17 @@ func bundleVersionResponse(b *bundleVersion, current, abi string, currentBuild i
 	if b.Repo != "" {
 		ghURL = "https://github.com/" + b.Repo + "/releases/download/v" + b.Version + "/" + a.File
 	}
+	buildNumber := splitBuildNumber(b.BuildNumber, abi, currentBuild)
 	return gin.H{
 		"version":         b.Version,
-		"buildNumber":     b.BuildNumber,
+		"buildNumber":     buildNumber,
 		"notes":           b.Notes,
 		"apkUrl":          ghURL, // 设备能访问 GitHub 时优先直连
 		"downloadUrl":     "/api/app/download?abi=" + url.QueryEscape(abi), // 云服务端兜底
 		"sha256":          a.SHA256,
 		"sizeBytes":       a.Size,
 		"minSupported":    "",
-		"updateAvailable": newerVersion(current, b.Version, currentBuild, b.BuildNumber),
+		"updateAvailable": newerVersion(current, b.Version, currentBuild, buildNumber),
 		"forceUpdate":     false,
 		"source":          "cloud-bundle",
 		"githubRepo":      b.Repo,
@@ -323,7 +346,7 @@ func GetAppVersion(c *gin.Context) {
 				// 构建号只在本地分发清单与 GitHub tag 一致时启用，避免二者错配误判
 				buildNumber := 0
 				if b, e := loadBundle(); e == nil && b.Version == version {
-					buildNumber = b.BuildNumber
+					buildNumber = splitBuildNumber(b.BuildNumber, abi, currentBuild)
 				}
 				updateAvailable := newerVersion(current, version, currentBuild, buildNumber)
 				utils.OK(c, gin.H{
@@ -366,7 +389,8 @@ func GetAppVersion(c *gin.Context) {
 		return
 	}
 
-	updateAvailable := newerVersion(current, v.Version, currentBuild, v.BuildNumber)
+	publishedBuild := splitBuildNumber(v.BuildNumber, abi, currentBuild)
+	updateAvailable := newerVersion(current, v.Version, currentBuild, publishedBuild)
 	forceUpdate := false
 	if v.MinSupported != "" {
 		forceUpdate = compareVersion(current, v.MinSupported) < 0
@@ -375,7 +399,7 @@ func GetAppVersion(c *gin.Context) {
 
 	utils.OK(c, gin.H{
 		"version":         v.Version,
-		"buildNumber":     v.BuildNumber,
+		"buildNumber":     publishedBuild,
 		"notes":           v.Notes,
 		"apkUrl":          v.APKUrl,
 		"sha256":          v.SHA256,
