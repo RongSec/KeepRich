@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yourname/family-finance/backend/config"
+	"github.com/yourname/family-finance/backend/internal/auth"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
@@ -17,16 +18,26 @@ import (
 	"gorm.io/gorm"
 )
 
+// LoginReq 登录请求：username 语义仍是「用户名 **或** 邮箱」（老账号兼容）。
+// deviceId / deviceName / platform 是纯增量可选字段：不传 = 老客户端，走 legacy 不轮换分支。
+// 刻意不用 gin binding tag —— 校验失败的英文文案会直接弹给用户（DESIGN §7.3）。
 type LoginReq struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	MFACode  string `json:"mfaCode"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	MFACode    string `json:"mfaCode"`
+	DeviceID   string `json:"deviceId"`
+	DeviceName string `json:"deviceName"`
+	Platform   string `json:"platform"`
 }
 
+// LoginResp 登录 / 注册 / 设备登录共用响应（新增字段全部可选，老客户端忽略）。
 type LoginResp struct {
 	AccessToken  string  `json:"accessToken"`
 	RefreshToken string  `json:"refreshToken"`
 	ExpiresIn    int     `json:"expiresIn"`
+	SessionID    string  `json:"sessionId,omitempty"`
+	IdleExpireAt int64   `json:"idleExpireAt,omitempty"`
+	DeviceToken  string  `json:"deviceToken,omitempty"`
 	UID          uint64  `json:"uid"`
 	Role         string  `json:"role"`
 	Nickname     string  `json:"nickname"`
@@ -34,15 +45,7 @@ type LoginResp struct {
 	FamilyID     *uint64 `json:"familyId,omitempty"`
 }
 
-// Login godoc
-// @Summary 账号密码登录
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param body body LoginReq true "登录参数"
-// @Success 200 {object} utils.Response{data=LoginResp}
-// @Router /api/auth/login [post]
-// 登录失败锁定：同一账号/ IP 5 分钟内失败 5 次即锁 15 分钟
+// 登录失败锁定：同一账号/IP 5 分钟内失败 5 次即锁 15 分钟（v0.4.1 行为不变）。
 var (
 	loginFailsMu sync.Mutex
 	loginFails   = map[string]*loginFailState{}
@@ -91,93 +94,91 @@ func clearLoginFail(key string) {
 	delete(loginFails, key)
 }
 
+// deviceOf 把请求里的设备字段收敛成领域结构（缺失 deviceName 自动补，G.2）。
+func deviceOf(deviceID, deviceName, platform string) auth.DeviceInfo {
+	return auth.NormalizeDevice(auth.DeviceInfo{
+		DeviceID: deviceID, DeviceName: deviceName, Platform: platform,
+	})
+}
+
+// Login 账号密码登录 → 三段查询 → 建会话 → 可选签发设备凭据。
 func Login(c *gin.Context) {
 	var req LoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgRequestFormat)
 		return
 	}
-	// 归一化输入：`username` 字段语义已扩为「用户名 **或** 邮箱」，大小写不敏感。
-	// 限流键必须用归一化后的值 —— 否则 A@B.com 与 a@b.com 各占一个额度，
-	// 锁定形同虚设（DESIGN §2.C.4）。
 	ident := strings.TrimSpace(req.Username)
 	lower := strings.ToLower(ident)
-	if ident == "" {
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号或密码错误")
+	if ident == "" || req.Password == "" {
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, utils.MsgBadCredentials)
 		return
 	}
 
-	// 登录失败锁定：同一账号+IP 5 分钟内失败 5 次锁 15 分钟
 	failKey := loginFailKey(lower, c.ClientIP())
 	if locked, d := checkLoginLocked(failKey); locked {
 		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden,
 			fmt.Sprintf("登录失败次数过多，请 %d 分钟后再试", int(d.Minutes())+1))
 		return
 	}
-	// 账号维度限流：单账号 5 分钟最多 10 次尝试（防 TOTP/密码暴力破解）
 	if !middleware.Allow("login-acct:"+lower, 5*time.Minute, 10) {
 		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden, "尝试次数过多，请稍后再试")
 		return
 	}
 
-	// 两段式查询（索引友好，不用 LOWER(email) —— 函数包住列会放弃索引）：
-	//   ① 先打 users.username 唯一索引：覆盖所有老用户名 + 所有新注册的邮箱账号
-	//   ② 再按 email 精确查：覆盖"注册后被 admin 改了 email"或历史 email 账号
+	// 三段索引友好查询（DESIGN §2.D.2）：
+	//   ① username = 原样输入（覆盖所有老用户名，含含大写的 v0.4.0 账号）
+	//   ② username = 全小写（新注册账号写入时已归一；大小写混输也能命中）
+	//   ③ email = 小写（v0.4.0「邮箱即用户名」账号兜底）
+	// 不给列套 LOWER()（会放弃唯一索引），不给 email 加唯一索引（历史空串会炸），
+	// 老账号用户名不合规（bob 3 位）也**不回溯校验**。
 	var u models.User
 	err := database.DB.Where("username = ?", ident).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) && lower != ident {
+		err = database.DB.Where("username = ?", lower).First(&u).Error
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		err = database.DB.Where("email = ? AND email <> ''", lower).First(&u).Error
 	}
 	if err != nil {
-		// 不区分「账号不存在」与「密码错」—— 防账号枚举（DESIGN §2.C.4）
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号或密码错误")
+		// 不区分「账号不存在」与「密码错」—— 防账号枚举
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, utils.MsgBadCredentials)
 		return
 	}
 	if u.Disabled {
-		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "账号已停用")
+		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, utils.MsgAccountDisabled)
 		return
 	}
 	if !utils.CheckPassword(u.PasswordHash, req.Password) {
 		recordLoginFail(failKey)
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号或密码错误")
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, utils.MsgBadCredentials)
 		return
 	}
 	clearLoginFail(failKey)
-	if u.MFAEnabled {
-		if !utils.VerifyMFACode(u.MFASecret, req.MFACode) {
-			utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "MFA 校验失败")
-			return
-		}
+	if u.MFAEnabled && !utils.VerifyMFACode(u.MFASecret, req.MFACode) {
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "MFA 校验失败")
+		return
 	}
-	resp, err := issueTokens(&u)
+
+	dev := deviceOf(req.DeviceID, req.DeviceName, req.Platform)
+	bundle, err := auth.Sessions().Issue(&u, dev, c.ClientIP(), c.Request.UserAgent(), true)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgTokenInvalid)
+		return
+	}
+	resp, err := buildLoginResp(&u, bundle)
+	if err != nil {
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgTokenInvalid)
 		return
 	}
 	utils.OK(c, resp)
 }
 
-// issueTokens 签发 access + refresh 并组装登录响应（Login 与 Register 共用）。
-//
-// 抽出来的原因：注册成功后要**直接**返回 token（R-05 ①，不需要二次登录），
-// 若各自复制一份签发逻辑，token 版本号/家庭信息这些细节迟早漂移。
-func issueTokens(u *models.User) (LoginResp, error) {
-	var out LoginResp
-	access, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeAccess,
-		config.C.JWT.AccessSecret, config.C.JWT.AccessTTL, u.TokenVersion)
-	if err != nil {
-		return out, errors.New("签发 access token 失败")
+// buildLoginResp 组装登录响应：家庭信息 + 统一 token 字段（handler 不再自己算时效）。
+func buildLoginResp(u *models.User, bundle *auth.LoginBundle) (LoginResp, error) {
+	if u == nil || bundle == nil {
+		return LoginResp{}, errors.New("buildLoginResp: 参数为空")
 	}
-	refresh, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeRefresh,
-		config.C.JWT.RefreshSecret, config.C.JWT.RefreshTTL, u.TokenVersion)
-	if err != nil {
-		return out, errors.New("签发 refresh token 失败")
-	}
-
-	now := time.Now()
-	database.DB.Model(u).Update("last_login_at", &now)
-
-	// 查询当前所在家庭（仅取一个 active 家庭）
 	var member models.FamilyMember
 	var familyID *uint64
 	if err := database.DB.Where("user_id = ? AND status = ?", u.ID, models.MemberStatusActive).
@@ -185,11 +186,13 @@ func issueTokens(u *models.User) (LoginResp, error) {
 		fid := member.FamilyID
 		familyID = &fid
 	}
-
 	return LoginResp{
-		AccessToken:  access,
-		RefreshToken: refresh,
-		ExpiresIn:    config.C.JWT.AccessTTL,
+		AccessToken:  bundle.AccessToken,
+		RefreshToken: bundle.RefreshToken,
+		ExpiresIn:    bundle.ExpiresIn,
+		SessionID:    bundle.SessionID,
+		IdleExpireAt: bundle.IdleExpireAt,
+		DeviceToken:  bundle.DeviceToken,
 		UID:          u.ID,
 		Role:         u.Role,
 		Nickname:     u.Nickname,
@@ -199,49 +202,89 @@ func issueTokens(u *models.User) (LoginResp, error) {
 }
 
 type RefreshReq struct {
-	RefreshToken string `json:"refreshToken" binding:"required"`
+	RefreshToken string `json:"refreshToken"`
 }
 
+// Refresh 轮换 + 120s 宽限 + 重放撤销；无 sid 的老 refresh 走 legacy 不轮换分支。
 func Refresh(c *gin.Context) {
 	var req RefreshReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgRequestFormat)
+		return
+	}
+	if req.RefreshToken == "" {
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionRevoked, utils.MsgSessionRevoked)
 		return
 	}
 	claims, err := utils.ParseToken(req.RefreshToken, config.C.JWT.RefreshSecret)
 	if err != nil || claims.TokenType != utils.TokenTypeRefresh {
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "invalid refresh token")
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionRevoked, utils.MsgSessionRevoked)
 		return
 	}
-	// 查库校验：账号存在、未停用、token 版本未失效（改密后旧 token 作废）
+	// Q2 默认取舍：老客户端 refresh（无 sid）不强制失效，走 v0.4.1 原逻辑。
+	if claims.SessionID == "" {
+		legacyRefresh(c, claims)
+		return
+	}
+	tokens, err := auth.Sessions().Rotate(claims.SessionID, req.RefreshToken)
+	if err != nil {
+		failRefresh(c, err)
+		return
+	}
+	data := gin.H{
+		"accessToken":  tokens.AccessToken,
+		"expiresIn":    tokens.ExpiresIn,
+		"idleExpireAt": tokens.IdleExpireAt,
+	}
+	if tokens.RefreshToken != "" {
+		data["refreshToken"] = tokens.RefreshToken
+	}
+	utils.OK(c, data)
+}
+
+// failRefresh 领域错误 → 中文响应；**绝不**把 err.Error() / 异常类名透给客户端。
+func failRefresh(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, auth.ErrSessionIdle):
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionIdle, utils.MsgSessionIdle)
+	case errors.Is(err, auth.ErrUserDisabled):
+		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, utils.MsgAccountDisabled)
+	default:
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionRevoked, utils.MsgSessionRevoked)
+	}
+}
+
+// legacyRefresh v0.4.1 老客户端：只回 accessToken，不轮换、不查会话表。
+// 旧 refresh 24h 自然过期；升级期不把用户踢下线（DESIGN §8.2 Q2）。
+func legacyRefresh(c *gin.Context, claims *utils.Claims) {
 	var u models.User
 	if err := database.DB.First(&u, claims.UID).Error; err != nil {
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "账号不存在")
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionRevoked, utils.MsgSessionRevoked)
 		return
 	}
 	if u.Disabled {
-		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "账号已停用")
+		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, utils.MsgAccountDisabled)
 		return
 	}
 	if u.TokenVersion != claims.TokenVersion {
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "登录已失效，请重新登录")
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionRevoked, utils.MsgSessionRevoked)
 		return
 	}
-	// 使用库中最新角色签发（降权立即生效）
-	access, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeAccess, config.C.JWT.AccessSecret, config.C.JWT.AccessTTL, u.TokenVersion)
+	access, err := utils.GenerateToken(u.ID, u.Role, utils.TokenTypeAccess,
+		config.C.JWT.AccessSecret, config.C.JWT.AccessTTL, u.TokenVersion)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeSessionRevoked, utils.MsgSessionRevoked)
 		return
 	}
 	utils.OK(c, gin.H{"accessToken": access, "expiresIn": config.C.JWT.AccessTTL})
 }
 
-// Me 获取当前登录用户信息
+// Me 获取当前登录用户信息。
 func Me(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var u models.User
 	if err := database.DB.First(&u, uid).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "账号不存在")
 		return
 	}
 	utils.OK(c, u)

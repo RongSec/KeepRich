@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
 
@@ -6,6 +7,7 @@ import '../models.dart';
 import '../services/api.dart';
 import '../utils/dialog_dispose.dart';
 import '../services/auth.dart';
+import '../utils/display_name.dart';
 
 class SecurityPage extends StatefulWidget {
   const SecurityPage({super.key});
@@ -120,10 +122,20 @@ class _SecurityPageState extends State<SecurityPage> {
     disposeDialogController(old);
     disposeDialogController(nw);
     final r = await ApiClient.instance.changePassword(oldText, nwText);
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(r.message)));
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              r.message.isEmpty ? '修改失败，请稍后再试' : r.message)));
+      return;
     }
+    // 后端改密会撤销全部会话与设备凭据，必须主动回登录页重新验证身份，
+    // 否则用户会卡在已失效的页面上（T05 / DESIGN §6 T05 ③）。
+    await context.read<AuthState>().passwordChanged();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登录已失效，请重新登录')));
+    context.go('/login');
   }
 
   Future<void> _editProfile() async {
@@ -133,35 +145,47 @@ class _SecurityPageState extends State<SecurityPage> {
     final avatar = TextEditingController(text: u.avatar);
     final email = TextEditingController(text: u.email);
     final phone = TextEditingController(text: u.phone);
+    final formKey = GlobalKey<FormState>();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('编辑资料'),
         content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(
-                controller: nickname,
-                decoration: const InputDecoration(labelText: '昵称')),
-            const SizedBox(height: 8),
-            TextField(
-                controller: avatar,
-                decoration: const InputDecoration(labelText: '头像 URL')),
-            const SizedBox(height: 8),
-            TextField(
-                controller: email,
-                decoration: const InputDecoration(labelText: '邮箱')),
-            const SizedBox(height: 8),
-            TextField(
-                controller: phone,
-                decoration: const InputDecoration(labelText: '手机')),
-          ]),
+          child: Form(
+            key: formKey,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // 存量 >16 字昵称不截断不报错，只有主动编辑提交时才按 16 字校验。
+              TextFormField(
+                  controller: nickname,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  validator: (v) => nicknameError(v, required: false),
+                  decoration: const InputDecoration(
+                      labelText: '昵称', helperText: '最多 16 个字')),
+              const SizedBox(height: 8),
+              TextFormField(
+                  controller: avatar,
+                  decoration: const InputDecoration(labelText: '头像 URL')),
+              const SizedBox(height: 8),
+              TextFormField(
+                  controller: email,
+                  decoration: const InputDecoration(labelText: '邮箱')),
+              const SizedBox(height: 8),
+              TextFormField(
+                  controller: phone,
+                  decoration: const InputDecoration(labelText: '手机')),
+            ]),
+          ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text('取消')),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  Navigator.pop(ctx, true);
+                }
+              },
               child: const Text('保存')),
         ],
       ),

@@ -8,6 +8,7 @@ import 'config.dart';
 import 'pages/admin/admin_home_page.dart';
 import 'pages/admin/admin_login_page.dart';
 import 'pages/big_purchase_page.dart';
+import 'pages/devices_page.dart';
 import 'pages/family_page.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
@@ -16,9 +17,10 @@ import 'pages/register_page.dart';
 import 'pages/security_page.dart';
 import 'pages/settings_page.dart' show UserManagementPage;
 import 'pages/splash_page.dart';
+import 'services/accounts.dart';
 import 'services/api.dart';
 import 'services/auth.dart';
-import 'services/biometric.dart';
+import 'services/device_auth.dart';
 import 'services/notify.dart';
 import 'services/sync_status.dart';
 import 'services/web_updater.dart';
@@ -52,26 +54,48 @@ class AppRoot extends StatefulWidget {
   State<AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<AppRoot> {
-  final _auth = AuthState();
+class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
+  final _accounts = AccountsRepo();
+  final _deviceAuth = DeviceAuthService();
   final _notify = NotifyService();
-  final _biometric = BiometricService();
+  late final AuthState _auth;
 
   @override
   void initState() {
     super.initState();
-    // 会话过期（refresh 也失败）→ 跳回登录页，而不是页面空着停在原地。
-    // 同时清掉上一页残留的报错，免得登录页顶上还挂着"invalid or expired token"。
-    ApiClient.onSessionExpired = () {
-      _auth.sessionExpired();
+    WidgetsBinding.instance.addObserver(this);
+
+    // 双向同步：账号被移除/淘汰时删设备凭据；凭据写/删时更新账号卡标志。
+    _accounts.onAccountRemoved = _deviceAuth.clearDeviceToken;
+    _deviceAuth.onCredentialChanged = _accounts.markCredential;
+    _auth = AuthState(accounts: _accounts, deviceAuth: _deviceAuth);
+
+    // 会话过期（refresh 也失败）→ 跳回登录页，带上 idle/revoked/device 原因。
+    // 同时清掉上一页残留的报错，免得登录页顶上还挂着旧的英文错误。
+    ApiClient.onSessionExpired = (reason) {
+      _auth.sessionExpired(reason);
       _AppShell.scaffoldMessengerKey.currentState?.clearSnackBars();
     };
-    _auth.bootstrap();
-    _biometric.init();
+    _bootstrap();
     _notify.initLocalNotifications();
     _auth.addListener(_onAuthChanged);
     // Web 端：检查是否有新的前端构建，有则提示刷新
     WebUpdater.instance.start();
+  }
+
+  /// 本机账号仓库与设备能力先就绪，再恢复会话（冷启动 ≤1.5s 纯本地渲染）。
+  Future<void> _bootstrap() async {
+    await _accounts.load();
+    await _deviceAuth.init();
+    await _auth.bootstrap();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回前台主动刷一次（access 剩余 <5 分钟才真发请求），避免第一屏先吃 401。
+    if (state == AppLifecycleState.resumed && _auth.isLoggedIn) {
+      _auth.refreshIfIdle();
+    }
   }
 
   void _onAuthChanged() {
@@ -88,6 +112,7 @@ class _AppRootState extends State<AppRoot> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _auth.removeListener(_onAuthChanged);
     _notify.dispose();
     super.dispose();
@@ -99,7 +124,8 @@ class _AppRootState extends State<AppRoot> {
       providers: [
         ChangeNotifierProvider.value(value: _auth),
         ChangeNotifierProvider.value(value: _notify),
-        ChangeNotifierProvider.value(value: _biometric),
+        ChangeNotifierProvider.value(value: _accounts),
+        ChangeNotifierProvider.value(value: _deviceAuth),
       ],
       child: _AppShell(auth: _auth),
     );
@@ -130,7 +156,7 @@ class _AppShell extends StatelessWidget {
           if (auth.user?.role != 'admin') return '/admin/login';
           return null;
         }
-        // 未登录可进：登录页 + 注册页（R-05/R-09）
+        // 未登录可进：登录页 + 注册页
         final openWhenLoggedOut = loc == '/login' || loc == '/register';
         if (!auth.isLoggedIn) return openWhenLoggedOut ? null : '/login';
         // 已登录还停在登录/注册页 → 直接进概览
@@ -155,6 +181,7 @@ class _AppShell extends StatelessWidget {
             path: '/big-purchase', builder: (_, __) => const BigPurchasePage()),
         GoRoute(path: '/security', builder: (_, __) => const SecurityPage()),
         GoRoute(path: '/users', builder: (_, __) => const UserManagementPage()),
+        GoRoute(path: '/devices', builder: (_, __) => const DevicesPage()),
       ],
     );
 
@@ -168,7 +195,6 @@ class _AppShell extends StatelessWidget {
       darkTheme: AppTheme.dark(),
       routerConfig: router,
       // 沙漏背景铺在最底层：登录前饱满、登录后变淡
-      // （v0.4.0 换成真沙漏；回退只需把这里换回 GoldSandBackground）
       builder: (ctx, child) => Stack(
         fit: StackFit.expand,
         children: [

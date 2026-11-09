@@ -91,6 +91,12 @@ var rules = []rule{
 	// 数据恢复是最高风险的写操作（可能覆盖全库），必须留痕；
 	// gate.decision（forced/allowed/rejected_*）会被追加进 Detail（见下方 Audit）。
 	{"/api/admin/backup", "/restore", "admin.restore_backup"},
+	// v0.5.0：会话/设备/邀请码相关写操作留痕
+	{"/api/auth/logout", "", "auth.logout"},
+	{"/api/auth/devices/revoke-others", "", "auth.revoke_others"},
+	{"/api/auth/devices", "/revoke", "auth.device_revoke"},
+	{"/api/admin/invite-codes", "/revoke", "admin.invite_revoke"},
+	{"/api/admin/invite-codes", "", "admin.invite_create"},
 }
 
 // Audit 通用审计中间件

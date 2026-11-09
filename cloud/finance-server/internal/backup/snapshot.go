@@ -36,10 +36,10 @@ type Table struct {
 	Model any
 }
 
-// Tables 返回 18 张表的清单。
+// Tables 返回 22 张表的清单（v0.4.1 是 18 张 + v0.5.0 新增 4 张）。
 //
-// 顺序即插入顺序：users → families → family_members → ... → app_versions
-// （被引用方在前，避免 replace 导入时的外键/引用错位；DELETE 时按逆序）。
+// 顺序即插入顺序：users → families → ... → app_versions → 会话/凭据/邀请码表
+// （被引用方在前，避免 replace 导入时的引用错位；DELETE 时按逆序）。
 // 必须与 internal/database/migrate.go 的 AutoMigrate 清单保持一致。
 func Tables() []Table {
 	return []Table{
@@ -61,23 +61,41 @@ func Tables() []Table {
 		{"borrowed_moneys", &models.BorrowedMoney{}},
 		{"future_benefits", &models.FutureBenefit{}},
 		{"app_versions", &models.AppVersion{}},
+		// v0.5.0 新增：4 张表全部进云端快照。
+		// auth_sessions / device_credentials 不进 → 每次沙箱重启/发布全端被踢回登录页；
+		// invite_codes / invite_code_usages 不进 → 已发出的码全失效，且 used_count 归零
+		// 会让**一次性邀请码被重复使用**（比 payload 变大严重得多，§8.2 Q1）。
+		{"auth_sessions", &models.AuthSession{}},
+		{"device_credentials", &models.DeviceCredential{}},
+		{"invite_codes", &models.InviteCode{}},
+		{"invite_code_usages", &models.InviteCodeUsage{}},
 	}
 }
 
-// usersTable / audit_logs / error_reports 在判定"本地是否有业务数据"时被排除的表名。
+// IsBusinessTable 判定「本地是否有业务数据」时被排除的表名。
+//
+// ⚠️⚠️ v0.5.0 R3（本版最容易踩的 P0 坑）：新增 4 张表**必须显式排除**。
+// 否则「本地只有会话/邀请码、没有任何账目」的库会被判成"有业务数据"，
+// cloudsync 的 P6「本地空才允许拉取覆盖」会拒绝拉云端快照 →
+// 极端情况下**反向覆盖真实账目**。会话与凭据不是账目，绝不能充当业务数据。
 const (
-	usersTable       = "users"
-	auditLogsTable   = "audit_logs"
-	errorReportTable = "error_reports"
+	usersTable             = "users"
+	auditLogsTable         = "audit_logs"
+	errorReportTable       = "error_reports"
+	sessionsTable          = "auth_sessions"
+	deviceCredentialsTable = "device_credentials"
+	inviteCodesTable       = "invite_codes"
+	inviteUsagesTable      = "invite_code_usages"
 )
 
-// IsBusinessTable 判断某张表是否算"业务数据"（排除 users 与两张只增日志表）。
+// IsBusinessTable 判断某张表是否算"业务数据"。
 //
 // 用途：cloudsync 判定表里的 local.HasBusiness（附录 A）——只看"账 / 家庭 / 计划"
 // 这类真正代表用户数据的表。只有 admin 账号、没有任何业务行的库，等于空库。
 func IsBusinessTable(name string) bool {
 	switch name {
-	case usersTable, auditLogsTable, errorReportTable:
+	case usersTable, auditLogsTable, errorReportTable,
+		sessionsTable, deviceCredentialsTable, inviteCodesTable, inviteUsagesTable:
 		return false
 	}
 	return true

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yourname/family-finance/backend/internal/auth"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
@@ -209,6 +210,8 @@ func AdminResetPassword(c *gin.Context) {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
 	}
+	// 管理员重置口令同样撤销该账号全部会话与设备凭据
+	auth.Devices().RevokeAll(u.ID, auth.ReasonPasswordChange)
 	utils.OK(c, gin.H{"ok": true})
 }
 

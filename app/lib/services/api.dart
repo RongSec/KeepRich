@@ -75,7 +75,51 @@ class ApiClient {
   late Dio _dio;
   String? _accessToken;
   String? _refreshToken;
-  Future<bool>? _refreshFuture;
+
+  /// access 的本地过期时刻（由 expiresIn 推算，仅用于前台恢复时提前刷新）。
+  DateTime? _accessExpireAt;
+  Future<String>? _refreshFuture;
+  bool _sessionExpiredNotified = false;
+
+  /// 登录/注册/刷新/设备登录自身的 401 是业务错误，绝不触发 refresh 或踢回登录页。
+  /// logout 同理：客户端主动结束会话时返回的 401 不该再弹一次「登录已失效」。
+  static const Set<String> _publicAuthPaths = <String>{
+    '/auth/login',
+    '/auth/register',
+    '/auth/refresh',
+    '/auth/device-login',
+    '/auth/logout',
+  };
+
+  bool _isPublicAuthPath(String path) {
+    for (final entry in _publicAuthPaths) {
+      if (path.contains(entry)) return true;
+    }
+    return false;
+  }
+
+  static int _codeOf(dynamic body) {
+    if (body is Map) {
+      final raw = body['code'];
+      if (raw is num) return raw.toInt();
+      return int.tryParse(raw?.toString() ?? '') ?? 0;
+    }
+    return 0;
+  }
+
+  /// 401 code → 客户端会话失效原因（登录页据此选提示条与按钮文案）。
+  static String _reasonFromCode(int code) {
+    switch (code) {
+      case 40110:
+        return 'idle';
+      case 40111:
+        return 'revoked';
+      case 40112:
+        return 'device';
+      default:
+        return 'revoked';
+    }
+  }
 
   /// 服务端地址变更后重建连接（保留 token）
   void rebuild() {
@@ -123,12 +167,21 @@ class ApiClient {
           return;
         }
         final req = resp.requestOptions;
+        // 公开鉴权接口自身返回 401 时由调用方就地提示，不能触发全局失效。
+        if (_isPublicAuthPath(req.path)) {
+          handler.next(resp);
+          return;
+        }
+        final originalReason = _reasonFromCode(_codeOf(d));
+        String reason = originalReason;
         // 并发场景共享同一个刷新 Future，避免 A 刷新时 B 把新 token 清掉
         if (_refreshToken != null && req.extra['retried'] != true) {
           final refreshed = await _refreshAccessToken();
-          if (refreshed) {
+          if (refreshed.isEmpty) {
             req.extra['retried'] = true;
             req.headers['Authorization'] = 'Bearer $_accessToken';
+            // 云托管网关会覆盖 Authorization，业务后端优先读这个自定义头。
+            req.headers['X-Finance-Token'] = _accessToken ?? '';
             try {
               final clone = await dio.fetch(req);
               handler.resolve(clone);
@@ -136,12 +189,25 @@ class ApiClient {
             } catch (_) {
               // 重试失败则继续走下面的失效处理
             }
+          } else if (originalReason != 'idle') {
+            // 闲置判定优先：首个业务 401 的 40110 已经把原因说清楚了。
+            // 服务端在标记闲置时会同时撤销会话，随后的 refresh 只会回
+            // 40111；若被它覆盖，登录页会错显红条而不是黄色闲置提示条。
+            reason = refreshed;
           }
+        }
+        // 网络错误不清登录态、不跳登录页（设计 §E.6）。
+        if (reason == 'network') {
+          handler.next(resp);
+          return;
         }
         // access + refresh 都不可用：清登录态并跳回登录页
         await clearPersisted();
         clearTokens();
-        onSessionExpired?.call();
+        if (!_sessionExpiredNotified) {
+          _sessionExpiredNotified = true;
+          onSessionExpired?.call(reason);
+        }
         handler.next(resp);
       },
       onError: (e, handler) async {
@@ -151,17 +217,20 @@ class ApiClient {
     return dio;
   }
 
-  /// 会话已失效（refresh 也失败）回调：由 AuthState 注册，用来跳回登录页
-  static void Function()? onSessionExpired;
+  /// 会话已失效（refresh 也失败）回调：由 AuthState 注册。
+  /// reason ∈ `idle` / `revoked` / `device`；登录页据此选提示条与按钮文案。
+  static void Function(String reason)? onSessionExpired;
 
   void setTokens({String? access, String? refresh}) {
     if (access != null) _accessToken = access;
     if (refresh != null) _refreshToken = refresh;
+    _sessionExpiredNotified = false;
   }
 
   void clearTokens() {
     _accessToken = null;
     _refreshToken = null;
+    _accessExpireAt = null;
   }
 
   bool get hasToken => _accessToken != null;
@@ -169,21 +238,38 @@ class ApiClient {
   /// 当前 access token（WS 握手等场景用）
   String? get accessToken => _accessToken;
 
-  /// 用 refresh token 换取新 access token。
+  /// 用 refresh token 换取新 access token，返回值是失效原因（空串 = 成功）。
   /// 并发调用共享同一个 Future，刷新过程中进来的请求会等它，而不是各自判定失败。
-  Future<bool> _refreshAccessToken() {
+  Future<String> _refreshAccessToken() {
     return _refreshFuture ??= _doRefresh().whenComplete(() {
       _refreshFuture = null;
     });
   }
 
-  Future<bool> _doRefresh() async {
+  /// 前台恢复 / 集成测试用：access 剩余不足 5 分钟时主动刷一次（§E.6）。
+  Future<String> refreshIfNeeded({bool force = false}) async {
+    if (_refreshToken == null || _refreshToken!.isEmpty) return 'revoked';
+    if (!force && _accessExpireAt != null) {
+      final left = _accessExpireAt!.difference(DateTime.now()).inSeconds;
+      if (left > 300) return '';
+    }
+    return _refreshAccessToken();
+  }
+
+  Future<String> _doRefresh() async {
     try {
       final sc = AppConfig.shareCode;
+      // Web 端 '/api' 是相对路径；裸 Dio 不走统一拦截器，这里补全 origin。
+      final configured = AppConfig.apiBaseUrl;
+      final base = configured.startsWith('http')
+          ? configured
+          : '${Uri.base.origin}$configured';
       final r = await Dio(BaseOptions(
-        baseUrl: AppConfig.apiBaseUrl,
+        baseUrl: base,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
+        // 401 必须当响应处理，才能读到 40110 / 40111 的 code 分流。
+        validateStatus: (s) => s != null && s < 500,
       )).post(
         '/auth/refresh',
         queryParameters:
@@ -192,21 +278,40 @@ class ApiClient {
       );
       decodeStringResponseBody(r);
       final data = r.data as Map<String, dynamic>?;
+      if (r.statusCode == 401) return _reasonFromCode(_codeOf(data));
       if (data != null && data['code'] == 0 && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
-        _accessToken = d['accessToken'] as String?;
+        final newAccess = d['accessToken'] as String?;
+        if (newAccess == null || newAccess.isEmpty) return 'revoked';
+        _accessToken = newAccess;
+        // 轮换红线：响应里的新 refreshToken 必须落盘，否则 120s 宽限一过
+        // 旧 refresh 判重放，用户杀进程重启就会被踢。
+        final newRefresh = d['refreshToken'] as String?;
+        if (newRefresh != null && newRefresh.isNotEmpty) {
+          _refreshToken = newRefresh;
+        }
+        final ttl = (d['expiresIn'] as num?)?.toInt() ?? 900;
+        _accessExpireAt =
+            DateTime.now().add(Duration(seconds: ttl > 0 ? ttl : 900));
+        _sessionExpiredNotified = false;
         await persistTokens();
-        return _accessToken != null;
+        return '';
       }
-      return false;
+      return 'revoked';
     } catch (_) {
-      return false;
+      // 网络错误 / 超时：不清登录态，业务页自行重试。
+      return 'network';
     }
   }
 
   Future<void> loadTokens() async {
     _accessToken = await _readStored('access_token');
     _refreshToken = await _readStored('refresh_token');
+    final rawExpire = await _readStored('access_expire_at');
+    final millis = int.tryParse(rawExpire ?? '');
+    _accessExpireAt = millis == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(millis);
     // 迁移：旧版本 token 存 SharedPreferences 的搬进安全存储
     final p = await SharedPreferences.getInstance();
     final legacyAccess = p.getString('access_token');
@@ -227,53 +332,141 @@ class ApiClient {
     if (_refreshToken != null) {
       await _writeStored('refresh_token', _refreshToken!);
     }
+    final expire = _accessExpireAt;
+    if (expire != null) {
+      await _writeStored(
+          'access_expire_at', expire.millisecondsSinceEpoch.toString());
+    }
   }
 
   Future<void> clearPersisted() async {
     await _deleteStored('access_token');
     await _deleteStored('refresh_token');
+    await _deleteStored('access_expire_at');
   }
 
-  Future<ApiResponse<LoginResult>> login(String username, String password,
-      {String? mfaCode}) async {
-    final r = await _dio.post('/auth/login', data: {
+  /// 登录/注册/设备登录成功后统一落盘（含 expiresIn 推算的过期时刻）。
+  Future<void> _applyLoginTokens(LoginResult result) async {
+    _accessToken = result.accessToken;
+    _refreshToken = result.refreshToken;
+    final ttl = result.expiresIn > 0 ? result.expiresIn : 900;
+    _accessExpireAt = DateTime.now().add(Duration(seconds: ttl));
+    _sessionExpiredNotified = false;
+    await persistTokens();
+  }
+
+  /// 账号密码登录。`username` 仍是「用户名 或 邮箱」（老账号兼容）。
+  /// deviceId/deviceName/platform 是新增可选字段：带上才会建会话并轮换 refresh。
+  Future<ApiResponse<LoginResult>> login(
+    String username,
+    String password, {
+    String? mfaCode,
+    String? deviceId,
+    String? deviceName,
+    String? platform,
+  }) async {
+    final r = await _dio.post('/auth/login', data: <String, dynamic>{
       'username': username,
       'password': password,
       if (mfaCode != null) 'mfaCode': mfaCode,
+      if (deviceId != null && deviceId.isNotEmpty) 'deviceId': deviceId,
+      if (deviceName != null && deviceName.isNotEmpty)
+        'deviceName': deviceName,
+      if (platform != null && platform.isNotEmpty) 'platform': platform,
     });
     final resp = ApiResponse.fromJson(r.data as Map<String, dynamic>,
         (d) => LoginResult.fromJson(d as Map<String, dynamic>));
     if (resp.ok && resp.data != null) {
-      setTokens(
-          access: resp.data!.accessToken, refresh: resp.data!.refreshToken);
-      await persistTokens();
+      await _applyLoginTokens(resp.data!);
     }
     return resp;
   }
 
-  /// 邮箱注册（R-05，`POST /api/auth/register`）
-  ///
-  /// 契约：入参 `email` / `password` / `nickname?`；200 直接返回 token（与登录同构），
-  /// 因此这里**落盘逻辑与 [login] 完全一致**，调用方不需要再登录一次。
-  /// 失败时响应体仍是 `{code,message}` 信封（400/409/429），由调用方取 `message`。
+  /// 邀请码注册（单页表单，200 直接下发 token，注册成功即已登录）。
+  /// 邮箱选填、不验证、不唯一；页面与代码里都没有任何发信链路。
   Future<ApiResponse<LoginResult>> register({
-    required String email,
+    required String inviteCode,
+    required String username,
     required String password,
-    String? nickname,
+    required String confirmPassword,
+    required String nickname,
+    String? email,
+    String? deviceId,
+    String? deviceName,
+    String? platform,
   }) async {
-    final r = await _dio.post('/auth/register', data: {
-      'email': email,
+    final r = await _dio.post('/auth/register', data: <String, dynamic>{
+      'inviteCode': inviteCode,
+      'username': username,
       'password': password,
-      if (nickname != null && nickname.isNotEmpty) 'nickname': nickname,
+      'confirmPassword': confirmPassword,
+      'nickname': nickname,
+      if (email != null && email.isNotEmpty) 'email': email,
+      if (deviceId != null && deviceId.isNotEmpty) 'deviceId': deviceId,
+      if (deviceName != null && deviceName.isNotEmpty)
+        'deviceName': deviceName,
+      if (platform != null && platform.isNotEmpty) 'platform': platform,
     });
     final resp = ApiResponse.fromJson(r.data as Map<String, dynamic>,
         (d) => LoginResult.fromJson(d as Map<String, dynamic>));
     if (resp.ok && resp.data != null) {
-      setTokens(
-          access: resp.data!.accessToken, refresh: resp.data!.refreshToken);
-      await persistTokens();
+      await _applyLoginTokens(resp.data!);
     }
     return resp;
+  }
+
+  /// 指纹解锁后凭服务端设备凭据换会话（能力仅限此一个入口）。
+  Future<ApiResponse<LoginResult>> deviceLogin({
+    required String deviceId,
+    required String deviceToken,
+    String? deviceName,
+  }) async {
+    final r = await _dio.post('/auth/device-login', data: <String, dynamic>{
+      'deviceId': deviceId,
+      'deviceToken': deviceToken,
+      if (deviceName != null && deviceName.isNotEmpty)
+        'deviceName': deviceName,
+    });
+    final resp = ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => LoginResult.fromJson(d as Map<String, dynamic>));
+    if (resp.ok && resp.data != null) {
+      await _applyLoginTokens(resp.data!);
+    }
+    return resp;
+  }
+
+  /// 退出登录：best-effort 通知服务端撤销当前会话（可选择连设备凭据一起撤销）。
+  Future<ApiResponse<Map<String, dynamic>>> logout(
+      {bool revokeDevice = true}) async {
+    final r = await _dio.post(
+      '/auth/logout',
+      queryParameters: <String, dynamic>{
+        'revokeDevice': revokeDevice ? 'true' : 'false',
+      },
+    );
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => d as Map<String, dynamic>);
+  }
+
+  /// 已登录设备列表（同一设备多条会话按最近活跃聚合）。
+  Future<ApiResponse<DeviceListData>> listDevices() async {
+    final r = await _dio.get('/auth/devices');
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => DeviceListData.fromJson(d as Map<String, dynamic>));
+  }
+
+  /// 撤销单个设备（id 是会话 ID，同时撤销该设备的凭据）。
+  Future<ApiResponse<Map<String, dynamic>>> revokeDevice(int id) async {
+    final r = await _dio.post('/auth/devices/$id/revoke');
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => d as Map<String, dynamic>);
+  }
+
+  /// 一键撤销其他所有设备，当前设备保持登录。
+  Future<ApiResponse<Map<String, dynamic>>> revokeOthers() async {
+    final r = await _dio.post('/auth/devices/revoke-others');
+    return ApiResponse.fromJson(r.data as Map<String, dynamic>,
+        (d) => d as Map<String, dynamic>);
   }
 
   /// 云端快照同步状态（R-11，`GET /api/sync/status`）

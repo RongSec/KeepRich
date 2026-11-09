@@ -8,11 +8,12 @@ import '../config.dart';
 import '../models.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
-import '../services/biometric.dart';
+import '../services/device_auth.dart';
 import '../services/notify.dart';
 import '../services/updater.dart';
 import '../services/web_updater.dart';
 import '../theme.dart';
+import '../utils/display_name.dart';
 import '../widgets/server_address_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -22,6 +23,52 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  /// 「切换账号」：保留账号卡与设备凭据，只结束当前会话（R-15 ②）。
+  Future<void> _confirmSwitchAccount(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('切换账号'),
+        content: const Text('保留已记住的账号，回到登录页选择其他账号'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('切换账号')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await context.read<AuthState>().switchAccount();
+    if (!context.mounted) return;
+    context.go('/login');
+  }
+
+  /// 「退出登录」：确认文案与「切换账号」不同，退出会清卡与凭据（R-15 ①）。
+  Future<void> _confirmLogout(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('退出后需要重新输入密码登录，账本数据不受影响。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('退出登录')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await context.read<AuthState>().logout();
+    if (!context.mounted) return;
+    context.go('/login');
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthState>().user;
@@ -40,9 +87,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   backgroundColor:
                       Theme.of(context).colorScheme.primaryContainer,
                   child: Text(
-                    (user?.nickname.isNotEmpty == true)
-                        ? user!.nickname.characters.first
-                        : 'U',
+                    avatarInitial(user?.nickname ?? '', user?.username ?? ''),
                     style: TextStyle(
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                         fontSize: 24),
@@ -54,9 +99,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                          user?.nickname.isNotEmpty == true
-                              ? user!.nickname
-                              : (user?.username ?? ''),
+                          displayName(
+                              user?.nickname ?? '', user?.username ?? ''),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium),
                       Text(user?.email ?? user?.phone ?? '',
                           style: Theme.of(context).textTheme.bodySmall),
@@ -205,97 +251,48 @@ class _SettingsPageState extends State<SettingsPage> {
               if (mounted) setState(() {});
             },
           ),
-          // 生物识别设置
-          Consumer<BiometricService>(
-            builder: (ctx, biometric, _) {
-              // 显示生物识别状态（即使不可用也显示，让用户知道原因）
+          // 已登录设备（R-16）：撤销单个设备 / 一键撤销其他设备，本机保持登录
+          ListTile(
+            leading:
+                const Icon(Icons.devices_other_outlined, color: AppTheme.gold),
+            title: const Text('已登录设备'),
+            subtitle: const Text('查看并撤销其他设备的登录'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/devices'),
+          ),
+          // 生物识别开关：设备凭据由服务端签发，本版不再要求输入密码启用
+          Consumer<DeviceAuthService>(
+            builder: (ctx, deviceAuth, _) {
               return ListTile(
                 leading: Icon(
                   Icons.fingerprint,
-                  color: biometric.canCheckBiometrics
+                  color: deviceAuth.isSupported
                       ? AppTheme.gold
                       : AppTheme.textDim,
                 ),
                 title: const Text('生物识别登录'),
-                subtitle: Text(biometric.getStatusDescription()),
-                trailing: biometric.canCheckBiometrics
-                    ? Switch(
-                        value: biometric.isBiometricEnabled,
-                        onChanged: (v) async {
-                          if (v) {
-                            final auth = ctx.read<AuthState>();
-                            final user = auth.user;
-                            if (user == null) return;
-                            // 需要用户输入密码来启用
-                            final pwd = TextEditingController();
-                            final ok = await showDialog<bool>(
-                              context: ctx,
-                              builder: (_) => AlertDialog(
-                                title: const Text('启用生物识别'),
-                                content: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('请输入密码以启用生物识别登录'),
-                                    const SizedBox(height: 12),
-                                    TextField(
-                                      controller: pwd,
-                                      obscureText: true,
-                                      decoration: const InputDecoration(
-                                          labelText: '密码'),
-                                    ),
-                                  ],
-                                ),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(ctx, false),
-                                      child: const Text('取消')),
-                                  FilledButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      child: const Text('启用')),
-                                ],
-                              ),
-                            );
-                            final pwdText = pwd.text;
-                            pwd.dispose();
-                            if (ok == true && pwdText.isNotEmpty) {
-                              final success = await biometric.enable(
-                                  user.username, pwdText);
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                    success
-                                        ? '生物识别已启用'
-                                        : (biometric.errorMessage.isNotEmpty
-                                            ? biometric.errorMessage
-                                            : '启用失败'),
-                                  )),
-                                );
-                              }
-                            }
-                          } else {
-                            await biometric.disable();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('生物识别已关闭')),
-                              );
-                            }
-                          }
-                        },
-                      )
-                    : null, // 不可用时不显示开关
+                subtitle: Text(deviceAuth.getStatusDescription()),
+                trailing: kIsWeb || !deviceAuth.isSupported
+                    ? null
+                    : Switch(
+                        value: deviceAuth.isEnabled,
+                        onChanged: (v) => deviceAuth.setEnabled(v),
+                      ),
               );
             },
           ),
           const Divider(),
+          // 「切换账号」在「退出登录」上方，两者二次确认文案不同
+          ListTile(
+            leading: const Icon(Icons.switch_account_outlined),
+            title: const Text('切换账号'),
+            subtitle: const Text('保留已记住的账号，回到登录页选择其他账号'),
+            onTap: () => _confirmSwitchAccount(context),
+          ),
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('退出登录'),
-            onTap: () async {
-              await context.read<AuthState>().logout();
-              if (context.mounted) context.go('/login');
-            },
+            onTap: () => _confirmLogout(context),
           ),
         ],
       ),
@@ -606,7 +603,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
 /// 用户管理（家庭成员）页
 class UserManagementPage extends StatefulWidget {
-  const UserManagementPage({super.key});
+  const UserManagementPage({super.key, this.initialMembers});
+
+  /// 仅供 widget 测试注入成员，生产路径恒为 null（走 /api/family/members）。
+  /// 注入时不再发网络请求，便于确定性地验证昵称显示口径。
+  final List<FamilyMember>? initialMembers;
+
   @override
   State<UserManagementPage> createState() => _UserManagementPageState();
 }
@@ -624,6 +626,15 @@ class _UserManagementPageState extends State<UserManagementPage> {
   }
 
   Future<void> _load() async {
+    final injected = widget.initialMembers;
+    if (injected != null) {
+      // 测试注入：跳过网络，直接渲染给定成员（昵称显示口径的确定性用例）。
+      _members = injected;
+      _hasFamily = true;
+      _isAdmin = false;
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     setState(() => _loading = true);
     final fam = await ApiClient.instance.getFamily();
     if (!mounted) return;
@@ -643,6 +654,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
       _isAdmin = _members.any((mm) => mm.userId == me?.id && mm.isAdmin);
     }
     setState(() => _loading = false);
+  }
+
+  /// 家庭成员列表统一显示口径：昵称优先，重名补用户名（R-10 ⑤⑥）。
+  String _labelOf(FamilyMember m) {
+    final duplicates = duplicatedNicknames(_members.map((e) => e.nickname));
+    return memberLabel(m.nickname, m.username,
+        duplicated: duplicates.contains(m.nickname.trim()));
   }
 
   Future<void> _toggleAdmin(FamilyMember m) async {
@@ -672,8 +690,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        content:
-            Text('确认移除 ${m.nickname.isNotEmpty ? m.nickname : m.username}？'),
+        content: Text('确认移除 ${_labelOf(m)}？'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -760,16 +777,14 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     ..._members.map((m) {
                       final isMe =
                           m.userId == context.read<AuthState>().user?.id;
+                      // 昵称优先 / 重名补用户名；存量超长昵称单行省略，不截断。
+                      final label = _labelOf(m) + (isMe ? '（我）' : '');
                       return ListTile(
                         leading: CircleAvatar(
-                          child: Text(
-                              (m.nickname.isNotEmpty ? m.nickname : m.username)
-                                  .characters
-                                  .first),
+                          child: Text(avatarInitial(m.nickname, m.username)),
                         ),
-                        title: Text(
-                            (m.nickname.isNotEmpty ? m.nickname : m.username) +
-                                (isMe ? '（我）' : '')),
+                        title: Text(label,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(m.isAdmin ? '家庭管理员' : '成员'),
                         trailing: _isAdmin && !isMe
                             ? PopupMenuButton<String>(

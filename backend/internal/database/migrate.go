@@ -29,6 +29,12 @@ func Migrate() error {
 		// sync_state：云端快照同步的元数据（dirty / last_*_at / row_exists）。
 		// 必须建表，否则"重启后先推再比"的闸门失效（DESIGN §2.B.5）。
 		&models.SyncState{},
+		// v0.5.0 新增 4 表：会话 / 设备凭据 / 邀请码 / 邀请码使用记录。
+		// 与 backup.Tables() 的 22 表清单严格一致（顺序也一致，追加在末尾）。
+		&models.AuthSession{},
+		&models.DeviceCredential{},
+		&models.InviteCode{},
+		&models.InviteCodeUsage{},
 	); err != nil {
 		return err
 	}

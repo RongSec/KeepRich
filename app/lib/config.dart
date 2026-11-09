@@ -27,7 +27,7 @@ class AppConfig {
 
   /// 应用版本号（与 pubspec.yaml 保持一致；构建脚本会用 --dart-define 覆盖）
   static const String appVersion =
-      String.fromEnvironment('APP_VERSION', defaultValue: '0.4.1');
+      String.fromEnvironment('APP_VERSION', defaultValue: '0.5.0');
 
   /// Android 模拟器映射到宿主机
   static const String androidEmulatorHost = 'http://10.0.2.2:28080';

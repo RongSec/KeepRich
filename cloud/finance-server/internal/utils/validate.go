@@ -1,6 +1,10 @@
 package utils
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 // emailMaxLen 邮箱最大长度（与 models.User.Email 的 size:128 对齐）
 const emailMaxLen = 128
@@ -106,10 +110,10 @@ func isEmailDomain(domain string) bool {
 // ValidatePasswordStrength 密码强度校验：至少 8 位，且同时包含字母与数字。
 //
 // 返回空串表示通过；否则返回**给用户直接看的中文文案**（禁止改成英文/异常类名，
-// 见 DESIGN §6.3）。注册、改密、管理员重置口令共用这一份实现。
+// 见 DESIGN §7.3）。注册、改密、管理员重置口令共用这一份实现。
 func ValidatePasswordStrength(pw string) string {
 	if len(pw) < 8 {
-		return "密码至少 8 位"
+		return MsgTooShortPassword
 	}
 	var hasLetter, hasDigit bool
 	for _, r := range pw {
@@ -121,7 +125,97 @@ func ValidatePasswordStrength(pw string) string {
 		}
 	}
 	if !hasLetter || !hasDigit {
-		return "密码需同时包含字母和数字"
+		return MsgWeakPassword
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------------------
+// v0.5.0 新增：用户名 / 昵称 / 邀请码归一化与校验（DESIGN §2.D.1）
+// ---------------------------------------------------------------------------
+
+// NormalizeUsername 用户名归一化：trim + 全小写。
+// 唯一性靠 users.username 的唯一索引承担，**不加 usernameLower 列**（DESIGN §2.D.3）。
+func NormalizeUsername(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// NormalizeInviteCode 邀请码归一化：trim → 去空白/连字符 → 全大写。
+// `k7qx-9mrt` 与 `K7QX9MRT` 等价（PRD R-08 ②）。
+func NormalizeInviteCode(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r == '-' || unicode.IsSpace(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// IsValidInviteCodeFormat 8 位 + 严格字符表（剔除 0/O/1/I/L）。
+func IsValidInviteCodeFormat(s string) bool {
+	if len(s) != 8 {
+		return false
+	}
+	alphabet := InviteCodeAlphabet()
+	for i := 0; i < len(s); i++ {
+		if !strings.ContainsRune(alphabet, rune(s[i])) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateUsername 校验用户名，返回可直接展示的中文文案（空串 = 通过）。
+//
+// 规则 ^[A-Za-z][A-Za-z0-9_]{3,19}$（4~20 位、字母开头）。
+// 「含中文」优先于长度判定：否则输入 3 个汉字会先撞上长度文案，
+// 拿不到 PRD R-10 ② 要求的中英文区分提示。
+func ValidateUsername(s string) string {
+	if s == "" {
+		return MsgUsernameEmpty
+	}
+	for _, r := range s {
+		if r > 127 {
+			return MsgUsernameChinese
+		}
+	}
+	if len(s) < 4 || len(s) > 20 {
+		return MsgUsernameLength
+	}
+	if !isASCIILetter(s[0]) {
+		return MsgUsernameLeading
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if isASCIILetter(c) || (c >= '0' && c <= '9') || c == '_' {
+			continue
+		}
+		return MsgUsernameCharset
+	}
+	return ""
+}
+
+// ValidateNickname 昵称校验：1~16 字（rune 计数），必填、不唯一、允许中文/空格。
+// 注意顺序：必须先判「全空格」，再按 trim 后的长度计数，否则 "   " 会被
+// 误报成「请输入昵称」，前后带空格的昵称也会被多算字数（PRD R-11 ③④）。
+func ValidateNickname(s string) string {
+	if s == "" {
+		return MsgNicknameEmpty
+	}
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return MsgNicknameBlank
+	}
+	if utf8.RuneCountInString(trimmed) > 16 {
+		return MsgNicknameTooLong
+	}
+	return ""
+}
+
+func isASCIILetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }

@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yourname/family-finance/backend/internal/auth"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
@@ -98,6 +100,10 @@ func ToggleUserStatus(c *gin.Context) {
 	}
 	u.Disabled = !u.Disabled
 	database.DB.Save(&u)
+	if u.Disabled {
+		// 停用 → 该账号所有设备的会话与设备凭据一起失效（PRD R-01 ④）
+		auth.Devices().RevokeAll(u.ID, auth.ReasonAdminDisable)
+	}
 	utils.OK(c, u)
 }
 
@@ -119,6 +125,7 @@ func DeleteUser(c *gin.Context) {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
 	}
+	auth.Devices().RevokeAll(u.ID, auth.ReasonAdminDelete)
 	utils.OK(c, gin.H{"ok": true, "message": "用户已删除"})
 }
 
@@ -132,7 +139,15 @@ func UpdateProfile(c *gin.Context) {
 	}
 	updates := map[string]interface{}{}
 	if req.Nickname != nil {
-		updates["nickname"] = *req.Nickname
+		trimmed := strings.TrimSpace(*req.Nickname)
+		// 存量 >16 字昵称不截断不报错，只在主动编辑提交时校验（PRD §5.3）
+		if trimmed != "" {
+			if msg := utils.ValidateNickname(trimmed); msg != "" {
+				utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
+				return
+			}
+		}
+		updates["nickname"] = trimmed
 	}
 	if req.Avatar != nil {
 		updates["avatar"] = *req.Avatar
@@ -182,5 +197,7 @@ func ChangePassword(c *gin.Context) {
 		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
 		return
 	}
+	// 改密 → 该账号全部会话与设备凭据立即失效（含当前设备，PRD R-01 ④）
+	auth.Devices().RevokeAll(uid, auth.ReasonPasswordChange)
 	utils.OK(c, gin.H{"ok": true})
 }

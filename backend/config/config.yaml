@@ -20,7 +20,20 @@ jwt:
   accessSecret: dev-access-secret
   refreshSecret: dev-refresh-secret
   accessTTL: 900
-  refreshTTL: 604800
+  # v0.5.0：refresh 自然寿命 = 闲置窗口上限（24h），互为兜底；原 604800 与新语义冲突
+  refreshTTL: 86400
+
+# v0.5.0 会话 / 设备凭据 / 邀请码时效参数（纯数值，无密钥）
+# 任一值 <=0 或缺失时 config.Validate() 会夹取回默认值并打 [config][WARN]
+auth:
+  sessionIdleTTL: 86400   # 连续 24h 无请求 → 会话作废（严格 0 容差）
+  refreshGraceSec: 120    # 旧 refresh 轮换宽限（弱网重试防误踢）
+  touchFlushSec: 60       # last_seen 批量刷盘间隔（绝不每请求写库）
+  deviceIdleTTL: 2592000  # 设备凭据 30 天闲置失效、使用即续期
+  softPushMinSec: 600     # cloudsync 登录/刷新类写最多每 600s 推一次
+  registerIPLimit: 10     # 同 IP 注册尝试 10 次/小时
+  inviteTTLDays: 7        # 邀请码默认 7 天（可选 1 / 7 / 30）
+  inviteMaxUses: 1        # 邀请码默认一次性
 
 mfa:
   issuer: FamilyFinance

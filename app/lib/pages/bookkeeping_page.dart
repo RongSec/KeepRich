@@ -8,6 +8,7 @@ import '../models.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../services/data_bus.dart';
+import '../utils/display_name.dart';
 
 class BookkeepingPage extends StatefulWidget {
   const BookkeepingPage({super.key});
@@ -126,6 +127,21 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     }
   }
 
+  /// 已选记账人筛选的展示名：昵称优先，重名补用户名（R-10 ⑤⑥）。
+  /// 成员列表尚未加载时退回原始筛选值，绝不显示空白或抛异常。
+  String _recorderLabel() {
+    final id = _recorder;
+    if (id == null || id == 'all') return '';
+    final duplicates = duplicatedNicknames(_members.map((m) => m.nickname));
+    for (final m in _members) {
+      if (m.userId.toString() == id) {
+        return memberLabel(m.nickname, m.username,
+            duplicated: duplicates.contains(m.nickname.trim()));
+      }
+    }
+    return id;
+  }
+
   Future<void> _add(String type) async {
     final created = await showModalBottomSheet<bool>(
       context: context,
@@ -195,7 +211,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
                       }),
                 if (_recorder != null && _recorder != 'all')
                   Chip(
-                      label: Text('记账人 $_recorder'),
+                      label: Text('记账人 ${_recorderLabel()}'),
                       onDeleted: () {
                         setState(() => _recorder = null);
                         _load();
@@ -648,6 +664,11 @@ class _FilterSheetState extends State<_FilterSheet> {
         : widget.currentType == TxType.expense
             ? TxCategory.expenseCategories
             : TxCategory.transferCategories;
+    final labels = memberLabels(
+      widget.members,
+      nickname: (m) => m.nickname,
+      username: (m) => m.username,
+    );
     return Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -690,12 +711,12 @@ class _FilterSheetState extends State<_FilterSheet> {
                     label: const Text('全部'),
                     selected: _recorder == null,
                     onSelected: (_) => setState(() => _recorder = null)),
-                ...widget.members.map((m) => ChoiceChip(
-                      label:
-                          Text(m.nickname.isNotEmpty ? m.nickname : m.username),
-                      selected: _recorder == m.userId.toString(),
-                      onSelected: (_) =>
-                          setState(() => _recorder = m.userId.toString()),
+                ...widget.members.asMap().entries.map((e) => ChoiceChip(
+                      label: Text(labels[e.key],
+                          overflow: TextOverflow.ellipsis),
+                      selected: _recorder == e.value.userId.toString(),
+                      onSelected: (_) => setState(
+                          () => _recorder = e.value.userId.toString()),
                     )),
               ]),
               const SizedBox(height: 12),
@@ -848,7 +869,7 @@ class _TxTile extends StatelessWidget {
     final color = _BookkeepingPageState.colorOf(tx.type);
     final icon = _BookkeepingPageState.iconOf(tx.type);
     final typeLabel = TxType.labels[tx.type] ?? tx.type;
-    final recorder = tx.nickname.isNotEmpty ? tx.nickname : tx.username;
+    final recorder = displayName(tx.nickname, tx.username);
     return ListTile(
       onTap: onTap,
       leading: CircleAvatar(
@@ -927,8 +948,13 @@ class _TxTile extends StatelessWidget {
           ),
           if (recorder.isNotEmpty) ...[
             const SizedBox(width: 6),
-            Text('·$recorder',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
+            // 存量 >16 字昵称不截断，只在展示侧单行省略（PRD §5.3）。
+            Flexible(
+                child: Text('·$recorder',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textDim))),
           ],
           if (tx.note.isNotEmpty) ...[
             const SizedBox(width: 6),

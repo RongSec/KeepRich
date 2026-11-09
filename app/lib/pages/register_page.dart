@@ -9,21 +9,19 @@ import 'package:provider/provider.dart';
 import '../config.dart';
 import '../services/auth.dart';
 import '../theme.dart';
+import '../utils/display_name.dart';
 import '../widgets/server_address_dialog.dart';
 import 'login_page.dart' show friendlyLoginError;
 
-/// 注册页（R-05 / R-09）
+/// 邀请码归一化：trim → 去所有空白与连字符 → 全大写。
+/// `k7qx-9mrt` 与 `K7QX9MRT` 等价（PRD R-08 ② / 后端 NormalizeInviteCode）。
+String normalizeInviteCode(String input) =>
+    input.toUpperCase().replaceAll(RegExp(r'[\s\-]'), '');
+
+/// 注册页（v0.5.0 单页表单）：邀请码 → 用户名 → 昵称 → 密码 → 确认密码 → 邮箱（选填）。
 ///
-/// 邮箱 + 密码 + 确认密码 + 昵称（选填），**没有任何验证码/邮件激活环节**；
-/// 注册成功直接进 `/overview`（后端注册接口直接下发 token）。
-///
-/// 校验规则与后端完全一致（PRD 4.1）：
-/// - 邮箱：必填、形如 `a@b.c`、长度 ≤128，提交前 trim + 转小写；
-/// - 密码：≥8 位且同时含字母与数字；
-/// - 确认密码：与密码一致；
-/// - 昵称：≤32 字，留空取邮箱 @ 前部分（由后端兜底，前端不传）。
-///
-/// 错误一律就地提示（字段下方 / 按钮上方），不整页刷新。
+/// 单页提交、没有任何发信或二次确认环节；成功后后端直接下发 token，
+/// `AuthState.register` 已拉到 /auth/me，因此直接 `context.go('/overview')`。
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -33,46 +31,83 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-  final _email = TextEditingController();
+  final _invite = TextEditingController();
+  final _username = TextEditingController();
+  final _nick = TextEditingController();
   final _pwd = TextEditingController();
   final _pwd2 = TextEditingController();
-  final _nick = TextEditingController();
+  final _email = TextEditingController();
 
   bool _busy = false;
   bool _showPwd = false;
   bool _showPwd2 = false;
 
-  /// 服务端返回的、可定位到具体字段的错误（409「该邮箱已注册」等）
-  String? _emailServerError;
+  // 服务端返回、可定位到具体字段的错误（一次只提示一个字段，不叠加红字）。
+  String? _inviteServerError;
+  String? _usernameServerError;
+  String? _nickServerError;
   String? _pwdServerError;
   String? _pwd2ServerError;
+  String? _emailServerError;
 
-  /// 无法定位到字段的错误（网络异常 / 其他后端文案）
+  /// 无法定位到字段的错误（频控 / 网络 / 兜底）。
   String? _err;
 
-  /// 与后端一致的邮箱规则：`a@b.c`（不允许多个 @、不允许空白）
-  static final RegExp _emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+  /// 与后端 `inviteCodeAlphabet` 完全一致（剔除 0/O/1/I/L）。
+  static const String _inviteAlphabet =
+      '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  static final RegExp _emailRe =
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+  static final RegExp _usernameRe =
+      RegExp(r'^[A-Za-z][A-Za-z0-9_]{3,19}$');
 
   @override
   void dispose() {
-    _email.dispose();
+    _invite.dispose();
+    _username.dispose();
+    _nick.dispose();
     _pwd.dispose();
     _pwd2.dispose();
-    _nick.dispose();
+    _email.dispose();
     super.dispose();
   }
 
-  String _normEmail() => _email.text.trim().toLowerCase();
-
   // ------------------------------------------------------------------ 校验
 
-  String? _validateEmail(String? v) {
-    if (_emailServerError != null) return _emailServerError;
-    final s = (v ?? '').trim().toLowerCase();
-    if (s.isEmpty) return '请输入邮箱';
-    if (s.length > 128) return '邮箱长度不能超过 128 个字符';
-    if (!_emailRe.hasMatch(s)) return '邮箱格式不正确';
+  String? _validateInvite(String? v) {
+    if (_inviteServerError != null) return _inviteServerError;
+    final s = normalizeInviteCode(v ?? '');
+    if (s.isEmpty) return '请输入邀请码';
+    if (s.length != 8) return '邀请码格式不正确';
+    for (final unit in s.codeUnits) {
+      if (!_inviteAlphabet.codeUnits.contains(unit)) {
+        return '邀请码格式不正确';
+      }
+    }
     return null;
+  }
+
+  String? _validateUsername(String? v) {
+    if (_usernameServerError != null) return _usernameServerError;
+    final s = (v ?? '').trim().toLowerCase();
+    if (s.isEmpty) return '请输入用户名';
+    if (s.runes.any((r) => r > 127)) {
+      return '用户名只能使用英文字母、数字和下划线，不能用中文';
+    }
+    if (s.length < 4 || s.length > 20) return '用户名需要 4 到 20 位';
+    if (!s.startsWith(RegExp(r'[A-Za-z]'))) {
+      return '用户名必须以英文字母开头';
+    }
+    if (!_usernameRe.hasMatch(s)) {
+      return '用户名只能使用英文字母、数字和下划线';
+    }
+    return null;
+  }
+
+  String? _validateNick(String? v) {
+    if (_nickServerError != null) return _nickServerError;
+    // 与后端 ValidateNickname 及账号安全页共用同一条规则，避免文案漂移。
+    return nicknameError(v);
   }
 
   String? _validatePwd(String? v) {
@@ -80,9 +115,10 @@ class _RegisterPageState extends State<RegisterPage> {
     final s = v ?? '';
     if (s.isEmpty) return '请输入密码';
     if (s.length < 8) return '密码至少 8 位';
-    final hasLetter = RegExp(r'[A-Za-z]').hasMatch(s);
-    final hasDigit = RegExp(r'[0-9]').hasMatch(s);
-    if (!hasLetter || !hasDigit) return '密码需同时包含字母和数字';
+    if (!RegExp(r'[A-Za-z]').hasMatch(s) ||
+        !RegExp(r'[0-9]').hasMatch(s)) {
+      return '密码需同时包含字母和数字';
+    }
     return null;
   }
 
@@ -93,9 +129,12 @@ class _RegisterPageState extends State<RegisterPage> {
     return null;
   }
 
-  String? _validateNick(String? v) {
-    final s = (v ?? '').trim();
-    if (s.length > 32) return '昵称不能超过 32 个字符';
+  String? _validateEmail(String? v) {
+    if (_emailServerError != null) return _emailServerError;
+    final s = (v ?? '').trim().toLowerCase();
+    if (s.isEmpty) return null; // 选填
+    if (s.length > 128) return '邮箱长度不能超过 128 个字符';
+    if (!_emailRe.hasMatch(s)) return '邮箱格式不正确';
     return null;
   }
 
@@ -104,36 +143,44 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     setState(() {
-      _emailServerError = null;
+      _inviteServerError = null;
+      _usernameServerError = null;
+      _nickServerError = null;
       _pwdServerError = null;
       _pwd2ServerError = null;
+      _emailServerError = null;
       _err = null;
     });
+    // 先清掉旧错误再重新校验，避免上一次的错误挡住本次提交。
     if (!(_formKey.currentState?.validate() ?? false)) return;
-
     setState(() => _busy = true);
-    final nick = _nick.text.trim();
+    final emailText = _email.text.trim().toLowerCase();
     try {
-      final ok = await context.read<AuthState>().register(
-            _normEmail(),
-            _pwd.text,
-            nickname: nick.isEmpty ? null : nick,
-          ).timeout(const Duration(seconds: 20));
+      final auth = context.read<AuthState>();
+      final ok = await auth
+          .register(
+            inviteCode: normalizeInviteCode(_invite.text),
+            username: _username.text.trim().toLowerCase(),
+            password: _pwd.text,
+            confirmPassword: _pwd2.text,
+            nickname: _nick.text.trim(),
+            email: emailText.isEmpty ? null : emailText,
+          )
+          .timeout(const Duration(seconds: 20));
       if (!mounted) return;
       if (ok) {
-        // 注册接口已下发 token，AuthState 也已拉到 /auth/me → 直接进概览
         context.go('/overview');
         return;
       }
       setState(() {
         _applyServerMessage(
-            context.read<AuthState>().lastLoginError ?? '注册失败，请稍后重试');
+            auth.lastLoginError ?? '注册失败，请稍后再试');
         _busy = false;
       });
     } on TimeoutException {
       if (!mounted) return;
       setState(() {
-        _err = '请求超时：请确认服务端地址可用（可点下方「服务端地址」修改）';
+        _err = '连接超时，请检查网络或服务端地址';
         _busy = false;
       });
     } catch (e) {
@@ -145,15 +192,23 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  /// 后端 message → 就地字段提示（无法定位的走顶部提示条）
+  /// 后端 message → 就地字段提示；无法定位的走顶部提示条（全中文）。
   void _applyServerMessage(String msg) {
     final m = msg.trim();
     if (m.isEmpty) {
-      _err = '注册失败，请稍后重试';
+      _err = '注册失败，请稍后再试';
       return;
     }
-    if (m.contains('已注册') || m.contains('邮箱')) {
-      _emailServerError = m;
+    if (m.contains('邀请码')) {
+      _inviteServerError = m;
+      return;
+    }
+    if (m.contains('用户名')) {
+      _usernameServerError = m;
+      return;
+    }
+    if (m.contains('昵称')) {
+      _nickServerError = m;
       return;
     }
     if (m.contains('密码') && m.contains('不一致')) {
@@ -164,8 +219,14 @@ class _RegisterPageState extends State<RegisterPage> {
       _pwdServerError = m;
       return;
     }
+    if (m.contains('邮箱')) {
+      _emailServerError = m;
+      return;
+    }
     _err = m;
   }
+
+  // ------------------------------------------------------------------ 视图
 
   @override
   Widget build(BuildContext context) {
@@ -188,13 +249,12 @@ class _RegisterPageState extends State<RegisterPage> {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
                     decoration: BoxDecoration(
                       color: const Color(0xB30E0E14),
                       borderRadius: BorderRadius.circular(26),
                       border: Border.all(
-                        color: AppTheme.gold.withValues(alpha: 0.22),
-                      ),
+                          color: AppTheme.gold.withValues(alpha: 0.22)),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.55),
@@ -208,110 +268,102 @@ class _RegisterPageState extends State<RegisterPage> {
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           const _GoldTitle('创建你的账本'),
                           const SizedBox(height: 6),
                           const Text(
-                            '填好邮箱和密码就能开始记账',
+                            '需要管理员提供的邀请码才能注册',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 fontSize: 12, color: AppTheme.textDim),
                           ),
-                          const SizedBox(height: 20),
-                          TextFormField(
-                            controller: _email,
-                            keyboardType: TextInputType.emailAddress,
-                            autocorrect: false,
-                            textCapitalization: TextCapitalization.none,
-                            textInputAction: TextInputAction.next,
-                            // 输入即转小写（小写不改变长度，光标位置不受影响）；
-                            // 空白在提交/校验时 trim —— 后端也会归一化，双保险
-                            inputFormatters: [_LowerCaseFormatter()],
-                            validator: _validateEmail,
-                            onChanged: (_) {
-                              if (_emailServerError != null) {
-                                setState(() => _emailServerError = null);
-                              }
-                            },
-                            decoration: const InputDecoration(
-                              labelText: '邮箱',
-                              hintText: 'you@example.com',
-                              prefixIcon: Icon(Icons.alternate_email),
-                            ),
+                          const SizedBox(height: 18),
+                          _field(
+                            controller: _invite,
+                            label: '邀请码',
+                            hint: 'ABCD2345',
+                            icon: Icons.confirmation_number_outlined,
+                            validator: _validateInvite,
+                            formatters: const [_InviteCodeFormatter()],
+                            helper: '8 位字母数字，向家庭管理员索取',
+                            clearError: () =>
+                                setState(() => _inviteServerError = null),
+                            next: true,
                           ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _pwd,
-                            obscureText: !_showPwd,
-                            autocorrect: false,
-                            textInputAction: TextInputAction.next,
-                            validator: _validatePwd,
-                            onChanged: (_) {
-                              if (_pwdServerError != null) {
-                                setState(() => _pwdServerError = null);
-                              }
-                            },
-                            decoration: InputDecoration(
-                              labelText: '密码',
-                              hintText: '至少 8 位，含字母和数字',
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              suffixIcon: IconButton(
-                                tooltip: _showPwd ? '隐藏密码' : '显示密码',
-                                icon: Icon(_showPwd
-                                    ? Icons.visibility
-                                    : Icons.visibility_off),
-                                onPressed: () =>
-                                    setState(() => _showPwd = !_showPwd),
-                              ),
-                            ),
+                          _field(
+                            controller: _username,
+                            label: '用户名',
+                            hint: 'alice_lin',
+                            icon: Icons.person_outline,
+                            validator: _validateUsername,
+                            formatters: const [_LowerCaseFormatter()],
+                            helper:
+                                '4~20 位，字母开头，只能是英文字母、数字和下划线',
+                            goldHelper: '登录时使用「用户名 + 密码」，请记牢',
+                            clearError: () =>
+                                setState(() => _usernameServerError = null),
+                            next: true,
                           ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _pwd2,
-                            obscureText: !_showPwd2,
-                            autocorrect: false,
-                            textInputAction: TextInputAction.next,
-                            validator: _validatePwd2,
-                            onChanged: (_) {
-                              if (_pwd2ServerError != null) {
-                                setState(() => _pwd2ServerError = null);
-                              }
-                            },
-                            decoration: InputDecoration(
-                              labelText: '确认密码',
-                              prefixIcon: const Icon(Icons.lock_reset),
-                              suffixIcon: IconButton(
-                                tooltip: _showPwd2 ? '隐藏密码' : '显示密码',
-                                icon: Icon(_showPwd2
-                                    ? Icons.visibility
-                                    : Icons.visibility_off),
-                                onPressed: () =>
-                                    setState(() => _showPwd2 = !_showPwd2),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
+                          _field(
                             controller: _nick,
-                            autocorrect: false,
-                            textInputAction: TextInputAction.done,
+                            label: '昵称',
+                            hint: '林小满',
+                            icon: Icons.badge_outlined,
                             validator: _validateNick,
-                            onFieldSubmitted: (_) =>
-                                _busy ? null : _submit(),
-                            decoration: const InputDecoration(
-                              labelText: '昵称（选填）',
-                              hintText: '留空默认取邮箱 @ 前部分',
-                              prefixIcon: Icon(Icons.badge_outlined),
-                            ),
+                            helper:
+                                '昵称会显示在 App 和家庭成员列表里，可以用中文',
+                            clearError: () =>
+                                setState(() => _nickServerError = null),
+                            next: true,
                           ),
-                          const SizedBox(height: 14),
-                          // 服务端地址：与登录页同一入口（本地联调 / 切云托管地址）
-                          _ServerRow(),
+                          _passwordField(
+                            controller: _pwd,
+                            label: '密码',
+                            hint: '至少 8 位，含字母和数字',
+                            icon: Icons.lock_outline,
+                            visible: _showPwd,
+                            validator: _validatePwd,
+                            helper: '至少 8 位，同时含字母和数字',
+                            toggle: () =>
+                                setState(() => _showPwd = !_showPwd),
+                            clearError: () =>
+                                setState(() => _pwdServerError = null),
+                            next: true,
+                          ),
+                          _passwordField(
+                            controller: _pwd2,
+                            label: '确认密码',
+                            hint: '再输入一次密码',
+                            icon: Icons.lock_reset,
+                            visible: _showPwd2,
+                            validator: _validatePwd2,
+                            toggle: () =>
+                                setState(() => _showPwd2 = !_showPwd2),
+                            clearError: () =>
+                                setState(() => _pwd2ServerError = null),
+                            next: true,
+                          ),
+                          _field(
+                            controller: _email,
+                            label: '邮箱（选填）',
+                            hint: 'you@example.com',
+                            icon: Icons.alternate_email,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: _validateEmail,
+                            helper: '仅用于接收通知，不作为登录凭证',
+                            clearError: () =>
+                                setState(() => _emailServerError = null),
+                            next: false,
+                            onSubmitted: () => _busy ? null : _submit(),
+                          ),
+                          const SizedBox(height: 12),
+                          const _ServerRow(),
                           if (_err != null) ...[
                             const SizedBox(height: 12),
                             _ErrorBox(text: _err!),
                           ],
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 16),
                           SizedBox(
                             height: 50,
                             child: FilledButton(
@@ -321,21 +373,17 @@ class _RegisterPageState extends State<RegisterPage> {
                                       width: 20,
                                       height: 20,
                                       child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Color(0xFF231A05),
-                                      ),
+                                          strokeWidth: 2,
+                                          color: Color(0xFF231A05)),
                                     )
-                                  : const Text(
-                                      '注册并进入',
+                                  : const Text('注册并进入',
                                       style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 1.5,
-                                      ),
-                                    ),
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 1.5)),
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Center(
                             child: TextButton(
                               onPressed: _busy
@@ -347,10 +395,8 @@ class _RegisterPageState extends State<RegisterPage> {
                                         context.go('/login');
                                       }
                                     },
-                              child: const Text(
-                                '已有账号？返回登录',
-                                style: TextStyle(fontSize: 13),
-                              ),
+                              child: const Text('已有账号？返回登录',
+                                  style: TextStyle(fontSize: 13)),
                             ),
                           ),
                         ],
@@ -365,13 +411,136 @@ class _RegisterPageState extends State<RegisterPage> {
       ),
     );
   }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required String? Function(String?) validator,
+    required String helper,
+    required VoidCallback clearError,
+    required bool next,
+    String? goldHelper,
+    List<TextInputFormatter> formatters = const [],
+    TextInputType keyboardType = TextInputType.text,
+    VoidCallback? onSubmitted,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            controller: controller,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.none,
+            keyboardType: keyboardType,
+            inputFormatters: formatters,
+            textInputAction:
+                next ? TextInputAction.next : TextInputAction.done,
+            validator: validator,
+            onChanged: (_) => clearError(),
+            onFieldSubmitted: (_) => onSubmitted?.call(),
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              prefixIcon: Icon(icon),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: Text(helper,
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textDim)),
+          ),
+          if (goldHelper != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+              child: Text(goldHelper,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.goldLight)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _passwordField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required bool visible,
+    required String? Function(String?) validator,
+    required VoidCallback toggle,
+    required VoidCallback clearError,
+    required bool next,
+    String? helper,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            controller: controller,
+            obscureText: !visible,
+            autocorrect: false,
+            textInputAction:
+                next ? TextInputAction.next : TextInputAction.done,
+            validator: validator,
+            onChanged: (_) => clearError(),
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              prefixIcon: Icon(icon),
+              suffixIcon: IconButton(
+                tooltip: visible ? '隐藏密码' : '显示密码',
+                icon: Icon(
+                    visible ? Icons.visibility : Icons.visibility_off),
+                onPressed: toggle,
+              ),
+            ),
+          ),
+          if (helper != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+              child: Text(helper,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textDim)),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
-/// 输入即转小写的格式化器（只用于邮箱框）
-///
-/// `toLowerCase()` 不会改变字符串长度，所以 [TextEditingValue.selection]
-/// 仍然有效，光标不会跳。
+/// 邀请码输入：自动大写、自动去空格与连字符。
+class _InviteCodeFormatter extends TextInputFormatter {
+  const _InviteCodeFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final normalized = normalizeInviteCode(newValue.text);
+    if (normalized == newValue.text) return newValue;
+    return TextEditingValue(
+      text: normalized,
+      selection: TextSelection.collapsed(offset: normalized.length),
+    );
+  }
+}
+
+/// 用户名输入即转小写（不改变长度，光标不跳）。
 class _LowerCaseFormatter extends TextInputFormatter {
+  const _LowerCaseFormatter();
+
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
@@ -403,10 +572,7 @@ class _GoldTitle extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.0,
-        ),
+            fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: 1.0),
       ),
     );
   }
@@ -414,6 +580,8 @@ class _GoldTitle extends StatelessWidget {
 
 /// 服务端地址入口：点一下打开现有对话框（含扫码）
 class _ServerRow extends StatelessWidget {
+  const _ServerRow();
+
   @override
   Widget build(BuildContext context) {
     final host = AppConfig.serverHost;
@@ -467,10 +635,9 @@ class _ErrorBox extends StatelessWidget {
           const Icon(Icons.error_outline, color: Color(0xFFFF8A8A), size: 18),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: Color(0xFFFFB4B4), fontSize: 13),
-            ),
+            child: Text(text,
+                style:
+                    const TextStyle(color: Color(0xFFFFB4B4), fontSize: 13)),
           ),
         ],
       ),

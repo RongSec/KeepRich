@@ -10,9 +10,15 @@ class ApiResponse<T> {
 
   factory ApiResponse.fromJson(
       Map<String, dynamic> json, T Function(dynamic) parse) {
+    // 云托管网关偶尔把 code 序列化成字符串/浮点，统一按 num 解析，避免抛
+    // type cast 错误把页面打成英文异常。
+    final rawCode = json['code'];
+    final code = rawCode is num
+        ? rawCode.toInt()
+        : int.tryParse(rawCode?.toString() ?? '') ?? -1;
     return ApiResponse(
-      code: (json['code'] ?? -1) as int,
-      message: (json['message'] ?? '') as String,
+      code: code,
+      message: (json['message'] as String?) ?? '',
       data: json['data'] == null ? null : parse(json['data']),
     );
   }
@@ -33,10 +39,17 @@ num _parseNum(dynamic v) {
   return 0;
 }
 
+/// 登录 / 注册 / 设备凭据换会话的统一响应（v0.5.0）。
+///
+/// [sessionId] / [idleExpireAt] 由服务端会话层下发；[deviceToken] 仅在
+/// 「非 Web + 传了 deviceId」时出现，只能用于 `/api/auth/device-login`。
 class LoginResult {
   final String accessToken;
   final String refreshToken;
   final int expiresIn;
+  final String sessionId;
+  final int idleExpireAt;
+  final String? deviceToken;
   final int uid;
   final String role;
   final String nickname;
@@ -51,19 +64,83 @@ class LoginResult {
     required this.role,
     required this.nickname,
     required this.avatar,
+    this.sessionId = '',
+    this.idleExpireAt = 0,
+    this.deviceToken,
     this.familyId,
   });
 
   factory LoginResult.fromJson(Map<String, dynamic> json) => LoginResult(
-        accessToken: json['accessToken'] as String,
-        refreshToken: json['refreshToken'] as String,
-        expiresIn: json['expiresIn'] as int,
-        uid: (json['uid'] as num).toInt(),
-        role: json['role'] as String,
+        accessToken: json['accessToken'] as String? ?? '',
+        refreshToken: json['refreshToken'] as String? ?? '',
+        expiresIn: _parseNum(json['expiresIn']).toInt(),
+        sessionId: json['sessionId'] as String? ?? '',
+        idleExpireAt: _parseNum(json['idleExpireAt']).toInt(),
+        deviceToken: (json['deviceToken'] as String?)?.isEmpty == false
+            ? json['deviceToken'] as String
+            : null,
+        uid: _parseNum(json['uid']).toInt(),
+        role: json['role'] as String? ?? 'user',
         nickname: json['nickname'] as String? ?? '',
         avatar: json['avatar'] as String? ?? '',
         familyId:
-            json['familyId'] == null ? null : (json['familyId'] as num).toInt(),
+            json['familyId'] == null ? null : _parseNum(json['familyId']).toInt(),
+      );
+}
+
+/// 已登录设备列表里的一行（id 是会话 ID，撤销粒度为会话 + 该设备凭据）。
+class DeviceSessionItem {
+  final int id;
+  final String sessionId;
+  final String deviceId;
+  final String deviceName;
+  final String platform;
+  final int lastSeenAt;
+  final bool current;
+  final bool hasDeviceCredential;
+
+  DeviceSessionItem({
+    required this.id,
+    required this.sessionId,
+    required this.deviceId,
+    required this.deviceName,
+    required this.platform,
+    required this.lastSeenAt,
+    required this.current,
+    required this.hasDeviceCredential,
+  });
+
+  factory DeviceSessionItem.fromJson(Map<String, dynamic> json) =>
+      DeviceSessionItem(
+        id: _parseNum(json['id']).toInt(),
+        sessionId: json['sessionId'] as String? ?? '',
+        deviceId: json['deviceId'] as String? ?? '',
+        deviceName: json['deviceName'] as String? ?? '',
+        platform: json['platform'] as String? ?? '',
+        lastSeenAt: _parseNum(json['lastSeenAt']).toInt(),
+        current: json['current'] == true,
+        hasDeviceCredential: json['hasDeviceCredential'] == true,
+      );
+}
+
+/// `GET /api/auth/devices` 的完整 data。
+class DeviceListData {
+  final List<DeviceSessionItem> list;
+  final int idleTTL;
+  final int deviceIdleTTL;
+
+  DeviceListData({
+    required this.list,
+    required this.idleTTL,
+    required this.deviceIdleTTL,
+  });
+
+  factory DeviceListData.fromJson(Map<String, dynamic> json) => DeviceListData(
+        list: ((json['list'] as List?) ?? [])
+            .map((e) => DeviceSessionItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        idleTTL: _parseNum(json['idleTTL']).toInt(),
+        deviceIdleTTL: _parseNum(json['deviceIdleTTL']).toInt(),
       );
 }
 

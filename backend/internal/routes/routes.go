@@ -27,7 +27,8 @@ func Register(r *gin.Engine) {
 		authLimiter := middleware.RateLimit(5*time.Minute, 30, "auth-ip")
 		api.POST("/auth/login", authLimiter, handlers.Login)
 		api.POST("/auth/refresh", authLimiter, handlers.Refresh)
-		// 邮箱注册（R-05）：公开 + authLimiter；另有 register-ip 维度限流在 handler 内
+		api.POST("/auth/device-login", authLimiter, handlers.DeviceLogin)
+		// 邀请码注册（R-08）：公开 + authLimiter；另有 register-ip 维度限流在 handler 内
 		api.POST("/auth/register", authLimiter, handlers.Register)
 
 		api.GET("/app/version", handlers.GetAppVersion)     // 在线更新版本检查
@@ -45,6 +46,11 @@ func Register(r *gin.Engine) {
 		auth.Use(middleware.RateLimit(time.Minute, 600, "api-ip"), middleware.JWT(), middleware.Audit())
 		{
 			auth.GET("/auth/me", handlers.Me)
+			// v0.5.0 会话与设备管理
+			auth.POST("/auth/logout", handlers.Logout)
+			auth.GET("/auth/devices", handlers.ListDevices)
+			auth.POST("/auth/devices/revoke-others", handlers.RevokeOthers)
+			auth.POST("/auth/devices/:id/revoke", handlers.RevokeDevice)
 			auth.POST("/mfa/setup", handlers.MFASetup)
 			auth.POST("/mfa/enable", handlers.MFAEnable)
 			auth.POST("/mfa/disable", handlers.MFADisable)
@@ -120,7 +126,7 @@ func Register(r *gin.Engine) {
 			auth.GET("/sync/status", handlers.SyncStatus)
 		}
 
-		// 系统管理员
+		// 系统管理员（普通用户被 AdminOnly 挡在 403）
 		admin := api.Group("/admin")
 		admin.Use(middleware.JWT(), middleware.AdminOnly(), middleware.Audit())
 		{
@@ -137,6 +143,11 @@ func Register(r *gin.Engine) {
 			admin.GET("/errors", handlers.AdminListErrors)
 			admin.DELETE("/errors/:id", handlers.AdminDeleteError)
 			admin.DELETE("/errors", handlers.AdminClearErrors)
+
+			// v0.5.0 邀请码管理（本版只有接口 + 脚本，UI 排 v0.5.1）
+			admin.POST("/invite-codes", handlers.AdminCreateInviteCodes)
+			admin.GET("/invite-codes", handlers.AdminListInviteCodes)
+			admin.POST("/invite-codes/:id/revoke", handlers.AdminRevokeInviteCode)
 
 			// 应用版本管理（在线更新）
 			admin.GET("/app-versions", handlers.AdminListAppVersions)

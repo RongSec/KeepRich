@@ -40,6 +40,46 @@ type JWTConfig struct {
 	RefreshTTL    int    `mapstructure:"refreshTTL"`
 }
 
+// AuthConfig v0.5.0 会话 / 设备凭据 / 邀请码时效参数。
+//
+// 全部是纯数值，**不含任何密钥**（可入库）。隐患 6.1 的解法：时效语义收敛到一处，
+// Validate() 统一夹取默认值，避免配成 0 导致「登录成功但下一次请求 401」。
+type AuthConfig struct {
+	SessionIdleTTL  int `mapstructure:"sessionIdleTTL"`  // 24h 不活跃失效（严格 0 容差）
+	RefreshGraceSec int `mapstructure:"refreshGraceSec"` // 旧 refresh 轮换宽限 120s
+	TouchFlushSec   int `mapstructure:"touchFlushSec"`   // last_seen 批量刷盘间隔 60s
+	DeviceIdleTTL   int `mapstructure:"deviceIdleTTL"`   // 设备凭据 30 天闲置失效
+	SoftPushMinSec  int `mapstructure:"softPushMinSec"`  // cloudsync soft 推送节流 600s
+	RegisterIPLimit int `mapstructure:"registerIPLimit"` // 同 IP 注册尝试 10 次/小时
+	InviteTTLDays   int `mapstructure:"inviteTTLDays"`   // 邀请码默认有效期 7 天
+	InviteMaxUses   int `mapstructure:"inviteMaxUses"`   // 邀请码默认配额 1 次
+}
+
+// DefaultAuthConfig 返回全套默认值。
+//
+// 单独抽出来的原因：单测里 config.C 可能为 nil（没有走 Load()），
+// 所有读取点统一走 AuthParams()，避免 nil 解引用把测试打挂。
+func DefaultAuthConfig() AuthConfig {
+	return AuthConfig{
+		SessionIdleTTL:  86400,
+		RefreshGraceSec: 120,
+		TouchFlushSec:   60,
+		DeviceIdleTTL:   2592000,
+		SoftPushMinSec:  600,
+		RegisterIPLimit: 10,
+		InviteTTLDays:   7,
+		InviteMaxUses:   1,
+	}
+}
+
+// AuthParams 安全读取认证参数：未初始化时回落到默认值。
+func AuthParams() AuthConfig {
+	if C == nil {
+		return DefaultAuthConfig()
+	}
+	return C.Auth
+}
+
 type MFAConfig struct {
 	Issuer       string `mapstructure:"issuer"`
 	CooldownDays int    `mapstructure:"cooldownDays"`
@@ -78,6 +118,7 @@ type Config struct {
 	App       AppConfig       `mapstructure:"app"`
 	Database  DatabaseConfig  `mapstructure:"database"`
 	JWT       JWTConfig       `mapstructure:"jwt"`
+	Auth      AuthConfig      `mapstructure:"auth"`
 	MFA       MFAConfig       `mapstructure:"mfa"`
 	Notify    NotifyConfig    `mapstructure:"notify"`
 	Plan      PlanConfig      `mapstructure:"plan"`
@@ -112,6 +153,15 @@ func Load() error {
 	_ = viper.BindEnv("jwt.refreshTTL", "JWT_REFRESH_TTL")
 	_ = viper.BindEnv("mfa.cooldownDays", "MFA_COOLDOWN_DAYS")
 	_ = viper.BindEnv("notify.fcmServerKey", "FCM_SERVER_KEY")
+	// v0.5.0 认证时效：显式 BindEnv，便于本地验收把 24h 窗口/刷盘间隔缩短模拟。
+	_ = viper.BindEnv("auth.sessionIdleTTL", "AUTH_SESSION_IDLE_TTL")
+	_ = viper.BindEnv("auth.refreshGraceSec", "AUTH_REFRESH_GRACE_SEC")
+	_ = viper.BindEnv("auth.touchFlushSec", "AUTH_TOUCH_FLUSH_SEC")
+	_ = viper.BindEnv("auth.deviceIdleTTL", "AUTH_DEVICE_IDLE_TTL")
+	_ = viper.BindEnv("auth.softPushMinSec", "AUTH_SOFT_PUSH_MIN_SEC")
+	_ = viper.BindEnv("auth.registerIPLimit", "AUTH_REGISTER_IP_LIMIT")
+	_ = viper.BindEnv("auth.inviteTTLDays", "AUTH_INVITE_TTL_DAYS")
+	_ = viper.BindEnv("auth.inviteMaxUses", "AUTH_INVITE_MAX_USES")
 	// 云端快照：环境变量优先级最高（应急覆盖，不用改文件）
 	_ = viper.BindEnv("cloudSync.enabled", "CLOUD_SYNC_ENABLED")
 	_ = viper.BindEnv("cloudSync.endpoint", "CLOUD_SYNC_ENDPOINT")
@@ -147,8 +197,36 @@ func Load() error {
 	return C.Validate()
 }
 
+// clampPositive 把 <=0 的配置值夹取回默认值并打 WARN（服务照常启动，绝不 fatal）。
+func clampPositive(v, def int, name string) int {
+	if v > 0 {
+		return v
+	}
+	fmt.Printf("[config][WARN] %s 缺失或非正数(%d)，已回退默认值 %d\n", name, v, def)
+	return def
+}
+
 // Validate 启动校验：生产环境禁止使用默认/空 JWT 密钥（防止 token 伪造）
 func (c *Config) Validate() error {
+	// ---- v0.5.0：时效参数统一夹取（隐患 6.1）----
+	d := DefaultAuthConfig()
+	c.Auth.SessionIdleTTL = clampPositive(c.Auth.SessionIdleTTL, d.SessionIdleTTL, "auth.sessionIdleTTL")
+	c.Auth.RefreshGraceSec = clampPositive(c.Auth.RefreshGraceSec, d.RefreshGraceSec, "auth.refreshGraceSec")
+	c.Auth.TouchFlushSec = clampPositive(c.Auth.TouchFlushSec, d.TouchFlushSec, "auth.touchFlushSec")
+	c.Auth.DeviceIdleTTL = clampPositive(c.Auth.DeviceIdleTTL, d.DeviceIdleTTL, "auth.deviceIdleTTL")
+	c.Auth.SoftPushMinSec = clampPositive(c.Auth.SoftPushMinSec, d.SoftPushMinSec, "auth.softPushMinSec")
+	c.Auth.RegisterIPLimit = clampPositive(c.Auth.RegisterIPLimit, d.RegisterIPLimit, "auth.registerIPLimit")
+	c.Auth.InviteTTLDays = clampPositive(c.Auth.InviteTTLDays, d.InviteTTLDays, "auth.inviteTTLDays")
+	c.Auth.InviteMaxUses = clampPositive(c.Auth.InviteMaxUses, d.InviteMaxUses, "auth.inviteMaxUses")
+	if c.JWT.AccessTTL <= 0 {
+		fmt.Printf("[config][WARN] jwt.accessTTL 无效(%d)，已回退默认值 900\n", c.JWT.AccessTTL)
+		c.JWT.AccessTTL = 900
+	}
+	if c.JWT.RefreshTTL <= 0 {
+		fmt.Printf("[config][WARN] jwt.refreshTTL 无效(%d)，已回退默认值 %d\n", c.JWT.RefreshTTL, d.SessionIdleTTL)
+		c.JWT.RefreshTTL = d.SessionIdleTTL
+	}
+
 	devSecrets := map[string]string{
 		"dev-access-secret":  c.JWT.AccessSecret,
 		"dev-refresh-secret": c.JWT.RefreshSecret,

@@ -21,6 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yourname/family-finance/backend/config"
+	"github.com/yourname/family-finance/backend/internal/auth"
 	"github.com/yourname/family-finance/backend/internal/cloudsync"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
@@ -40,6 +41,14 @@ func main() {
 	if err := database.SeedAdmin(os.Getenv("ADMIN_USERNAME"), os.Getenv("ADMIN_PASSWORD")); err != nil {
 		log.Printf("seed admin: %v", err)
 	}
+
+	// ---- v0.5.0 会话 last_seen 批量刷盘 ----
+	// 热路径只改内存（绝不每请求写库），这里每 touchFlushSec(默认 60s)
+	// 用单事务合并 UPDATE；退出前显式 Flush 一次，避免最后 60s 的活跃丢失。
+	flusherCtx, flusherCancel := context.WithCancel(context.Background())
+	defer flusherCancel()
+	go auth.R().RunFlusher(flusherCtx, time.Duration(config.AuthParams().TouchFlushSec)*time.Second)
+	log.Printf("[auth] session flusher started (every=%ds)", config.AuthParams().TouchFlushSec)
 
 	// ---- 云快照同步：Init → StartupPull ----
 	// 启动时先拉一次，把"云端是唯一事实源"落实到进程启动顺序里。
@@ -88,6 +97,9 @@ func main() {
 
 	// 先停后台循环，避免与新的一次 Flush 互相竞争
 	runCancel()
+	flusherCancel()
+	auth.R().Flush()
+	log.Println("[shutdown] session last_seen flushed")
 
 	// 退出前最后一次推送（best-effort：只在 dirty==1 / pending 时推）。
 	// 真正的保障是 debounce 只有 1.5s —— 沙箱被 SIGKILL 时丢失窗口极小。

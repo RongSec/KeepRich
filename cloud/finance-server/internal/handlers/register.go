@@ -1,149 +1,204 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yourname/family-finance/backend/internal/database"
+	"github.com/yourname/family-finance/backend/config"
+	"github.com/yourname/family-finance/backend/internal/auth"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
-// 注册限流参数（DESIGN §2.C.5）：IP 维度 1 小时 20 次。
-// 比登录宽松 —— 注册低频、没有账号枚举风险（邮箱存在即 409 本就是公开信息），
-// 20/小时足够家庭场景，也能挡住脚本批量建号。
-const (
-	registerIPWindow = time.Hour
-	registerIPLimit  = 20
-	nicknameMaxRunes = 32
-)
+// 注册限流：同 IP 每小时 10 次**提交尝试**（PRD R-08 ⑦ / DESIGN §C.4）。
+const registerIPWindow = time.Hour
 
-// RegisterReq POST /api/auth/register 请求体。
-//
-// 注意：这里**不用** gin binding tag —— 校验失败的英文文案（"failed on the 'min' tag"）
-// 会被 App 原样弹给用户，违反 §6.3「错误文案禁止改写成英文/异常类名」。
+// RegisterReq v0.5.0 契约（与 v0.4.1 **有意不兼容**）：
+// 邀请码 + 用户名 + 密码 + 昵称 + 邮箱(选填，不验证、不唯一、不发信)。
+// deviceId/deviceName/platform 为可选增量字段，注册成功即直接签发会话。
 type RegisterReq struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Nickname string `json:"nickname"`
+	InviteCode      string `json:"inviteCode"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirmPassword"`
+	Nickname        string `json:"nickname"`
+	Email           string `json:"email"`
+	DeviceID        string `json:"deviceId"`
+	DeviceName      string `json:"deviceName"`
+	Platform        string `json:"platform"`
 }
 
-// Register 邮箱注册（R-05）。公开接口，成功后**直接签发 access+refresh**，
-// 不需要二次登录。
+// Register 邀请码注册：单事务抢配额 + 建用户 + 记 usage + 自动加入家庭，成功后直接登录。
 //
-// 唯一性方案（DESIGN §2.C.2）：`username = email`（小写归一化），由 username 的
-// 唯一索引承担唯一性 —— 不给 email 加唯一索引，因为历史数据有大量空字符串，
-// 唯一索引会把多行空串视为重复，AutoMigrate 直接失败、生产起不来。
+// 校验顺序按 DESIGN §C.4（一次只提示一个字段的错误，全中文）。
+// 邮箱选填：留空跳过；非空只校验格式与长度，**不查重、不验证、不发信**。
 func Register(c *gin.Context) {
 	var req RegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请求格式不正确")
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgRequestFormat)
 		return
 	}
 
-	// ---- 1. 邮箱校验（顺序与文案见 §2.C.1 错误码表）----
-	rawEmail := strings.TrimSpace(req.Email)
-	if rawEmail == "" {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请输入邮箱")
-		return
-	}
-	email := utils.NormalizeEmail(rawEmail) // trim + 全小写
-	if len(email) > 128 {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "邮箱长度不能超过 128 个字符")
-		return
-	}
-	if !utils.IsValidEmail(email) {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "邮箱格式不正确")
+	// ---- 0. 同 IP 注册尝试频控（每次提交都计数，包括校验失败的尝试）----
+	if !middleware.Allow("register-ip:"+c.ClientIP(), registerIPWindow, config.AuthParams().RegisterIPLimit) {
+		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden, utils.MsgTooFrequent)
 		return
 	}
 
-	// ---- 2. 密码强度（复用 utils，注册/改密/重置共用一份实现）----
-	if msg := utils.ValidatePasswordStrength(req.Password); msg != "" {
+	// ---- 1~2. 邀请码非空 + 归一化格式 ----
+	code := utils.NormalizeInviteCode(req.InviteCode)
+	if code == "" {
+		// v0.4.1 老客户端走「仅邮箱注册」会落到这里，中文引导升级、不致误导
+		utils.Fail(c, http.StatusBadRequest, utils.CodeInviteInvalid, utils.MsgInviteEmpty)
+		return
+	}
+	if !utils.IsValidInviteCodeFormat(code) {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeInviteInvalid, utils.MsgInviteFormat)
+		return
+	}
+
+	// ---- 3~6. 邀请码只读预检（真正的并发判定在 ConsumeTx 的条件 UPDATE）----
+	if _, err := auth.Invites().Precheck(code); err != nil {
+		failRegister(c, err)
+		return
+	}
+
+	// ---- 7. 用户名：归一化小写 + 规则校验 ----
+	username := utils.NormalizeUsername(req.Username)
+	if msg := utils.ValidateUsername(username); msg != "" {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
 		return
 	}
 
-	// ---- 3. 注册 IP 限流（防脚本批量建号）----
-	if !middleware.Allow("register-ip:"+c.ClientIP(), registerIPWindow, registerIPLimit) {
-		utils.Fail(c, http.StatusTooManyRequests, utils.CodeForbidden, "注册过于频繁，请稍后再试")
+	// ---- 8. 密码强度 + 两次一致 ----
+	if req.Password == "" {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgPasswordEmpty)
+		return
+	}
+	if msg := utils.ValidatePasswordStrength(req.Password); msg != "" {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
+		return
+	}
+	if req.ConfirmPassword != "" && req.ConfirmPassword != req.Password {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgPasswordMismatch)
 		return
 	}
 
-	// ---- 4. 昵称：留空取 email @ 前部分，再截断 32 rune ----
+	// ---- 9. 昵称（必填、1~16 字、不唯一）----
+	// 先对**原始输入**校验（"   " 必须拿到「昵称不能只包含空格」而不是「请输入昵称」），
+	// 通过后再 trim 落库。
+	if msg := utils.ValidateNickname(req.Nickname); msg != "" {
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
+		return
+	}
 	nickname := strings.TrimSpace(req.Nickname)
-	if nickname == "" {
-		nickname = defaultNickname(email)
-	} else if utf8.RuneCountInString(nickname) > nicknameMaxRunes {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "昵称不能超过 32 个字符")
-		return
-	}
 
-	// ---- 5. 查重（username 或 email 命中即 409）----
-	var cnt int64
-	if err := database.DB.Model(&models.User{}).Unscoped().
-		Where("username = ? OR (email <> '' AND email = ?)", email, email).
-		Count(&cnt).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "注册失败，请稍后重试")
-		return
-	}
-	if cnt > 0 {
-		utils.Fail(c, http.StatusConflict, utils.CodeConflict, "该邮箱已注册")
-		return
-	}
-
-	// ---- 6. 建账号（role=user，不自建家庭 → familyId=null）----
-	hash, err := utils.HashPassword(req.Password)
-	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "注册失败，请稍后重试")
-		return
-	}
-	u := models.User{
-		Username:     email, // ← 唯一性的载体
-		PasswordHash: hash,
-		Nickname:     nickname,
-		Email:        email,
-		Role:         models.RoleUser,
-	}
-	if err := database.DB.Create(&u).Error; err != nil {
-		// DB 层兜底：并发注册同一邮箱时由 username 唯一索引挡住
-		if isUniqueViolation(err) {
-			utils.Fail(c, http.StatusConflict, utils.CodeConflict, "该邮箱已注册")
+	// ---- 10. 邮箱选填：不验证、不查重，仅格式/长度 ----
+	email := utils.NormalizeEmail(req.Email)
+	if email != "" {
+		if len(email) > 128 {
+			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgEmailTooLong)
 			return
 		}
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "注册失败，请稍后重试")
+		if !utils.IsValidEmail(email) {
+			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgEmailFormat)
+			return
+		}
+	}
+
+	// ---- 12. 单事务：抢配额 + 查重 + 建用户 + 记 usage + 自动加入家庭 ----
+	now := time.Now().Unix()
+	ip, ua := c.ClientIP(), c.Request.UserAgent()
+	if len(ip) > 64 {
+		ip = ip[:64]
+	}
+	if len(ua) > 255 {
+		ua = ua[:255]
+	}
+	var created models.User
+	err := auth.Invites().ConsumeTx(code, func(tx *gorm.DB, inv *models.InviteCode) error {
+		// Unscoped：软删除的用户名也不能被复用（与 v0.4.0 口径一致）。
+		// 冲突时直接 return err → 事务回滚，已抢到的配额自动归还。
+		var cnt int64
+		if err := tx.Unscoped().Model(&models.User{}).
+			Where("username = ?", username).Count(&cnt).Error; err != nil {
+			return err
+		}
+		if cnt > 0 {
+			return auth.ErrUsernameTaken
+		}
+		hash, err := utils.HashPassword(req.Password)
+		if err != nil {
+			return err
+		}
+		created = models.User{
+			Username:     username, // 小写归一，由 users.username 唯一索引承担唯一性
+			PasswordHash: hash,
+			Nickname:     nickname,
+			Email:        email,
+			Role:         models.RoleUser,
+		}
+		if err := tx.Create(&created).Error; err != nil {
+			if isUniqueViolation(err) {
+				return auth.ErrUsernameTaken
+			}
+			return err
+		}
+		usage := models.InviteCodeUsage{
+			InviteCodeID: inv.ID,
+			Code:         inv.Code,
+			UserID:       created.ID,
+			UsedAt:       now,
+			IP:           ip,
+			UserAgent:    ua,
+		}
+		if err := tx.Create(&usage).Error; err != nil {
+			return err
+		}
+		// 邀请码不携带家庭信息：新账号默认「无家庭」，加入家庭走既有申请/审批流程。
+		return nil
+	})
+	if err != nil {
+		failRegister(c, err)
 		return
 	}
 
-	// ---- 7. 直接签发 token（复用登录的 issueTokens）----
-	resp, err := issueTokens(&u)
+	// ---- 注册成功即登录：建会话 + 可选签发设备凭据（事务外，避免 SQLite 单连接自锁）----
+	dev := deviceOf(req.DeviceID, req.DeviceName, req.Platform)
+	bundle, err := auth.Sessions().Issue(&created, dev, ip, ua, true)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "注册失败，请稍后重试")
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgRegisterFailed)
+		return
+	}
+	resp, err := buildLoginResp(&created, bundle)
+	if err != nil {
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgRegisterFailed)
 		return
 	}
 	utils.OK(c, resp)
 }
 
-// defaultNickname 从邮箱取默认昵称（@ 之前的部分，截断 32 rune）。
-func defaultNickname(email string) string {
-	local := email
-	if i := strings.Index(email, "@"); i > 0 {
-		local = email[:i]
+// failRegister 领域错误 → 中文响应（不回显任何其他邀请码信息，防枚举）。
+func failRegister(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, auth.ErrInviteNotFound):
+		utils.Fail(c, http.StatusBadRequest, utils.CodeInviteInvalid, utils.MsgInviteNotFound)
+	case errors.Is(err, auth.ErrInviteRevoked):
+		utils.Fail(c, http.StatusBadRequest, utils.CodeInviteInvalid, utils.MsgInviteRevoked)
+	case errors.Is(err, auth.ErrInviteExpired):
+		utils.Fail(c, http.StatusBadRequest, utils.CodeInviteInvalid, utils.MsgInviteExpired)
+	case errors.Is(err, auth.ErrInviteExhausted):
+		utils.Fail(c, http.StatusConflict, utils.CodeConflict, utils.MsgInviteExhausted)
+	case errors.Is(err, auth.ErrUsernameTaken):
+		utils.Fail(c, http.StatusConflict, utils.CodeConflict, utils.MsgUsernameTaken)
+	default:
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgRegisterFailed)
 	}
-	if utf8.RuneCountInString(local) <= nicknameMaxRunes {
-		return local
-	}
-	out := make([]rune, 0, nicknameMaxRunes)
-	for _, r := range local {
-		if len(out) >= nicknameMaxRunes {
-			break
-		}
-		out = append(out, r)
-	}
-	return string(out)
 }
 
 // isUniqueViolation 判断错误是否为唯一键冲突（SQLite / MySQL 两种文案）。
@@ -153,6 +208,6 @@ func isUniqueViolation(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint failed") ||
-		strings.Contains(msg, "duplicate entry") || // MySQL 1062
+		strings.Contains(msg, "duplicate entry") ||
 		strings.Contains(msg, "unique violation")
 }

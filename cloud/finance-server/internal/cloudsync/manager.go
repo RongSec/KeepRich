@@ -106,6 +106,12 @@ type Manager struct {
 	mu        sync.RWMutex
 	st        Status
 	pushCount int64
+
+	// v0.5.0 soft 推送节流状态（**纯内存**）。
+	// 绝不落盘 dirty：落盘会让 P5「本地 dirty 优先」在启动时把本地推上去，
+	// 极端情况反向覆盖云端真实账目（R3 同源风险）。
+	softPending    bool
+	lastSoftPushAt int64
 }
 
 var (
@@ -418,6 +424,57 @@ func (m *Manager) MarkDirty(reason string) {
 	}
 }
 
+// softPushMinSec 从 config.Auth 读节流窗口；config.C 未初始化时 AuthParams 给默认值。
+func softPushMinSec() int64 {
+	v := config.AuthParams().SoftPushMinSec
+	if v <= 0 {
+		return 600
+	}
+	return int64(v)
+}
+
+// softDue 判断当前是否允许一次 soft 推送；允许时消费 softPending 并推进时间窗。
+func (m *Manager) softDue(now int64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.softPending {
+		return false
+	}
+	if now-m.lastSoftPushAt < softPushMinSec() {
+		return false
+	}
+	m.lastSoftPushAt = now
+	m.softPending = false
+	return true
+}
+
+// kickSoft 只唤醒推送循环，不落盘 dirty / last_local_write_at。
+func (m *Manager) kickSoft() {
+	select {
+	case m.kick <- struct{}{}:
+	default:
+	}
+}
+
+// MarkDirtySoft 登录 / 刷新 / 设备登录 / 退出登录的写标记。
+//
+// 最多每 softPushMinSec(默认 600s) 推一次；未到窗口时只留一个内存标记，
+// 由 60s 兜底 ticker 在窗口到期后补推。**不改变 Status.Pending**（hard 语义不受影响），
+// 也不落盘 dirty —— 否则启动判定的 P5 闸门会被 soft 写污染（R3）。
+func (m *Manager) MarkDirtySoft(reason string) {
+	if !m.Enabled() {
+		return
+	}
+	now := time.Now().Unix()
+	m.mu.Lock()
+	m.softPending = true
+	m.mu.Unlock()
+	if m.softDue(now) {
+		log.Printf("[cloudsync] soft dirty ← %s", reason)
+		m.kickSoft()
+	}
+}
+
 // Run 后台循环：防抖合并 + 指数退避 + 60s 兜底扫描（由 main.go `go` 起）。
 func (m *Manager) Run(ctx context.Context) {
 	if !m.Enabled() {
@@ -476,6 +533,10 @@ func (m *Manager) Run(ctx context.Context) {
 			failures := m.st.ConsecutiveFailures
 			m.mu.RUnlock()
 			if pending || failures > 0 || stateGetInt(keyDirty) == 1 {
+				m.pushWithRetry(ctx)
+			} else if m.softDue(time.Now().Unix()) {
+				// soft 写到达节流窗口：补推一次（不改 hard dirty 落盘状态）
+				log.Printf("[cloudsync] soft push (throttled ticker)")
 				m.pushWithRetry(ctx)
 			}
 		}

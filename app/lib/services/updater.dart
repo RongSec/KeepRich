@@ -8,11 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 
 import 'api.dart';
+import 'device_identity.dart';
 
 /// 版本检查结果
 class AppUpdateInfo {
@@ -60,18 +60,9 @@ class AppUpdateInfo {
 
 /// 在线更新服务（GitHub Releases 分发 + 后端灰度/强更控制）
 class UpdaterService {
-  /// 生成/读取设备 ID（灰度哈希用，非敏感）
-  static Future<String> _deviceId() async {
-    final p = await SharedPreferences.getInstance();
-    var did = p.getString('device_id');
-    if (did == null || did.isEmpty) {
-      final t = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-      final r = (1000 + DateTime.now().millisecond).toRadixString(36);
-      did = 'd$t$r';
-      await p.setString('device_id', did);
-    }
-    return did;
-  }
+  /// 生成/读取设备 ID（灰度哈希用，非敏感）。
+  /// v0.5.0 起统一由 [DeviceIdentity] 提供，保证与登录/设备凭据是同一个 ID。
+  static Future<String> _deviceId() => DeviceIdentity.id();
 
   /// 检查更新；无更新/非 Android 平台返回 null
   static Future<AppUpdateInfo?> check() async {
