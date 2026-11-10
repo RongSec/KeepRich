@@ -1094,6 +1094,21 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     return total;
   }
 
+  /// 多桶支付还贷：**总金额 = 各来源之和**，再按「利息优先」自动拆本金/利息
+  /// （利息保持本期应还额，剩余计入本金）。单来源时保持手动输入不动。
+  ///
+  /// 之前总金额被 `_applyLoanSplit` 写成"本期应还"（如 435.21），多桶各付 500
+  /// 也仍是 435.21，与实际支付额对不上。
+  void _syncRepayFromSources() {
+    if (_category != TxCategory.expenseLoanRepay) return;
+    if (_selectedSources.length <= 1) return;
+    final total = _computeSourceTotal();
+    _repayTotal.text = total.toStringAsFixed(2);
+    final i = double.tryParse(_repayInterest.text) ?? 0;
+    final p = (total - i) > 0 ? total - i : 0;
+    _repayPrincipal.text = p.toStringAsFixed(2);
+  }
+
   /// 待支配余额（存钱来源固定为待支配）；未加载到时不做过期拦截
   double? get _pendingBalance => _bucketBalances['cash'];
 
@@ -1359,11 +1374,12 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     // 多来源支出时，金额由各来源自动求和
     final isMultiSource =
         _type == TxType.expense && _selectedSources.length > 1;
-    // 偿还贷款：金额 = 总金额（本金 + 利息）
-    final v = _category == TxCategory.expenseLoanRepay
-        ? double.tryParse(_repayTotal.text)
-        : isMultiSource
-            ? _computeSourceTotal()
+    // 金额口径：多桶支付一律以各来源之和为准（还贷也是）；
+    // 单来源还贷用「总金额」框（本金+利息），其余单来源用「金额」框。
+    final v = isMultiSource
+        ? _computeSourceTotal()
+        : _category == TxCategory.expenseLoanRepay
+            ? double.tryParse(_repayTotal.text)
             : double.tryParse(_amount.text);
     if (v == null || v <= 0) {
       _showTopSnack('请输入有效金额');
@@ -1656,7 +1672,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
                           color: Colors.redAccent, fontWeight: FontWeight.w700),
                       isDense: true,
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => setState(_syncRepayFromSources),
                   ),
                 );
               }),

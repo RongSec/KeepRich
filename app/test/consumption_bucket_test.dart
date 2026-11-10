@@ -309,7 +309,7 @@ void main() {
       await _burnPendingTimers(tester);
     });
 
-    testWidgets('消费桶余额显示：剩余可消费 = 消费额度桶余额，桶卡片含消费额度', (tester) async {
+    testWidgets('消费额度已聚合到首卡组：剩余可消费 = 消费额度桶余额，无单独卡片', (tester) async {
       route = (req) async {
         final path = req.uri.path;
         if (path.endsWith('/overview/chart')) {
@@ -329,12 +329,13 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: OverviewPage()));
       await _settle(tester);
 
-      // 「剩余可消费」显示消费额度桶余额
+      // 「剩余可消费」显示消费额度桶余额（首卡组聚合展示）
       expect(find.text('剩余可消费'), findsOneWidget);
       expect(find.text('321.55'), findsOneWidget);
-      // 财务统筹里的消费额度桶卡片（余额）
-      expect(find.text('消费额度'), findsOneWidget);
-      expect(find.text('321.55 元'), findsOneWidget);
+      expect(find.text('剩余待支配'), findsOneWidget);
+      // 用户口径：消费额度**不需要**单独卡片（首卡组已聚合剩余可消费/待支配）
+      expect(find.text('消费额度'), findsNothing,
+          reason: '消费额度不应有单独桶卡片');
       await _burnPendingTimers(tester);
     });
   });

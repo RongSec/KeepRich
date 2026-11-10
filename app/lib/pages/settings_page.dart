@@ -109,7 +109,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.edit), onPressed: () {}),
+                IconButton(
+                    icon: const Icon(Icons.edit),
+                    tooltip: '编辑资料',
+                    // 之前是空回调（点了没反应）：跳到「安全」页的编辑资料入口
+                    onPressed: () => context.push('/security')),
               ],
             ),
           ),

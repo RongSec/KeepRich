@@ -212,11 +212,18 @@ class _OverviewPageState extends State<OverviewPage> {
                     style: const TextStyle(
                         fontSize: 11, color: AppTheme.textDim)),
               ),
-              Text(f.format(item.value),
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.onSurface)),
+              // 数字可能很长（含千分位/小数），用 FittedBox 防溢出
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(f.format(item.value),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface)),
+                ),
+              ),
             ]),
           ),
         );
@@ -395,23 +402,8 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
               ),
             ]),
-            const SizedBox(height: 8),
-            // 消费额度桶（每月自动入账，支出可选作来源）
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: _bucketTile(
-                  name: '消费额度',
-                  icon: Icons.shopping_bag_outlined,
-                  color: const Color(0xFF7EE0A6),
-                  balance: ov.consumptionBalance,
-                  thisMonth: a.consumptionThisMonth,
-                  thisMonthTarget: a.consumptionTarget,
-                  f: f,
-                  onTap: () => _showConsumptionDetail(context),
-                ),
-              ),
-              const Expanded(child: SizedBox()),
-            ]),
+            // 注：消费额度无需单独卡片 —— 「剩余可消费 / 剩余待支配」已在顶部
+            // 双行卡片聚合展示，点「剩余可消费」可看消费额度明细。
           ],
         ),
       ),

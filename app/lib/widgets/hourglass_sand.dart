@@ -4,19 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
-import 'hourglass_painter.dart';
-import 'hourglass_physics.dart';
+import 'sand_box_painter.dart';
+import 'sand_box_physics.dart';
 
-/// 沙漏背景（v0.4.0 重做，替代 [GoldSandBackground]）
+/// 金沙盒子背景（v0.5.2 重做，替代沙漏造型）
 ///
-/// 与 v0.3.1「金沙流沙」的根本区别：**静置也在流**。
-/// 排沙由恒定排沙率驱动（[HourglassPhysics.step]），传感器只负责沙面倾角、
-/// 束流横向漂移与坡面滑落方向，不参与"流不流"的判断，所以流动永不中断。
+/// 用户口径：**屏幕是正立方体盒子的正面投影，下半部分（约 50%）是金沙；
+/// 手机旋转（重力方向变化）时沙子流动、重新堆积，沙面始终相对重力保持水平**
+/// —— 完全模拟沙子在正立方体盒子内随盒子角度变化的动态物理行为。
 ///
-/// 结构（设计 §2.D.1）：
-/// - [HourglassPhysics]：几何 / 体积反解 / 粒子池 / `step(dt)`（纯计算）
-/// - [HourglassPainter]：绘制 + 纹理预渲染（约 17 次 draw call、零逐帧分配）
+/// 结构：
+/// - [SandBoxPhysics]：高度场 + 松弛流动 + 休止角 + 粒子 / `step(dt)`（纯计算）
+/// - [SandBoxPainter]：沙堆 + 纹理 + 粒子（约 8~10 次 draw call、零逐帧分配）
 /// - 本文件：Ticker、传感器订阅、生命周期、遮罩层
+///
+/// 与旧沙漏的区别：没有上腔/细颈/下腔几何，只有"盒子 + 沙堆"；传感器只改变
+/// 重力方向（沙流向哪），流动本身由高度场松弛驱动、永不停。
 ///
 /// 回退：`main.dart` 把这里换回 `GoldSandBackground` 即可（`gold_sand.dart` 未改动）。
 class HourglassSandBackground extends StatefulWidget {
@@ -40,8 +43,8 @@ class HourglassSandBackground extends StatefulWidget {
 class _HourglassSandBackgroundState extends State<HourglassSandBackground>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Ticker _ticker;
-  late final HourglassPhysics _physics = HourglassPhysics();
-  late final HourglassPainter _painter = HourglassPainter(_physics);
+  late final SandBoxPhysics _physics = SandBoxPhysics();
+  late final SandBoxPainter _painter = SandBoxPainter(_physics);
 
   StreamSubscription<AccelerometerEvent>? _accSub;
   Duration _lastTick = Duration.zero;
@@ -60,17 +63,17 @@ class _HourglassSandBackgroundState extends State<HourglassSandBackground>
         samplingPeriod: SensorInterval.gameInterval,
       ).listen(
         (AccelerometerEvent e) {
-          // 只更新目标值：流动由常量排沙率驱动，传感器不参与
-          _physics.tiltTargetX = (-e.x / 9.81).clamp(-1.0, 1.0).toDouble();
-          _physics.tiltTargetY = (-e.y / 9.81).clamp(-1.0, 1.0).toDouble();
-          _physics.hasSensor = true;
+          // 只更新重力方向：沙面流动由高度场松弛驱动，传感器不参与"流不流"。
+          // 重力在屏幕平面内的水平分量 → tilt（右倾为正，沙流向右）。
+          // 手机竖直 → tilt=0（沙在底）；横放 90° → tilt=±1（沙在左/右）。
+          _physics.setTilt((-e.x / 9.81).clamp(-1.0, 1.0).toDouble());
         },
-        // Web / 模拟器没有加速度计 → tilt 恒 0，沙漏照样从满流到空
-        onError: (Object _) => _physics.hasSensor = false,
+        // Web / 模拟器没有加速度计 → tilt 恒 0，沙堆照样松弛流动
+        onError: (Object _) {},
         cancelOnError: false,
       );
     } catch (_) {
-      _physics.hasSensor = false;
+      // 传感器不可用：保持 tilt=0，沙堆仍在底部缓慢流动
     }
   }
 
