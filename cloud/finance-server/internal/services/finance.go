@@ -67,15 +67,28 @@ type OverviewData struct {
 	// 关键指标
 	WorryFreePerBuy    float64 `json:"worryFreePerBuy"`    // 最大单笔消费 = (总财富+年薪×20)/10000，单位：元
 	AnnualIncome       float64 `json:"annualIncome"`       // 年薪（工资+公积金年化）
-	MonthlyConsumable  float64 `json:"monthlyConsumable"`  // 本月可消费（累加机制后）
-	MonthConsumableLeft float64 `json:"monthConsumableLeft"` // 本月剩余可消费（= MonthlyConsumable - DailySpent）
+	MonthlyConsumable  float64 `json:"monthlyConsumable"`  // 本月可消费配额（= 本月工资 × 消费比例，不含结转入）
+	MonthConsumableLeft float64 `json:"monthConsumableLeft"` // 本月剩余可消费
+	//   v0.5.1 口径变更：= ConsumptionBalance（消费额度桶当前余额，含结转入/月末结转机制），
+	//   不再用「配额 − 本月日常消费 − 上月投资缺口」的旧口径。
 	SavingCarryOver    float64 `json:"savingCarryOver"`    // 上月剩余沉淀到储蓄的金额
-	RemainingBudget    float64 `json:"remainingBudget"`    // 剩余待支配 = 现金池余额（工资+意外收入+投资收益+过往存款 − 转入桶 − 现金支出）
+	RemainingBudget    float64 `json:"remainingBudget"`    // 剩余待支配（= 待支配可用来存钱的余额）
+
+	// 消费额度桶（consumption）——按月推演派生，不落库。
+	// 余额口径：bal(M) = autoIn(M) + carryIn(M) − spend(M)；
+	// 月末结转（已结束月份）：bal>0 → 下月 carryIn=bal×0.5、refund=bal×0.5（回流待支配）；
+	//                        bal≤0 → 下月 carryIn=bal（超支全额结转负数），refund=0。
+	ConsumptionBalance float64 `json:"consumptionBalance"` // 消费额度桶当前余额（= bal(当前月)），即「剩余可消费」
+	ConsumptionAutoIn  float64 `json:"consumptionAutoIn"`  // 本月自动入账 = 本月工资收入 × 计划消费比例（视为从待支配转入）
+	ConsumptionCarryIn float64 `json:"consumptionCarryIn"` // 本月结转入（上月末结转来的额度，可能为负）
+	ConsumptionSpend   float64 `json:"consumptionSpend"`   // 本月消费桶已支出（含多来源明细中 bucket=consumption 部分）
+	ConsumptionRefund  float64 `json:"consumptionRefund"`  // 月末结转回流累计（仅已结束月份；本月未到月末不计入）
 
 	// 现金池（待支配）构成明细，供"剩余待支配"弹窗展示
+	// 校验口径自洽：CashPoolIncome − CashPoolTransfer − CashPoolExpense ≡ RemainingBudget
 	CashPoolIncome  float64 `json:"cashPoolIncome"`  // 累计进入待支配的收入（工资+意外+投资收益+过往存款）
-	CashPoolTransfer float64 `json:"cashPoolTransfer"` // 累计分配进桶（转账）
-	CashPoolExpense float64 `json:"cashPoolExpense"`  // 累计现金来源支出
+	CashPoolTransfer float64 `json:"cashPoolTransfer"` // 累计分配进桶净额（存钱转账 + 消费额度自动入账 − 月末结转回流）
+	CashPoolExpense float64 `json:"cashPoolExpense"`  // 累计现金来源支出（不含任何桶来源支出）
 
 	// 未来财富（不含债务，仅未来利益折现）— 用于 2x2 卡片阵列
 	FutureWealth float64 `json:"futureWealth"`
@@ -155,16 +168,18 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	_ = s.sumScopeByTargetBucket(scope, uid, familyID, "pension", &pension)
 
 	// 按 sourceBucket 从对应桶扣减支出
-	var savingExp, investmentExp, emergencyExp, pensionExp, housingFundExp float64
+	var savingExp, investmentExp, emergencyExp, pensionExp, housingFundExp, consumptionExp float64
 	_ = s.sumScopeBySourceBucket(scope, uid, familyID, "saving", &savingExp)
 	_ = s.sumScopeBySourceBucket(scope, uid, familyID, "investment", &investmentExp)
 	_ = s.sumScopeBySourceBucket(scope, uid, familyID, "emergency", &emergencyExp)
 	_ = s.sumScopeBySourceBucket(scope, uid, familyID, "pension", &pensionExp)
 	_ = s.sumScopeBySourceBucket(scope, uid, familyID, "housing_fund", &housingFundExp)
+	_ = s.sumScopeBySourceBucket(scope, uid, familyID, "consumption", &consumptionExp)
 	saving -= savingExp
 	investment -= investmentExp
-	// 现金来源的支出 = 总支出 - 非现金来源的支出（避免双重扣减）
-	nonCashExpense := savingExp + investmentExp + emergencyExp + pensionExp + housingFundExp
+	// 现金来源的支出 = 总支出 - 非现金来源的支出（避免双重扣减）。
+	// 花桶的钱只扣桶余额、不再扣减待支配，消费额度桶（consumption）同理。
+	nonCashExpense := savingExp + investmentExp + emergencyExp + pensionExp + housingFundExp + consumptionExp
 	cumulativeExpense := expenseSum - nonCashExpense
 	if cumulativeExpense < 0 {
 		cumulativeExpense = 0
@@ -231,6 +246,8 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 
 	// 本月已实现工资收入（桶分配仅基于工资，不含公积金、过往存款、意外收入等）
 	now := time.Now()
+	// 消费额度桶按月推演（autoIn = 工资 × 消费比例；实时推演不落库）
+	ledger := s.consumptionLedger(scope, uid, familyID, now, plan.ConsumptionRatio)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
 	var monthlyIncome float64
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeSalary, monthStart, &monthlyIncome)
@@ -294,14 +311,20 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 		pensionMonthsLeft = monthsToTarget(plan.PensionRatio, monthlyIncome, plan.PensionTarget, pension)
 	}
 
-	// 大件前 5 + 预估月数
-	top, _ := s.topPurchaseProjections(scope, uid, familyID, totalCash, plan)
-
-	// 剩余待支配 = 现金池余额（totalCash）。
+	// 剩余待支配（待支配可用来存钱的余额）。
 	// 口径（文档口径对齐）：工资、意外收入、投资收益、过往存款进入待支配（现金池）；
 	// 分配进桶（transfer）后即从待支配扣除；花桶的钱只扣桶余额，不再扣减待支配；
 	// 只有直接花现金的钱才扣减待支配；公积金有独立账户，不进入待支配。
-	remaining := totalCash
+	// v0.5.1 消费额度桶：每月自动入账「视为从待支配转入」→ 从现金池扣减（AutoInSum）；
+	// 月末结转回流累计（RefundSum，仅已结束月份）回到待支配 → 加回。
+	//   RemainingBudget = totalCash − ledger.AutoInSum + ledger.RefundSum
+	//   即契约口径「现金池 + 历史结转回流」：现金池这里指扣除消费额度自动入账后的余额。
+	// 恒等式（供「剩余待支配」弹窗自洽）：
+	//   CashPoolIncome − CashPoolTransfer − CashPoolExpense ≡ RemainingBudget
+	remaining := utils.Round2(totalCash - ledger.AutoInSum + ledger.RefundSum)
+
+	// 大件前 5 + 预估月数（可用现金 = 待支配 + 消费额度桶余额，两者都可支付大件）
+	top, _ := s.topPurchaseProjections(scope, uid, familyID, utils.Round2(remaining+ledger.Balance), plan)
 
 	// 家庭总财富：现金池 + 投资桶 + 公积金 + 未来利益折现 - 待还款
 	// 现金池 = 累计收入 - 累计日常消费（其余 4 桶已转入对应桶余额，不扣减现金）
@@ -354,35 +377,20 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	}
 	estimatedPayoffAt := time.Now().AddDate(0, maxRemain, 0).Unix()
 
-	// 家庭总财富（文档 §8）：现金池 + 4 桶 + 公积金 + 未来利益折现 - 待还款
+	// 家庭总财富（文档 §8）：待支配 + 消费额度桶 + 4 桶 + 公积金 + 未来利益折现 - 待还款
+	// 消费额度桶的钱是真实资产的一部分：桶内花掉只扣桶余额，故此处并入 ledger.Balance。
 	// 允许为负：贷款/借款超过资产时，总财富应如实显示负数
-	totalWealth := utils.Round2(totalCash + saving + investment + emergency + pension + housingFund + wealthProduct - totalPending)
+	totalWealth := utils.Round2(remaining + ledger.Balance + saving + investment + emergency + pension + housingFund + wealthProduct - totalPending)
 
 	// 最大单笔消费（元）= (总财富 + 年收入 × 20) / 10000
 	// 例：年收入 12 万、总财富 20 万 → (200000 + 2400000)/10000 = 260 元
 	// 随总财富变化而变化
 	worryFree := utils.Round2((totalWealth + annualIncome*20) / 10000.0)
 
-	// 本月剩余可消费 = 本月可消费配额 - 本月已花日常消费
-	// 注意：花超后保留负数，便于用户直观看到超支金额
-	// 使用 alloc.Consumption（原始配额）而非 monthlyConsumable（已扣减 monthDaily 的剩余），避免重复扣减
-	monthConsumableLeft := alloc.Consumption - monthDaily
-	// 文档 §7.3：上月投资收益不足部分从下月可消费余额中扣补
-	prevYear, prevMonth := now.Year(), int(now.Month())-1
-	if prevMonth < 1 {
-		prevMonth = 12
-		prevYear--
-	}
-	var prevRec models.InvestmentRecord
-	prevQ := s.DB.Where("scope = ? AND year = ? AND month = ?", scope, prevYear, prevMonth)
-	if scope == models.TxScopePersonal {
-		prevQ = prevQ.Where("target_id = ?", uid)
-	} else {
-		prevQ = prevQ.Where("target_id = ?", pickTargetID(scope, uid, familyID))
-	}
-	if err := prevQ.First(&prevRec).Error; err == nil && prevRec.Deficit > 0 {
-		monthConsumableLeft -= prevRec.Deficit
-	}
+	// 本月剩余可消费 = 消费额度桶当前余额（v0.5.1 口径变更）。
+	// 旧口径「配额 − 本月日常消费 − 上月投资缺口」废弃：月末结转/超支结转
+	// 全部由 consumptionLedger 的按月推演承担，花超保留负数便于直观看到超支金额。
+	monthConsumableLeft := ledger.Balance
 
 	return &OverviewData{
 		TotalCash:           totalCash,
@@ -405,10 +413,16 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 		AnnualIncome:        annualIncome,
 		MonthlyConsumable:   alloc.Consumption,
 		MonthConsumableLeft: monthConsumableLeft,
+		ConsumptionBalance:  ledger.Balance,
+		ConsumptionAutoIn:   ledger.AutoIn,
+		ConsumptionCarryIn:  ledger.CarryIn,
+		ConsumptionSpend:    ledger.Spend,
+		ConsumptionRefund:   ledger.RefundSum,
 		SavingCarryOver:     0,
 		RemainingBudget:     remaining,
 		CashPoolIncome:      utils.Round2(incomeSum - nonSalaryIncome),
-		CashPoolTransfer:    utils.Round2(totalTransfer),
+		// 累计分配进桶净额 = 存钱转账 + 消费额度自动入账 − 月末结转回流
+		CashPoolTransfer:    utils.Round2(totalTransfer + ledger.AutoInSum - ledger.RefundSum),
 		CashPoolExpense:     utils.Round2(cumulativeExpense),
 		FutureWealth:        wealthProduct, // 未来财富（仅未来利益折现，不含债务）
 		Allocation:          alloc,
@@ -835,4 +849,138 @@ func pickTargetID(scope string, uid uint64, familyID *uint64) uint64 {
 		return *familyID
 	}
 	return uid
+}
+
+// ====== 消费额度桶（consumption）按月推演 ======
+//
+// 产品口径（v0.5.1）：
+//   autoIn(M)  = 月份 M 的工资收入(category=salary) × plan.ConsumptionRatio，
+//                「视为从待支配转入」——不需用户手动存钱，也不新增 transfer 分类；
+//   spend(M)   = 月份 M 内从 consumption 桶扣减的支出（含多来源 source_details 中
+//                bucket=consumption 的部分）；
+//   bal(M)     = autoIn(M) + carryIn(M) − spend(M)；
+//   bal(M) > 0（没花完）→ carryIn(M+1) = bal(M)×0.5（下月额度），refund(M) = bal(M)×0.5（回流待支配）；
+//   bal(M) ≤ 0（超支/恰好平）→ carryIn(M+1) = bal(M)（超支全额结转负数，下月额度扣减），refund(M) = 0；
+//   carryIn(第一个月) = 0，从最早有交易的月份逐月推演到当前月。
+//
+// 实时推演、不落库、不新增表（消费桶余额是派生量，快照兼容）。
+// 月份聚合一次查出后在 Go 里归月（不用数据库方言函数，MySQL/SQLite 通用），无 N+1。
+
+// ConsumptionLedger 消费额度桶按月推演结果
+type ConsumptionLedger struct {
+	Balance   float64 // 当前（本月）余额 = AutoIn + CarryIn − Spend，即「剩余可消费」
+	AutoIn    float64 // 本月自动入账
+	CarryIn   float64 // 本月结转入（上月末结转来的额度，可能为负）
+	Spend     float64 // 本月消费桶已支出
+	AutoInSum float64 // 自动入账累计（含本月；视为从待支配转入的累计扣减）
+	RefundSum float64 // 月末结转回流累计 —— 仅已结束月份；本月未到月末尚未结转，不计入
+}
+
+// occurredAmount 行聚合中间结构（occurred_at + amount）
+type occurredAmount struct {
+	OccurredAt int64   `gorm:"column:occurred_at"`
+	Amount     float64 `gorm:"column:amount"`
+}
+
+// consumptionLedger 按月推演消费额度桶，返回当前余额与各中间量。
+// scope 过滤口径与其它桶一致（applyScopeQuery）。
+func (s *FinanceService) consumptionLedger(scope string, uid uint64, familyID *uint64, now time.Time, consumptionRatio float64) ConsumptionLedger {
+	var out ConsumptionLedger
+
+	// 最早有交易的月份起点
+	var minAt int64
+	q := s.DB.Model(&models.Transaction{}).Select("COALESCE(MIN(occurred_at),0)")
+	q = s.applyScopeQuery(q, scope, uid, familyID)
+	_ = q.Scan(&minAt).Error
+	if minAt <= 0 {
+		return out
+	}
+
+	// 1) 工资收入按月（autoIn 的来源），一次聚合
+	salaryByMonth := map[string]float64{}
+	var salaryRows []occurredAmount
+	qs := s.DB.Model(&models.Transaction{}).
+		Where("type = ? AND category = ?", models.TxTypeIncome, models.IncomeSalary)
+	qs = s.applyScopeQuery(qs, scope, uid, familyID)
+	_ = qs.Select("occurred_at, amount").Scan(&salaryRows).Error
+	for _, r := range salaryRows {
+		salaryByMonth[monthKey(r.OccurredAt)] += r.Amount
+	}
+
+	// 2) 消费桶支出按月：单来源 + 多来源明细
+	spendByMonth := map[string]float64{}
+	var singleRows []occurredAmount
+	q1 := s.DB.Model(&models.Transaction{}).
+		Where("type = ? AND source_bucket = ? AND (source_details IS NULL OR source_details = '')",
+			models.TxTypeExpense, "consumption")
+	q1 = s.applyScopeQuery(q1, scope, uid, familyID)
+	_ = q1.Select("occurred_at, amount").Scan(&singleRows).Error
+	for _, r := range singleRows {
+		spendByMonth[monthKey(r.OccurredAt)] += r.Amount
+	}
+	var multiRows []struct {
+		OccurredAt   int64  `gorm:"column:occurred_at"`
+		SourceDetails string `gorm:"column:source_details"`
+	}
+	q2 := s.DB.Model(&models.Transaction{}).
+		Where("type = ? AND source_details IS NOT NULL AND source_details != ''", models.TxTypeExpense)
+	q2 = s.applyScopeQuery(q2, scope, uid, familyID)
+	_ = q2.Select("occurred_at, source_details").Scan(&multiRows).Error
+	for _, r := range multiRows {
+		var details []struct {
+			Bucket string  `json:"bucket"`
+			Amount float64 `json:"amount"`
+		}
+		if err := json.Unmarshal([]byte(r.SourceDetails), &details); err != nil {
+			continue
+		}
+		for _, d := range details {
+			if d.Bucket == "consumption" {
+				spendByMonth[monthKey(r.OccurredAt)] += d.Amount
+			}
+		}
+	}
+
+	// 3) 从最早交易月逐月推演到当前月
+	loc := now.Location()
+	cur := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	firstT := time.Unix(minAt, 0).In(loc)
+	first := time.Date(firstT.Year(), firstT.Month(), 1, 0, 0, 0, 0, loc)
+	carry := 0.0
+	autoInSum := 0.0
+	refundSum := 0.0
+	for m := first; !m.After(cur); m = m.AddDate(0, 1, 0) {
+		key := m.Format("2006-01")
+		autoIn := utils.Round2(salaryByMonth[key] * consumptionRatio)
+		spend := utils.Round2(spendByMonth[key])
+		bal := utils.Round2(autoIn + carry - spend)
+		if m.Equal(cur) {
+			// 当前月：只出中间量，不做月末结转（本月尚未结束）
+			return ConsumptionLedger{
+				Balance:   bal,
+				AutoIn:    autoIn,
+				CarryIn:   utils.Round2(carry),
+				Spend:     spend,
+				AutoInSum: utils.Round2(autoInSum + autoIn),
+				RefundSum: utils.Round2(refundSum),
+			}
+		}
+		// 已结束月份：月末结转
+		autoInSum += autoIn
+		if bal > 0 {
+			// 50/50：分为奇数时余下的 1 分进回流，保证 carry + refund = bal
+			balCents := utils.ToCents(bal)
+			carryCents := balCents / 2
+			carry = utils.FromCents(carryCents)
+			refundSum += utils.FromCents(balCents - carryCents)
+		} else {
+			carry = bal // 超支：全额结转负数（下月额度扣减）；恰好平：结转 0
+		}
+	}
+	return out
+}
+
+// monthKey 时间戳 → 自然月键（本地时区，与记账写入语义一致）
+func monthKey(ts int64) string {
+	return time.Unix(ts, 0).Format("2006-01")
 }

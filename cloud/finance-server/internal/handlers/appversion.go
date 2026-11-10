@@ -334,7 +334,7 @@ func downloadURLFor(c *gin.Context, abi string) string {
 func AppDownload(c *gin.Context) {
 	b, err := loadBundle()
 	if err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "更新包未随部署分发："+err.Error())
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "更新包未随部署分发")
 		return
 	}
 	a := bundleAssetFor(b, c.Query("abi"))
@@ -504,14 +504,13 @@ func applyVersionReq(v *models.AppVersion, req *appVersionReq) {
 // AdminCreateAppVersion 新建版本记录
 func AdminCreateAppVersion(c *gin.Context) {
 	var req appVersionReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	v := models.AppVersion{Channel: "stable", GrayPercent: 100}
 	applyVersionReq(&v, &req)
 	if err := database.DB.Create(&v).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	_ = middleware.MustUID(c)
@@ -527,13 +526,12 @@ func AdminUpdateAppVersion(c *gin.Context) {
 		return
 	}
 	var req appVersionReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	applyVersionReq(&v, &req)
 	if err := database.DB.Save(&v).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, v)

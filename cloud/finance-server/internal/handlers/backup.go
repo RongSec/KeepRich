@@ -31,7 +31,7 @@ func AdminExportBackup(c *gin.Context) {
 		AppVersion:   version.App,
 	})
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "export: "+err.Error())
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgOpFailed)
 		return
 	}
 	c.Header("Content-Disposition",
@@ -58,12 +58,11 @@ func gateExportTs(reqExportedAt, remoteExportedAt int64, force bool) (bool, stri
 // AdminRestoreBackup 导入 JSON（merge 模式，可重复执行）。
 func AdminRestoreBackup(c *gin.Context) {
 	var req restoreReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	if len(req.Tables) == 0 {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "tables 为空")
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "备份数据缺少表内容")
 		return
 	}
 
@@ -89,7 +88,7 @@ func AdminRestoreBackup(c *gin.Context) {
 
 	res, err := backup.Import(database.DB, req.Tables, backup.ImportOptions{Mode: backup.ImportMerge})
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, "restore: "+err.Error())
+		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, utils.MsgOpFailed)
 		return
 	}
 

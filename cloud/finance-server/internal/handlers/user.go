@@ -14,8 +14,8 @@ import (
 )
 
 type CreateUserReq struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password" binding:"required"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 	Nickname string `json:"nickname"`
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
@@ -34,30 +34,43 @@ type UpdateProfileReq struct {
 // 这里只保留调用点，避免三份实现文案漂移（DESIGN §2.C.1）。
 
 type ChangePasswordReq struct {
-	OldPassword string `json:"oldPassword" binding:"required"`
+	OldPassword string `json:"oldPassword"`
 	// 长度/复杂度统一交给 utils.ValidatePasswordStrength，避免 gin 的英文校验文案
 	// （"failed on the 'min' tag"）直接弹给用户
-	NewPassword string `json:"newPassword" binding:"required"`
+	NewPassword string `json:"newPassword"`
 }
 
 // CreateUser 管理员创建账号
 func CreateUser(c *gin.Context) {
 	var req CreateUserReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !requireText(c, req.Username, "用户名") {
+		return
+	}
+	if msg := utils.ValidateUsername(req.Username); msg != "" {
+		failBadRequest(c, msg)
+		return
+	}
+	if !requireText(c, req.Password, "密码") {
 		return
 	}
 	if msg := utils.ValidatePasswordStrength(req.Password); msg != "" {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
+		failBadRequest(c, msg)
 		return
 	}
 	role := req.Role
 	if role == "" {
 		role = models.RoleUser
 	}
+	if role != models.RoleAdmin && role != models.RoleUser {
+		failBadRequest(c, "角色不正确")
+		return
+	}
 	hash, err := utils.HashPassword(req.Password)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failSave(c)
 		return
 	}
 	u := models.User{
@@ -84,7 +97,7 @@ func ListUsers(c *gin.Context) {
 		q = q.Where("username LIKE ? OR nickname LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	if err := q.Order("id DESC").Limit(200).Find(&users).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failLoad(c)
 		return
 	}
 	utils.OK(c, users)
@@ -95,11 +108,14 @@ func ToggleUserStatus(c *gin.Context) {
 	id := c.Param("id")
 	var u models.User
 	if err := database.DB.First(&u, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "用户不存在")
 		return
 	}
 	u.Disabled = !u.Disabled
-	database.DB.Save(&u)
+	if err := database.DB.Save(&u).Error; err != nil {
+		failSave(c)
+		return
+	}
 	if u.Disabled {
 		// 停用 → 该账号所有设备的会话与设备凭据一起失效（PRD R-01 ④）
 		auth.Devices().RevokeAll(u.ID, auth.ReasonAdminDisable)
@@ -122,7 +138,7 @@ func DeleteUser(c *gin.Context) {
 	}
 	// 软删除用户
 	if err := database.DB.Delete(&u).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failSave(c)
 		return
 	}
 	auth.Devices().RevokeAll(u.ID, auth.ReasonAdminDelete)
@@ -133,8 +149,7 @@ func DeleteUser(c *gin.Context) {
 func UpdateProfile(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req UpdateProfileReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	updates := map[string]interface{}{}
@@ -160,7 +175,7 @@ func UpdateProfile(c *gin.Context) {
 	}
 	if len(updates) > 0 {
 		if err := database.DB.Model(&models.User{}).Where("id = ?", uid).Updates(updates).Error; err != nil {
-			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+			failSave(c)
 			return
 		}
 	}
@@ -171,17 +186,22 @@ func UpdateProfile(c *gin.Context) {
 func ChangePassword(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req ChangePasswordReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !requireText(c, req.OldPassword, "原密码") {
+		return
+	}
+	if !requireText(c, req.NewPassword, "新密码") {
 		return
 	}
 	if msg := utils.ValidatePasswordStrength(req.NewPassword); msg != "" {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, msg)
+		failBadRequest(c, msg)
 		return
 	}
 	var u models.User
 	if err := database.DB.First(&u, uid).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "用户不存在")
 		return
 	}
 	if !utils.CheckPassword(u.PasswordHash, req.OldPassword) {
@@ -194,7 +214,7 @@ func ChangePassword(c *gin.Context) {
 		"password_hash": hash,
 		"token_version": gorm.Expr("token_version + 1"),
 	}).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failSave(c)
 		return
 	}
 	// 改密 → 该账号全部会话与设备凭据立即失效（含当前设备，PRD R-01 ④）

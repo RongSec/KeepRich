@@ -15,9 +15,9 @@ import (
 )
 
 type CreatePurchaseReq struct {
-	Scope      string  `json:"scope" binding:"required,oneof=personal family"`
-	Name       string  `json:"name" binding:"required"`
-	Price      float64 `json:"price" binding:"required,gt=0"`
+	Scope      string  `json:"scope"` // personal/family
+	Name       string  `json:"name"`
+	Price      float64 `json:"price"`
 	Priority   int     `json:"priority"`
 	TargetDate int64   `json:"targetDate"`
 	Note       string  `json:"note"`
@@ -46,8 +46,16 @@ func ListPurchasePlans(c *gin.Context) {
 func CreatePurchasePlan(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req CreatePurchaseReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !requireScope(c, req.Scope) {
+		return
+	}
+	if !requireText(c, req.Name, "名称") {
+		return
+	}
+	if !requireAmount(c, req.Price, "价格") {
 		return
 	}
 	var targetID uint64
@@ -74,7 +82,10 @@ func CreatePurchasePlan(c *gin.Context) {
 		TargetDate: req.TargetDate,
 		Note:       req.Note,
 	}
-	database.DB.Create(&p)
+	if err := database.DB.Create(&p).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, p)
 }
 
@@ -83,14 +94,17 @@ func DeletePurchasePlan(c *gin.Context) {
 	id := c.Param("id")
 	var p models.PurchasePlan
 	if err := database.DB.First(&p, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "大件规划不存在")
 		return
 	}
 	if p.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权删除")
 		return
 	}
-	database.DB.Delete(&p)
+	if err := database.DB.Delete(&p).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -115,15 +129,20 @@ func UpdatePurchasePlan(c *gin.Context) {
 		return
 	}
 	var req UpdatePurchaseReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	if req.Name != nil {
+		if !requireText(c, *req.Name, "名称") {
+			return
+		}
 		p.Name = *req.Name
 	}
-	if req.Price != nil && *req.Price > 0 {
-		p.Price = *req.Price
+	if req.Price != nil {
+		if !requireAmount(c, *req.Price, "价格") {
+			return
+		}
+		p.Price = utils.Round2(*req.Price)
 	}
 	if req.Priority != nil {
 		p.Priority = *req.Priority
@@ -134,24 +153,41 @@ func UpdatePurchasePlan(c *gin.Context) {
 	if req.Note != nil {
 		p.Note = *req.Note
 	}
-	database.DB.Save(&p)
+	if err := database.DB.Save(&p).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, p)
 }
 
 type UpsertInvestmentReq struct {
-	Scope   string  `json:"scope" binding:"required,oneof=personal family"`
-	Year    int     `json:"year" binding:"required"`
-	Month   int     `json:"month" binding:"required,min=1,max=12"`
+	Scope   string  `json:"scope"` // personal/family
+	Year    int     `json:"year"`
+	Month   int     `json:"month"`
 	Amount  float64 `json:"amount"`  // 实际收益额（元），可正可负。前端用 amount 算出 monthlyRate 同步提交。
-	MonthlyRate float64 `json:"monthlyRate" binding:"required"`
+	MonthlyRate float64 `json:"monthlyRate"`
 	Note    string  `json:"note"`
 }
 
 func UpsertInvestment(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req UpsertInvestmentReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !requireScope(c, req.Scope) {
+		return
+	}
+	if req.Year <= 0 {
+		failBadRequest(c, "请填写年份")
+		return
+	}
+	if req.Month < 1 || req.Month > 12 {
+		failBadRequest(c, "月份必须在 1~12 之间")
+		return
+	}
+	if req.MonthlyRate == 0 {
+		failBadRequest(c, "请填写月收益率")
 		return
 	}
 	var targetID uint64
@@ -267,7 +303,7 @@ func UpsertInvestment(c *gin.Context) {
 			return nil
 		})
 		if err != nil {
-			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+			failSave(c)
 			return
 		}
 	}
@@ -449,7 +485,7 @@ func CheckBigPurchase(c *gin.Context) {
 	fs := services.NewFinanceService(database.DB)
 	ov, err := fs.GetOverview(scope, uid, familyID)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failLoad(c)
 		return
 	}
 	var targetID uint64
@@ -468,7 +504,9 @@ func CheckBigPurchase(c *gin.Context) {
 	database.DB.Where("scope = ? AND target_id = ? AND achieved = ?", scope, targetID, false).Order("priority ASC").Find(&plans)
 
 	ns := services.NewNotifyService(database.DB)
-	limit := ov.TotalCash * ratio
+	// 大件可占用阈值 = 可用现金 × 比例；可用现金 = 待支配 + 消费额度桶余额（两者都可支付大件）
+	availCash := ov.RemainingBudget + ov.ConsumptionBalance
+	limit := availCash * ratio
 	triggered := []string{}
 	now := time.Now().Unix()
 	for i := range plans {

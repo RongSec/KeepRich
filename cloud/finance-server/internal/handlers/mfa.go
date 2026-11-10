@@ -19,7 +19,7 @@ func MFASetup(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var u models.User
 	if err := database.DB.First(&u, uid).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "用户不存在")
 		return
 	}
 	secret, _ := utils.GenerateMFASecret()
@@ -33,8 +33,7 @@ func MFASetup(c *gin.Context) {
 func MFAEnable(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req SetupMFAReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	secret, err := c.Cookie("mfa_tmp")
@@ -50,7 +49,7 @@ func MFAEnable(c *gin.Context) {
 		"mfa_enabled": true,
 		"mfa_secret":  secret,
 	}).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	c.SetCookie("mfa_tmp", "", -1, "/", "", false, true)
@@ -61,13 +60,12 @@ func MFAEnable(c *gin.Context) {
 func MFADisable(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req SetupMFAReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	var u models.User
 	if err := database.DB.First(&u, uid).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "用户不存在")
 		return
 	}
 	if !utils.VerifyMFACode(u.MFASecret, req.Code) {

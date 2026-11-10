@@ -27,7 +27,7 @@ func Overview(c *gin.Context) {
 	s := services.NewFinanceService(database.DB)
 	data, err := s.GetOverview(scope, uid, familyID)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failLoad(c)
 		return
 	}
 	utils.OK(c, data)
@@ -50,14 +50,14 @@ func OverviewChart(c *gin.Context) {
 	s := services.NewFinanceService(database.DB)
 	data, err := s.GetChartData(scope, uid, familyID, period)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failLoad(c)
 		return
 	}
 	utils.OK(c, data)
 }
 
 type SavePlanReq struct {
-	Scope            string  `json:"scope" binding:"required,oneof=personal family"`
+	Scope            string  `json:"scope"` // personal/family，合法性统一中文提示
 	EmergencyTarget  float64 `json:"emergencyTarget"`
 	PensionTarget    float64 `json:"pensionTarget"`
 	MonthlySurvivalCost float64 `json:"monthlySurvivalCost"`
@@ -77,8 +77,10 @@ type SavePlanReq struct {
 func SavePlan(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req SavePlanReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !requireScope(c, req.Scope) {
 		return
 	}
 	var targetID uint64
@@ -147,9 +149,15 @@ func SavePlan(c *gin.Context) {
 	}
 
 	if p.ID == 0 {
-		database.DB.Create(&p)
+		if err := database.DB.Create(&p).Error; err != nil {
+			failSave(c)
+			return
+		}
 	} else {
-		database.DB.Save(&p)
+		if err := database.DB.Save(&p).Error; err != nil {
+			failSave(c)
+			return
+		}
 	}
 	utils.OK(c, p)
 }

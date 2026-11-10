@@ -23,14 +23,14 @@ type SourceDetail struct {
 }
 
 type CreateTxReq struct {
-	Scope         string         `json:"scope" binding:"required,oneof=personal family"`
-	Type          string         `json:"type" binding:"required,oneof=income expense transfer"`
-	Category      string         `json:"category" binding:"required"`
+	Scope         string         `json:"scope"` // personal/family，合法性在业务校验统一给出中文提示
+	Type          string         `json:"type"`  // income/expense/transfer
+	Category      string         `json:"category"`
 	Amount        float64        `json:"amount"` // 正负由业务校验给出中文提示（金额必须大于 0）
 	Note          string         `json:"note"`
 	OccurredAt    int64          `json:"occurredAt"`
 	LoanRef       string         `json:"loanRef"`       // 偿还贷款关联，category=loan_repay 时必填："hf:1" / "cl:2" / "bm:3"
-	TargetBucket  string         `json:"targetBucket"`  // 收入目标桶：saving/investment/emergency/pension
+	TargetBucket  string         `json:"targetBucket"`  // 收入目标桶：saving/investment/emergency/pension/consumption
 	SourceBucket  string         `json:"sourceBucket"`  // 支出来源桶（单来源兼容）
 	SourceDetails []SourceDetail `json:"sourceDetails"` // 多来源明细：[{bucket, amount}, ...]
 }
@@ -124,6 +124,8 @@ func bucketLabelCN(bucket string) string {
 		return "养老金"
 	case "housing_fund":
 		return "公积金"
+	case "consumption":
+		return "消费额度"
 	}
 	return bucket
 }
@@ -153,39 +155,42 @@ func loanRefExists(loanRef string) bool {
 }
 
 // bucketBalance 指定来源桶的当前可用余额。
-// bucket: cash / saving / investment / emergency / pension / housing_fund
+// bucket: cash / saving / investment / emergency / pension / housing_fund / consumption
 //
 // 直接复用总览（GetOverview）的同一套口径 —— 来源标签上显示多少余额，
 // 校验就用多少，否则前端显示 9000 而后端按另一种算法算出 0，用户会看到
 // "明明有钱却提示余额不足"（公积金曾经就是这样）。
+//   - cash 分支返回 ov.RemainingBudget（剩余待支配，存钱/现金支出的可用额）
+//   - consumption 分支返回 ov.ConsumptionBalance（消费额度桶当前余额）
 func bucketBalance(scope string, uid uint64, familyID *uint64, bucket string) float64 {
+	return bucketBalances(scope, uid, familyID)[bucket]
+}
+
+// bucketBalances 一次拉取全部来源桶余额（多来源校验时避免多次全量聚合）。
+func bucketBalances(scope string, uid uint64, familyID *uint64) map[string]float64 {
 	svc := services.NewFinanceService(database.DB)
 	ov, err := svc.GetOverview(scope, uid, familyID)
 	if err != nil || ov == nil {
-		return 0
+		return map[string]float64{}
 	}
-	switch bucket {
-	case "cash":
-		return utils.Round2(ov.RemainingBudget)
-	case "saving":
-		return utils.Round2(ov.SavingBalance)
-	case "investment":
-		return utils.Round2(ov.InvestmentBalance)
-	case "emergency":
-		return utils.Round2(ov.EmergencyBalance)
-	case "pension":
-		return utils.Round2(ov.PensionBalance)
-	case "housing_fund":
-		return utils.Round2(ov.TotalHousingFund)
+	return map[string]float64{
+		"cash":         utils.Round2(ov.RemainingBudget),
+		"saving":       utils.Round2(ov.SavingBalance),
+		"investment":   utils.Round2(ov.InvestmentBalance),
+		"emergency":    utils.Round2(ov.EmergencyBalance),
+		"pension":      utils.Round2(ov.PensionBalance),
+		"housing_fund": utils.Round2(ov.TotalHousingFund),
+		"consumption":  utils.Round2(ov.ConsumptionBalance),
 	}
-	return 0
 }
 
 func CreateTx(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req CreateTxReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !requireScope(c, req.Scope) {
 		return
 	}
 	if req.Scope == models.TxScopeFamily {
@@ -200,80 +205,9 @@ func CreateTx(c *gin.Context) {
 		req.OccurredAt = time.Now().Unix()
 	}
 	req.Amount = utils.Round2(req.Amount) // 金额统一规范化到分
-	if req.Amount <= 0 {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "金额必须大于 0")
-		return
-	}
-	// 校验分类与类型匹配
-	switch req.Type {
-	case models.TxTypeIncome:
-		if !models.IsIncomeCategory(req.Category) {
-			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "非法的收入分类")
-			return
-		}
-	case models.TxTypeExpense:
-		if !models.IsExpenseCategory(req.Category) {
-			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "非法的支出分类")
-			return
-		}
-	case models.TxTypeTransfer:
-		if !models.IsTransferCategory(req.Category) {
-			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "非法的存钱分类")
-			return
-		}
-		// 转账分类自动写入 targetBucket
+	// 转账分类自动写入 targetBucket
+	if req.Type == models.TxTypeTransfer {
 		req.TargetBucket = models.BucketFromTransfer(req.Category)
-	}
-	// 偿还贷款需关联 loanRef
-	if req.Category == models.ExpenseLoanRepay {
-		if req.LoanRef == "" {
-			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请选择要偿还的贷款")
-			return
-		}
-		if !loanRefExists(req.LoanRef) {
-			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
-				"关联的贷款不存在（可能已被删除），请重新选择")
-			return
-		}
-	}
-	// 支出来源校验：按支出类别限制允许的来源桶
-	if req.Type == models.TxTypeExpense {
-		if len(req.SourceDetails) > 0 {
-			// 多来源模式：校验每个来源
-			var totalSource float64
-			for _, sd := range req.SourceDetails {
-				if !models.IsAllowedSourceBucket(req.Category, sd.Bucket) {
-					utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
-						fmt.Sprintf("支出类别 %s 不允许使用来源 %s", models.CategoryLabel[req.Category], sd.Bucket))
-					return
-				}
-				if sd.Amount <= 0 {
-					utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "各来源金额必须大于 0")
-					return
-				}
-				totalSource += sd.Amount
-			}
-			// 校验各来源金额之和等于总金额（精确到分）
-			if !utils.EqualMoney(totalSource, req.Amount) {
-				utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
-					fmt.Sprintf("各来源金额之和 (%.2f) 与总金额 (%.2f) 不一致", totalSource, req.Amount))
-				return
-			}
-		} else if req.SourceBucket != "" {
-			// 单来源兼容模式
-			if !models.IsAllowedSourceBucket(req.Category, req.SourceBucket) {
-				utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
-					fmt.Sprintf("支出类别 %s 不允许使用来源 %s", models.CategoryLabel[req.Category], req.SourceBucket))
-				return
-			}
-		}
-	}
-	// 投资收益可指定目标桶
-	if req.Category == models.IncomeInvestment && req.TargetBucket != "" {
-		if !isValidBucket(req.TargetBucket) {
-			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "目标桶无效")
-			return
-		}
 	}
 	// 序列化多来源明细
 	sourceDetailsJSON := ""
@@ -299,31 +233,16 @@ func CreateTx(c *gin.Context) {
 		database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m)
 		tx.FamilyID = &m.FamilyID
 	}
-	// 支出不能超过来源余额（单来源与多来源都校验）
-	if req.Type == models.TxTypeExpense {
-		if len(req.SourceDetails) > 0 {
-			for _, sd := range req.SourceDetails {
-				bal := bucketBalance(req.Scope, uid, tx.FamilyID, sd.Bucket)
-				if sd.Amount > bal+0.005 {
-					utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
-						fmt.Sprintf("「%s」余额不足：当前 %.2f 元，本次支出 %.2f 元",
-							bucketLabelCN(sd.Bucket), bal, sd.Amount))
-					return
-				}
-			}
-		} else if req.SourceBucket != "" {
-			bal := bucketBalance(req.Scope, uid, tx.FamilyID, req.SourceBucket)
-			if req.Amount > bal+0.005 {
-				utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest,
-					fmt.Sprintf("「%s」余额不足：当前 %.2f 元，本次支出 %.2f 元",
-						bucketLabelCN(req.SourceBucket), bal, req.Amount))
-				return
-			}
-		}
+	// 全面合法性判定：金额>0、分类合法、loanRef 存在性、支出来源合法、
+	// 支出来源余额充足、存钱金额 ≤ 待支配余额 —— 错误文案统一中文
+	balances := bucketBalances(req.Scope, uid, tx.FamilyID)
+	if msg := validateTxRule(&tx, balances, nil); msg != "" {
+		failBadRequest(c, msg)
+		return
 	}
 
 	if err := database.DB.Create(&tx).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failSave(c)
 		return
 	}
 
@@ -483,7 +402,7 @@ func DeleteTx(c *gin.Context) {
 	id := c.Param("id")
 	var tx models.Transaction
 	if err := database.DB.First(&tx, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "账单不存在")
 		return
 	}
 	if tx.UID != uid && middleware.MustRole(c) != "admin" {
@@ -494,7 +413,10 @@ func DeleteTx(c *gin.Context) {
 	if tx.Category == models.ExpenseLoanRepay {
 		applyLoanRef(tx.LoanRef, -tx.Amount)
 	}
-	database.DB.Delete(&tx)
+	if err := database.DB.Delete(&tx).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -560,7 +482,7 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 
 func isValidBucket(b string) bool {
 	switch b {
-	case "saving", "investment", "emergency", "pension":
+	case "saving", "investment", "emergency", "pension", "consumption":
 		return true
 	}
 	return false

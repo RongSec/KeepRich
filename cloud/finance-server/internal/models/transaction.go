@@ -139,13 +139,14 @@ func IsSalaryIncome(category string) bool {
 	return !NonSalaryIncomeCategories[category]
 }
 
-// AllowedSourceBuckets 各支出类别允许的来源桶
+// AllowedSourceBuckets 各支出类别允许的来源桶。
+// v0.5.1：新增消费额度桶（consumption），所有支出门类都可以用它作来源（与 cash 并列）。
 var AllowedSourceBuckets = map[string][]string{
-	ExpenseDaily:       {"cash"},                          // 日常消费：仅现金
-	ExpenseBigPurchase: {"cash", "saving"},                // 大件购物：现金、储蓄桶
-	ExpensePension:     {"pension"},                       // 养老：仅养老桶
-	ExpenseEmergency:   {"emergency"},                     // 应急：仅应急桶
-	ExpenseLoanRepay:   {"cash", "saving", "housing_fund"}, // 偿还贷款：现金、储蓄桶、公积金
+	ExpenseDaily:       {"cash", "consumption"},                          // 日常消费：现金、消费额度桶
+	ExpenseBigPurchase: {"cash", "saving", "consumption"},                // 大件购物：现金、储蓄桶、消费额度桶
+	ExpensePension:     {"pension", "consumption"},                       // 养老：养老桶、消费额度桶
+	ExpenseEmergency:   {"emergency", "consumption"},                     // 应急：应急桶、消费额度桶
+	ExpenseLoanRepay:   {"cash", "saving", "housing_fund", "consumption"}, // 偿还贷款：现金、储蓄桶、公积金、消费额度桶
 }
 
 // IsAllowedSourceBucket 校验支出类别的来源桶是否合法

@@ -162,7 +162,7 @@ func AdminListErrors(c *gin.Context) {
 func AdminDeleteError(c *gin.Context) {
 	id := c.Param("id")
 	if err := database.DB.Delete(&models.ErrorReport{}, id).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, gin.H{"ok": true})
@@ -171,7 +171,7 @@ func AdminDeleteError(c *gin.Context) {
 // AdminClearErrors 清空错误
 func AdminClearErrors(c *gin.Context) {
 	if err := database.DB.Where("1 = 1").Delete(&models.ErrorReport{}).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, gin.H{"ok": true})
@@ -185,8 +185,7 @@ type AdminResetPasswordReq struct {
 func AdminResetPassword(c *gin.Context) {
 	id := c.Param("id")
 	var req AdminResetPasswordReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	if msg := utils.ValidatePasswordStrength(req.NewPassword); msg != "" {
@@ -195,19 +194,19 @@ func AdminResetPassword(c *gin.Context) {
 	}
 	var u models.User
 	if err := database.DB.First(&u, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "用户不存在")
 		return
 	}
 	hash, err := utils.HashPassword(req.NewPassword)
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	if err := database.DB.Model(&u).Updates(map[string]interface{}{
 		"password_hash": hash,
 		"token_version": gorm.Expr("token_version + 1"),
 	}).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	// 管理员重置口令同样撤销该账号全部会话与设备凭据
@@ -220,7 +219,7 @@ func AdminResetMFA(c *gin.Context) {
 	id := c.Param("id")
 	var u models.User
 	if err := database.DB.First(&u, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "user not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "用户不存在")
 		return
 	}
 	if err := database.DB.Model(&u).Updates(map[string]interface{}{
@@ -228,7 +227,7 @@ func AdminResetMFA(c *gin.Context) {
 		"mfa_secret":       "",
 		"mfa_backup_codes": "",
 	}).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, gin.H{"ok": true})
@@ -239,7 +238,7 @@ func AdminFamilyStats(c *gin.Context) {
 	id := c.Param("id")
 	var f models.Family
 	if err := database.DB.First(&f, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "family not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "家庭不存在")
 		return
 	}
 	type countRow struct{ C int64 }
@@ -273,7 +272,7 @@ func AdminDeleteFamily(c *gin.Context) {
 	id := c.Param("id")
 	var f models.Family
 	if err := database.DB.First(&f, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "family not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "家庭不存在")
 		return
 	}
 	// 启动事务删除关联数据
@@ -305,7 +304,7 @@ func AdminDeleteFamily(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, gin.H{"ok": true})
