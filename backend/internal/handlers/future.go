@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -33,12 +34,12 @@ func resolveTarget(c *gin.Context, scope string) (targetID uint64, familyID *uin
 // ====== 公积金贷款 ======
 
 type HousingFundLoanReq struct {
-	Scope      string  `json:"scope" binding:"required,oneof=personal family"`
-	Name       string  `json:"name" binding:"required"`
-	Total      float64 `json:"total" binding:"required,gt=0"`
-	AnnualRate float64 `json:"annualRate" binding:"required,gte=0"`
-	TermMonths int     `json:"termMonths" binding:"required,gt=0"`
-	Method     string  `json:"method" binding:"required,oneof=equal_payment equal_capital"`
+	Scope      string  `json:"scope"` // personal/family，合法性由 validateLoanCommon 给出中文提示
+	Name       string  `json:"name"`
+	Total      float64 `json:"total"`
+	AnnualRate float64 `json:"annualRate"`
+	TermMonths int     `json:"termMonths"`
+	Method     string  `json:"method"` // equal_payment / equal_capital
 	StartMonth int64   `json:"startMonth"`
 	PaidMonths int     `json:"paidMonths"`
 	Interest   float64 `json:"interest"`   // 利息：与银行对账后可人工调整
@@ -62,8 +63,11 @@ func ListHousingFundLoans(c *gin.Context) {
 func CreateHousingFundLoan(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req HousingFundLoanReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateLoanCommon(c, req.Scope, req.Name, req.Method, req.Total, req.AnnualRate, req.TermMonths,
+		[]string{"equal_payment", "equal_capital"}) {
 		return
 	}
 	_, familyID, ok := resolveTarget(c, req.Scope)
@@ -85,7 +89,10 @@ func CreateHousingFundLoan(c *gin.Context) {
 		PaidAmount: req.PaidAmount,
 		Note:       req.Note,
 	}
-	database.DB.Create(&rec)
+	if err := database.DB.Create(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -94,7 +101,7 @@ func UpdateHousingFundLoan(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.HousingFundLoan
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "贷款不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
@@ -102,8 +109,11 @@ func UpdateHousingFundLoan(c *gin.Context) {
 		return
 	}
 	var req HousingFundLoanReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateLoanCommon(c, req.Scope, req.Name, req.Method, req.Total, req.AnnualRate, req.TermMonths,
+		[]string{"equal_payment", "equal_capital"}) {
 		return
 	}
 	rec.Name = req.Name
@@ -116,7 +126,10 @@ func UpdateHousingFundLoan(c *gin.Context) {
 	rec.Interest = req.Interest
 	rec.PaidAmount = req.PaidAmount
 	rec.Note = req.Note
-	database.DB.Save(&rec)
+	if err := database.DB.Save(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -125,26 +138,29 @@ func DeleteHousingFundLoan(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.HousingFundLoan
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "贷款不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权删除")
 		return
 	}
-	database.DB.Delete(&rec)
+	if err := database.DB.Delete(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }
 
 // ====== 商业贷款 ======
 
 type CommercialLoanReq struct {
-	Scope      string  `json:"scope" binding:"required,oneof=personal family"`
-	Name       string  `json:"name" binding:"required"`
-	Total      float64 `json:"total" binding:"required,gt=0"`
-	AnnualRate float64 `json:"annualRate" binding:"required,gte=0"`
-	TermMonths int     `json:"termMonths" binding:"required,gt=0"`
-	Method     string  `json:"method" binding:"required,oneof=equal_payment equal_capital"`
+	Scope      string  `json:"scope"` // personal/family
+	Name       string  `json:"name"`
+	Total      float64 `json:"total"`
+	AnnualRate float64 `json:"annualRate"`
+	TermMonths int     `json:"termMonths"`
+	Method     string  `json:"method"` // equal_payment / equal_capital
 	StartMonth int64   `json:"startMonth"`
 	PaidMonths int     `json:"paidMonths"`
 	Interest   float64 `json:"interest"`   // 利息：与银行对账后可人工调整
@@ -163,8 +179,11 @@ func ListCommercialLoans(c *gin.Context) {
 func CreateCommercialLoan(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req CommercialLoanReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateLoanCommon(c, req.Scope, req.Name, req.Method, req.Total, req.AnnualRate, req.TermMonths,
+		[]string{"equal_payment", "equal_capital"}) {
 		return
 	}
 	_, familyID, ok := resolveTarget(c, req.Scope)
@@ -186,7 +205,10 @@ func CreateCommercialLoan(c *gin.Context) {
 		PaidAmount: req.PaidAmount,
 		Note:       req.Note,
 	}
-	database.DB.Create(&rec)
+	if err := database.DB.Create(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -195,7 +217,7 @@ func UpdateCommercialLoan(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.CommercialLoan
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "贷款不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
@@ -203,8 +225,11 @@ func UpdateCommercialLoan(c *gin.Context) {
 		return
 	}
 	var req CommercialLoanReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateLoanCommon(c, req.Scope, req.Name, req.Method, req.Total, req.AnnualRate, req.TermMonths,
+		[]string{"equal_payment", "equal_capital"}) {
 		return
 	}
 	rec.Name = req.Name
@@ -217,7 +242,10 @@ func UpdateCommercialLoan(c *gin.Context) {
 	rec.Interest = req.Interest
 	rec.PaidAmount = req.PaidAmount
 	rec.Note = req.Note
-	database.DB.Save(&rec)
+	if err := database.DB.Save(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -226,26 +254,29 @@ func DeleteCommercialLoan(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.CommercialLoan
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "贷款不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权删除")
 		return
 	}
-	database.DB.Delete(&rec)
+	if err := database.DB.Delete(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }
 
 // ====== 借款 ======
 
 type BorrowedMoneyReq struct {
-	Scope      string  `json:"scope" binding:"required,oneof=personal family"`
-	Name       string  `json:"name" binding:"required"`
-	Total      float64 `json:"total" binding:"required,gt=0"`
-	AnnualRate float64 `json:"annualRate" binding:"gte=0"`
-	TermMonths int     `json:"termMonths" binding:"required,gt=0"`
-	Method     string  `json:"method" binding:"required,oneof=equal_payment equal_capital interest_free"`
+	Scope      string  `json:"scope"` // personal/family
+	Name       string  `json:"name"`
+	Total      float64 `json:"total"`
+	AnnualRate float64 `json:"annualRate"`
+	TermMonths int     `json:"termMonths"`
+	Method     string  `json:"method"` // equal_payment / equal_capital / interest_free
 	StartMonth int64   `json:"startMonth"`
 	PaidMonths int     `json:"paidMonths"`
 	Interest   float64 `json:"interest"`   // 利息：与银行对账后可人工调整
@@ -264,8 +295,11 @@ func ListBorrowedMoney(c *gin.Context) {
 func CreateBorrowedMoney(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req BorrowedMoneyReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateLoanCommon(c, req.Scope, req.Name, req.Method, req.Total, req.AnnualRate, req.TermMonths,
+		[]string{"equal_payment", "equal_capital", "interest_free"}) {
 		return
 	}
 	_, familyID, ok := resolveTarget(c, req.Scope)
@@ -287,7 +321,10 @@ func CreateBorrowedMoney(c *gin.Context) {
 		PaidAmount: req.PaidAmount,
 		Note:       req.Note,
 	}
-	database.DB.Create(&rec)
+	if err := database.DB.Create(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -296,7 +333,7 @@ func UpdateBorrowedMoney(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.BorrowedMoney
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "借款不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
@@ -304,8 +341,11 @@ func UpdateBorrowedMoney(c *gin.Context) {
 		return
 	}
 	var req BorrowedMoneyReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateLoanCommon(c, req.Scope, req.Name, req.Method, req.Total, req.AnnualRate, req.TermMonths,
+		[]string{"equal_payment", "equal_capital", "interest_free"}) {
 		return
 	}
 	rec.Name = req.Name
@@ -318,7 +358,10 @@ func UpdateBorrowedMoney(c *gin.Context) {
 	rec.Interest = req.Interest
 	rec.PaidAmount = req.PaidAmount
 	rec.Note = req.Note
-	database.DB.Save(&rec)
+	if err := database.DB.Save(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -327,27 +370,59 @@ func DeleteBorrowedMoney(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.BorrowedMoney
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "借款不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权删除")
 		return
 	}
-	database.DB.Delete(&rec)
+	if err := database.DB.Delete(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }
 
 // ====== 未来利益 ======
 
 type FutureBenefitReq struct {
-	Scope        string  `json:"scope" binding:"required,oneof=personal family"`
-	Name         string  `json:"name" binding:"required"`
-	Type         string  `json:"type" binding:"required,oneof=monthly yearly lump_sum lifetime custom_years"`
-	PayoutDate   int64   `json:"payoutDate" binding:"required"`   // 一次性：发放日期；逐月/年/终身/自定义：开始发放时间
-	PayoutAmount float64 `json:"payoutAmount" binding:"required"` // 一次性：发放额；逐月：每月发放额；按年：每年发放额；终身/自定义：每月发放额
-	CustomYears  int     `json:"customYears"`                     // 自定义年限（仅 type=custom_years 用）
+	Scope        string  `json:"scope"` // personal/family
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`         // monthly / yearly / lump_sum / lifetime / custom_years
+	PayoutDate   int64   `json:"payoutDate"`   // 一次性：发放日期；逐月/年/终身/自定义：开始发放时间
+	PayoutAmount float64 `json:"payoutAmount"` // 一次性：发放额；逐月：每月发放额；按年：每年发放额；终身/自定义：每月发放额
+	CustomYears  int     `json:"customYears"`  // 自定义年限（仅 type=custom_years 用）
 	Note         string  `json:"note"`
+}
+
+// validateBenefitReq 未来利益录入的合法性判定（必填齐全、金额>0、类型合法），文案统一中文。
+func validateBenefitReq(c *gin.Context, req *FutureBenefitReq) bool {
+	if !requireScope(c, req.Scope) {
+		return false
+	}
+	if !requireText(c, req.Name, "名称") {
+		return false
+	}
+	switch req.Type {
+	case "monthly", "yearly", "lump_sum", "lifetime", "custom_years":
+	default:
+		failBadRequest(c, "发放方式不正确")
+		return false
+	}
+	if req.PayoutDate == 0 {
+		failBadRequest(c, "请填写发放时间")
+		return false
+	}
+	if req.PayoutAmount <= 0 {
+		failBadRequest(c, "请填写有效的发放金额")
+		return false
+	}
+	if req.Type == "custom_years" && req.CustomYears <= 0 {
+		failBadRequest(c, "请填写自定义年限")
+		return false
+	}
+	return true
 }
 
 func ListFutureBenefits(c *gin.Context) {
@@ -361,20 +436,14 @@ func ListFutureBenefits(c *gin.Context) {
 func CreateFutureBenefit(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req FutureBenefitReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
+		return
+	}
+	if !validateBenefitReq(c, &req) {
 		return
 	}
 	_, familyID, ok := resolveTarget(c, req.Scope)
 	if !ok {
-		return
-	}
-	if req.PayoutDate == 0 {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请填写发放时间")
-		return
-	}
-	if req.PayoutAmount <= 0 {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "请填写有效的发放金额")
 		return
 	}
 	rec := models.FutureBenefit{
@@ -388,7 +457,10 @@ func CreateFutureBenefit(c *gin.Context) {
 		CustomYears:  req.CustomYears,
 		Note:         req.Note,
 	}
-	database.DB.Create(&rec)
+	if err := database.DB.Create(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -397,7 +469,7 @@ func UpdateFutureBenefit(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.FutureBenefit
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "未来利益不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
@@ -405,8 +477,7 @@ func UpdateFutureBenefit(c *gin.Context) {
 		return
 	}
 	var req FutureBenefitReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	if req.PayoutDate > 0 {
@@ -427,7 +498,22 @@ func UpdateFutureBenefit(c *gin.Context) {
 	if req.Note != "" {
 		rec.Note = req.Note
 	}
-	database.DB.Save(&rec)
+	// 合并后按终态做合法性判定（部分字段可不传）
+	merged := FutureBenefitReq{
+		Scope:        rec.Scope,
+		Name:         rec.Name,
+		Type:         rec.Type,
+		PayoutDate:   rec.PayoutDate,
+		PayoutAmount: rec.PayoutAmount,
+		CustomYears:  rec.CustomYears,
+	}
+	if !validateBenefitReq(c, &merged) {
+		return
+	}
+	if err := database.DB.Save(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, rec)
 }
 
@@ -436,14 +522,17 @@ func DeleteFutureBenefit(c *gin.Context) {
 	id := c.Param("id")
 	var rec models.FutureBenefit
 	if err := database.DB.First(&rec, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "未来利益不存在")
 		return
 	}
 	if rec.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权删除")
 		return
 	}
-	database.DB.Delete(&rec)
+	if err := database.DB.Delete(&rec).Error; err != nil {
+		failSave(c)
+		return
+	}
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -704,8 +793,7 @@ func UpdateFamilyMember(c *gin.Context) {
 	}
 	id := c.Param("id")
 	var req UpdateFamilyMemberReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	var target models.FamilyMember
@@ -821,7 +909,7 @@ func ForceDeleteFamily(c *gin.Context) {
 		return tx.Delete(&models.Family{}, familyID).Error
 	})
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failSave(c)
 		return
 	}
 	utils.OK(c, gin.H{"ok": true, "message": "家庭已解散"})
@@ -879,46 +967,88 @@ func MonthlyInvestmentCheck(c *gin.Context) {
 }
 
 // PutTx 编辑账单
+//
+// 修改后按与新建同一套规则全量校验（金额>0、分类合法、loanRef、来源合法、余额充足）。
+// 余额校验先回滚旧账单的桶占用再比 —— 否则「把小额账单改成超额」可以绕过校验。
+// 改账同步维护贷款已还本金（旧账回滚、新账应用），避免贷款进度漂移。
 func PutTx(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	id := c.Param("id")
-	var tx models.Transaction
-	if err := database.DB.First(&tx, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "not found")
+	var old models.Transaction
+	if err := database.DB.First(&old, id).Error; err != nil {
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "账单不存在")
 		return
 	}
-	if tx.UID != uid && middleware.MustRole(c) != "admin" {
+	if old.UID != uid && middleware.MustRole(c) != "admin" {
 		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "无权修改")
 		return
 	}
 	var req CreateTxReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
+	// 合并（沿用"仅覆盖显式提供字段"的既有语义）
+	merged := old
 	if req.Type != "" {
-		tx.Type = req.Type
+		merged.Type = req.Type
 	}
 	if req.Category != "" {
-		tx.Category = req.Category
+		merged.Category = req.Category
 	}
-	if req.Amount > 0 {
-		tx.Amount = utils.Round2(req.Amount)
+	if req.Amount != 0 {
+		if req.Amount < 0 {
+			failBadRequest(c, "金额必须大于 0")
+			return
+		}
+		merged.Amount = utils.Round2(req.Amount)
 	}
 	if req.Note != "" {
-		tx.Note = req.Note
+		merged.Note = req.Note
 	}
 	if req.OccurredAt > 0 {
-		tx.OccurredAt = req.OccurredAt
+		merged.OccurredAt = req.OccurredAt
 	}
 	if req.LoanRef != "" {
-		tx.LoanRef = req.LoanRef
+		merged.LoanRef = req.LoanRef
 	}
 	if req.TargetBucket != "" {
-		tx.TargetBucket = req.TargetBucket
+		merged.TargetBucket = req.TargetBucket
 	}
-	database.DB.Save(&tx)
-	utils.OK(c, tx)
+	if merged.Type == models.TxTypeTransfer {
+		// 存钱分类与目标桶联动（与 CreateTx 同口径）
+		if b := models.BucketFromTransfer(merged.Category); b != "" {
+			merged.TargetBucket = b
+		}
+	}
+	if len(req.SourceDetails) > 0 {
+		b, _ := json.Marshal(req.SourceDetails)
+		merged.SourceDetails = string(b)
+		merged.SourceBucket = req.SourceBucket
+	} else if req.SourceBucket != "" {
+		merged.SourceBucket = req.SourceBucket
+		merged.SourceDetails = ""
+	}
+
+	// 回滚旧账单占用后全量重校验（含存钱 ≤ 待支配余额）
+	rollback := bucketDraws(&old)
+	balances := bucketBalances(merged.Scope, uid, merged.FamilyID)
+	if msg := validateTxRule(&merged, balances, rollback); msg != "" {
+		failBadRequest(c, msg)
+		return
+	}
+
+	if err := database.DB.Save(&merged).Error; err != nil {
+		failSave(c)
+		return
+	}
+	// 偿还贷款：回滚旧账单影响、应用新账单
+	if old.Category == models.ExpenseLoanRepay {
+		applyLoanRef(old.LoanRef, -old.Amount)
+	}
+	if merged.Category == models.ExpenseLoanRepay {
+		applyLoanRef(merged.LoanRef, merged.Amount)
+	}
+	utils.OK(c, merged)
 }
 
 // 查询参数辅助

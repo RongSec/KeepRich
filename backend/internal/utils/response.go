@@ -35,6 +35,9 @@ const (
 	MsgTokenInvalid            = "登录已失效，请重新登录"
 	MsgRequestFormat           = "请求格式不正确"
 	MsgRegisterFailed          = "注册失败，请稍后再试"
+	MsgSaveFailed              = "保存失败，请稍后再试"
+	MsgLoadFailed              = "加载失败，请稍后再试"
+	MsgOpFailed                = "操作失败，请稍后再试"
 
 	MsgInviteEmpty     = "请输入邀请码"
 	MsgInviteFormat    = "邀请码格式不正确"

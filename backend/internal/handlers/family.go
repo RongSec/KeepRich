@@ -43,8 +43,7 @@ type RequestDeleteFamilyReq struct {
 func CreateFamily(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req CreateFamilyReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	// 已加入家庭则不能再创建
@@ -55,7 +54,7 @@ func CreateFamily(c *gin.Context) {
 	}
 	code, err := utils.GenerateFamilyCode()
 	if err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	f := models.Family{
@@ -65,7 +64,7 @@ func CreateFamily(c *gin.Context) {
 		Description: req.Description,
 	}
 	if err := database.DB.Create(&f).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	m := models.FamilyMember{
@@ -98,7 +97,7 @@ func MyFamily(c *gin.Context) {
 	}
 	var f models.Family
 	if err := database.DB.First(&f, m.FamilyID).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "family not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "家庭不存在")
 		return
 	}
 	utils.OK(c, gin.H{"family": f, "member": m})
@@ -108,8 +107,7 @@ func MyFamily(c *gin.Context) {
 func ApplyJoin(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req JoinFamilyReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	var f models.Family
@@ -154,7 +152,7 @@ func ListJoinRequests(c *gin.Context) {
 	}
 	var rs []models.FamilyJoinRequest
 	if err := database.DB.Where("family_id = ? AND status = ?", m.FamilyID, models.MemberStatusPending).Order("id DESC").Find(&rs).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, rs)
@@ -165,8 +163,7 @@ func ListJoinRequests(c *gin.Context) {
 func ApproveJoin(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req ApproveJoinReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	var m models.FamilyMember
@@ -231,7 +228,7 @@ func ApproveJoin(c *gin.Context) {
 			utils.Fail(c, http.StatusConflict, utils.CodeConflict, "该申请已处理")
 			return
 		}
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 
@@ -261,8 +258,7 @@ var errAlreadyHandled = errors.New("request already handled")
 func TransferAdmin(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req TransferAdminReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	var f models.Family
@@ -285,8 +281,7 @@ func TransferAdmin(c *gin.Context) {
 func RequestDeleteFamily(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	var req RequestDeleteFamilyReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 
@@ -312,7 +307,7 @@ func RequestDeleteFamily(c *gin.Context) {
 		ExecuteAt: now.Add(7 * 24 * time.Hour).Unix(), // 冷静期 7 天
 	}
 	if err := database.DB.Create(&r).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 
@@ -353,8 +348,7 @@ func VoteDeleteFamily(c *gin.Context) {
 		RequestID uint64 `json:"requestId" binding:"required"`
 		Vote      bool   `json:"vote"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 
@@ -417,7 +411,7 @@ func VoteDeleteFamily(c *gin.Context) {
 			"status":      "approved",
 			"approved_at": now,
 		}).Error; err != nil {
-			utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+			failInternal(c)
 			return
 		}
 		// 通知全体成员
@@ -479,7 +473,7 @@ func CancelDeleteFamily(c *gin.Context) {
 	id := c.Param("id")
 	var r models.DeleteFamilyRequest
 	if err := database.DB.First(&r, id).Error; err != nil {
-		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "request not found")
+		utils.Fail(c, http.StatusNotFound, utils.CodeNotFound, "申请不存在")
 		return
 	}
 	// 发起人或家庭管理员可取消
@@ -555,7 +549,7 @@ func SyncPersonalData(c *gin.Context) {
 
 	merger := services.NewFamilyMergeService(database.DB)
 	if err := merger.MergePersonalToFamily(uid, m.FamilyID); err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 	utils.OK(c, gin.H{"ok": true, "message": "个人数据已同步到家庭空间"})

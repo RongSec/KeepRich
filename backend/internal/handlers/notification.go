@@ -33,12 +33,12 @@ var wsUpgrader = websocket.Upgrader{
 // WS WebSocket 入口（支持 ?token= 查询参数鉴权，浏览器 WS 无法带 Authorization 头）
 func WS(c *gin.Context) {
 	if !config.C.Notify.WSEnabled {
-		utils.Fail(c, http.StatusServiceUnavailable, utils.CodeServer, "ws disabled")
+		utils.Fail(c, http.StatusServiceUnavailable, utils.CodeServer, "实时通知未启用")
 		return
 	}
 	uid := middleware.MustUID(c)
 	if uid == 0 {
-		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, "unauthorized")
+		utils.Fail(c, http.StatusUnauthorized, utils.CodeUnauthorized, utils.MsgTokenInvalid)
 		return
 	}
 	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
@@ -77,7 +77,7 @@ func ListNotifications(c *gin.Context) {
 
 	var list []models.Notification
 	if err := q.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&list).Error; err != nil {
-		utils.Fail(c, http.StatusInternalServerError, utils.CodeServer, err.Error())
+		failInternal(c)
 		return
 	}
 
@@ -100,7 +100,7 @@ func MarkNotificationRead(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "invalid id")
+		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "参数不正确")
 		return
 	}
 	res := database.DB.Model(&models.Notification{}).
