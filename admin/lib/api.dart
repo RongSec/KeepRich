@@ -157,4 +157,42 @@ class ApiClient {
     final r = await _dio.delete(path);
     return _asMap(r.data);
   }
+
+  /// 邀请码列表（状态筛选 + 关键字 + 分页）。
+  Future<Map<String, dynamic>> listInvites({
+    String status = 'all',
+    String keyword = '',
+    int page = 1,
+    int size = 20,
+  }) async {
+    final r = await _dio.get('/admin/invite-codes', queryParameters: {
+      'status': status,
+      'keyword': keyword,
+      'page': page,
+      'size': size,
+    });
+    return _asMap(r.data);
+  }
+
+  /// 批量生成邀请码（一次最多 20 个）。
+  Future<Map<String, dynamic>> generateInvites({
+    int count = 1,
+    int maxUses = 1,
+    int expiresInDays = 7,
+    String note = '',
+  }) async {
+    final r = await _dio.post('/admin/invite-codes', data: {
+      'count': count,
+      'maxUses': maxUses,
+      'expiresInDays': expiresInDays,
+      'note': note,
+    });
+    return _asMap(r.data);
+  }
+
+  /// 撤销未使用的邀请码（已用完 / 已过期不可撤销）。
+  Future<Map<String, dynamic>> revokeInvite(int id) async {
+    final r = await _dio.post('/admin/invite-codes/$id/revoke');
+    return _asMap(r.data);
+  }
 }

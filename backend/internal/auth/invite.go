@@ -76,7 +76,7 @@ func (s *InviteService) Create(p CreateInviteParams) ([]models.InviteCode, error
 	}
 	cfg := config.AuthParams()
 	count := p.Count
-	if count <= 0 || count > 5 {
+	if count <= 0 || count > 20 {
 		count = 1
 	}
 	maxUses := p.MaxUses

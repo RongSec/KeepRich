@@ -65,7 +65,7 @@ const (
 	MsgTooFrequent           = "操作过于频繁，请稍后再试"
 	MsgGenerateFrequent      = "生成过于频繁，请稍后再试"
 	MsgNoteTooLong           = "备注最多 32 个字"
-	MsgInviteCountRange      = "一次最多生成 5 个"
+	MsgInviteCountRange      = "一次最多生成 20 个"
 	MsgInviteTTLRange        = "有效期只能选择 1 天、7 天或 30 天"
 	MsgInviteMaxUses         = "可用次数只能是 1 到 50"
 	MsgInviteGenerated       = "邀请码已生成，请复制后发给家人"

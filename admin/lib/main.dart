@@ -6,6 +6,7 @@ import 'pages/audit_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/errors_page.dart';
 import 'pages/families_page.dart';
+import 'pages/invites_page.dart';
 import 'pages/login_page.dart';
 import 'pages/users_page.dart';
 
@@ -70,6 +71,7 @@ class _AdminAppState extends State<AdminApp> {
           GoRoute(path: '/dashboard', builder: (_, __) => const DashboardPage()),
           GoRoute(path: '/users', builder: (_, __) => const UsersPage()),
           GoRoute(path: '/families', builder: (_, __) => const FamiliesPage()),
+          GoRoute(path: '/invites', builder: (_, __) => const InvitesPage()),
           GoRoute(path: '/audit', builder: (_, __) => const AuditPage()),
           GoRoute(path: '/errors', builder: (_, __) => const ErrorsPage()),
         ],
@@ -88,8 +90,9 @@ class AdminShell extends StatelessWidget {
     int idx = 0;
     if (loc.startsWith('/users')) idx = 1;
     if (loc.startsWith('/families')) idx = 2;
-    if (loc.startsWith('/audit')) idx = 3;
-    if (loc.startsWith('/errors')) idx = 4;
+    if (loc.startsWith('/invites')) idx = 3;
+    if (loc.startsWith('/audit')) idx = 4;
+    if (loc.startsWith('/errors')) idx = 5;
     return Scaffold(
       body: Row(
         children: [
@@ -101,8 +104,9 @@ class AdminShell extends StatelessWidget {
                 case 0: context.go('/dashboard'); break;
                 case 1: context.go('/users'); break;
                 case 2: context.go('/families'); break;
-                case 3: context.go('/audit'); break;
-                case 4: context.go('/errors'); break;
+                case 3: context.go('/invites'); break;
+                case 4: context.go('/audit'); break;
+                case 5: context.go('/errors'); break;
               }
             },
             leading: const Padding(
@@ -113,6 +117,7 @@ class AdminShell extends StatelessWidget {
               NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('总览')),
               NavigationRailDestination(icon: Icon(Icons.people), label: Text('用户')),
               NavigationRailDestination(icon: Icon(Icons.family_restroom), label: Text('家庭')),
+              NavigationRailDestination(icon: Icon(Icons.vpn_key), label: Text('邀请码')),
               NavigationRailDestination(icon: Icon(Icons.assignment), label: Text('审计')),
               NavigationRailDestination(icon: Icon(Icons.bug_report), label: Text('错误')),
             ],
