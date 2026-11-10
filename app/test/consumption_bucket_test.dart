@@ -271,16 +271,41 @@ void main() {
       await tester.pump();
       expect(find.text('消费额度 金额'), findsOneWidget);
 
-      // 消费额度超出自身余额被拦下
+      // 消费额度超出自身余额：**允许透支**（用户拍板，超支计入下月扣减），
+      // 内联黄条实时提示，但不拦、仍发到后端
+      await tester.enterText(
+          find.widgetWithText(TextField, '可支配额度 金额'), '100');
       await tester.enterText(
           find.widgetWithText(TextField, '消费额度 金额'), '999');
+      await tester.pump();
+      // 提交前内联警告条就已显示（用户输入时即可见）
+      expect(find.textContaining('本次将透支'), findsOneWidget,
+          reason: '透支警告应在输入时实时显示');
+      await tester.ensureVisible(find.text('保存'));
+      await tester.pump();
+      await tester.tap(find.text('保存'));
+      await _settle(tester);
+      expect(txPosts, 1, reason: '消费额度透支应放行并发到后端');
+      await _burnPendingTimers(tester);
+    });
+
+    testWidgets('其它桶超额仍硬拦：只有消费额度桶能透支', (tester) async {
+      serveDefault();
+      await tester.pumpWidget(const MaterialApp(home: BookkeepingPage()));
+      await _settle(tester);
+
+      await tester.tap(find.text('记支出'));
+      await _settle(tester);
+
+      // 单来源（默认可支配额度）超额 → 硬拦，不得发到后端
+      await tester.enterText(find.widgetWithText(TextField, '金额'), '99999');
       await tester.pump();
       await tester.ensureVisible(find.text('保存'));
       await tester.pump();
       await tester.tap(find.text('保存'));
       await tester.pump();
-      expect(txPosts, 0, reason: '来源超额不得发到后端');
-      expect(find.textContaining('消费额度余额不足'), findsOneWidget);
+      expect(txPosts, 0, reason: '非消费桶超额不得发到后端');
+      expect(find.textContaining('可支配额度余额不足'), findsOneWidget);
       await _burnPendingTimers(tester);
     });
 

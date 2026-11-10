@@ -1099,6 +1099,31 @@ class _AddTxSheetState extends State<_AddTxSheet> {
 
   String _fmt(double v) => NumberFormat('#,##0.00').format(v);
 
+  /// 消费额度透支警告（实时、不阻断）：超支计入月末结转、下月额度扣减。
+  /// 消费额度桶是唯一允许透支的桶，所以这里只提示；其余桶仍硬拦。
+  String? get _consumptionOverdrawWarn {
+    if (_type != TxType.expense) return null;
+    var over = 0.0;
+    var hit = false;
+    void check(String src, double amt) {
+      if (src != 'consumption') return;
+      final bal = _bucketBalances[src];
+      if (bal == null || amt <= bal + 0.005) return;
+      hit = true;
+      over = amt - bal;
+    }
+
+    if (_selectedSources.length > 1) {
+      for (final src in _selectedSources) {
+        check(src, double.tryParse(_sourceControllers[src]?.text ?? '') ?? 0);
+      }
+    } else if (_selectedSources.isNotEmpty) {
+      check(_selectedSources.first, double.tryParse(_amount.text) ?? 0);
+    }
+    if (!hit) return null;
+    return '本次将透支 ${_fmt(over)} 元，下月额度会被扣减';
+  }
+
   /// 存钱金额是否超出待支配余额（输入时就地红字提示 + 提交前拦下）
   bool get _transferOverBalance {
     if (_type != TxType.transfer) return false;
@@ -1362,26 +1387,39 @@ class _AddTxSheetState extends State<_AddTxSheet> {
         return;
       }
     }
-    // 支出：各来源金额分别不超过对应桶余额
+    // 支出：各来源金额分别校验。
+    // 口径（用户拍板）：**消费额度桶允许透支**（超支计入月末结转、下月额度扣减），
+    // 只提示不拦；其余桶（待支配/储蓄/投资/应急/养老/公积金）余额不足硬拦。
     if (_type == TxType.expense) {
+      String? blockMsg;
+      String? warnMsg;
+      void checkSource(String src, double amt) {
+        final bal = _bucketBalances[src];
+        if (bal == null || amt <= bal + 0.005) return;
+        final label = TxCategory.sourceBucketLabels[src] ?? src;
+        if (src == 'consumption') {
+          warnMsg ??= '本次将透支 ${_fmt(amt - bal)} 元，下月额度会被扣减';
+        } else {
+          blockMsg ??= '$label余额不足（当前 ${_fmt(bal)} 元）';
+        }
+      }
+
       if (_selectedSources.length > 1) {
         for (final src in _selectedSources) {
-          final amt = double.tryParse(_sourceControllers[src]?.text ?? '') ?? 0;
-          final bal = _bucketBalances[src];
-          if (bal != null && amt > bal + 0.005) {
-            _showTopSnack(
-                '${TxCategory.sourceBucketLabels[src] ?? src}余额不足（当前 ${_fmt(bal)} 元）');
-            return;
-          }
+          checkSource(src,
+              double.tryParse(_sourceControllers[src]?.text ?? '') ?? 0);
         }
       } else {
-        final src = _selectedSources.first;
-        final bal = _bucketBalances[src];
-        if (bal != null && v > bal + 0.005) {
-          _showTopSnack(
-              '${TxCategory.sourceBucketLabels[src] ?? src}余额不足（当前 ${_fmt(bal)} 元）');
-          return;
-        }
+        checkSource(_selectedSources.first, v);
+      }
+      if (blockMsg != null) {
+        _showTopSnack(blockMsg!);
+        return;
+      }
+      // 消费额度透支只提示不阻断：内联黄条已实时显示（_consumptionOverdrawWarn），
+      // 这里再用 SnackBar 兜一次，确保提交瞬间也有反馈。
+      if (warnMsg != null) {
+        _showTopSnack(warnMsg!);
       }
     }
 
@@ -1835,6 +1873,29 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             controller: _note,
             decoration: const InputDecoration(labelText: '备注（可选）'),
           ),
+          // 透支警告条（黄）：消费额度桶允许透支，提示下月扣减，不阻断提交
+          if (_consumptionOverdrawWarn != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB300).withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFFFFB300).withValues(alpha: 0.55)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.warning_amber_outlined,
+                    size: 16, color: Color(0xFFFFD54F)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(_consumptionOverdrawWarn!,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: Color(0xFFFFD54F))),
+                ),
+              ]),
+            ),
+          ],
           // 内联错误条：放在保存上方，键盘弹起时也一定可见
           if (_formError != null) ...[
             const SizedBox(height: 10),

@@ -174,25 +174,44 @@ func TestExpenseFromConsumptionAccepted(t *testing.T) {
 	}
 }
 
-// TestExpenseOverConsumptionBalanceRejected 支出超过消费桶余额被拒（中文文案）
-func TestExpenseOverConsumptionBalanceRejected(t *testing.T) {
+// TestExpenseOverConsumptionOverdrawAllowed 消费额度桶**允许透支**（用户拍板：
+// "上月多消费的下月全额扣除"）。超支记账放行，余额变负，下月由月末结转扣减。
+func TestExpenseOverConsumptionOverdrawAllowed(t *testing.T) {
 	_, uid := txTestDB(t)
 	seedSalary(t, uid)
 	w := callJSON(t, uid, "POST",
 		`{"scope":"personal","type":"expense","category":"daily","amount":2600,"sourceBucket":"consumption"}`,
 		CreateTx, nil)
+	if w.Code != 200 {
+		t.Fatalf("消费桶超支应允许透支放行，实际 %d（%s）", w.Code, w.Body.String())
+	}
+	ov := overview(t, uid)
+	if ov.ConsumptionBalance != -100 {
+		t.Fatalf("透支后消费桶余额 = %.2f，期望 -100.00（2500 − 2600）", ov.ConsumptionBalance)
+	}
+}
+
+// TestExpenseOverOtherBucketRejected 其它桶（储蓄/投资/应急/养老/公积金/待支配）
+// 余额不足**硬拦**，只有消费额度桶能透支。
+func TestExpenseOverOtherBucketRejected(t *testing.T) {
+	_, uid := txTestDB(t)
+	seedSalary(t, uid)
+	w := callJSON(t, uid, "POST",
+		`{"scope":"personal","type":"expense","category":"big_purchase","amount":99999,"sourceBucket":"saving"}`,
+		CreateTx, nil)
 	resp := decodeResp(t, w)
 	if w.Code != 400 {
-		t.Fatalf("超消费桶余额应被拒，实际 %d（%s）", w.Code, w.Body.String())
+		t.Fatalf("储蓄桶超额应被拒，实际 %d（%s）", w.Code, w.Body.String())
 	}
-	want := "「消费额度」余额不足：当前 2500.00 元，本次支出 2600.00 元"
+	want := "「储蓄桶」余额不足：当前 0.00 元，本次支出 99999.00 元"
 	if resp.Message != want {
 		t.Fatalf("文案 = %q，期望 %q", resp.Message, want)
 	}
 }
 
-// TestPutTxOverdrawRejected PutTx 改成超额被拒；回滚旧账后合法调整放行
-func TestPutTxOverdrawRejected(t *testing.T) {
+// TestPutTxOverdrawAndRollback PutTx：消费桶透支放行；改成其它桶超额被拒；
+// 回滚旧账后的合法调整放行。
+func TestPutTxOverdrawAndRollback(t *testing.T) {
 	db, uid := txTestDB(t)
 	seedSalary(t, uid)
 	// 建两笔消费桶支出：1500 + 800，消费桶余额剩 200
@@ -214,22 +233,29 @@ func TestPutTxOverdrawRejected(t *testing.T) {
 	}
 	params := gin.Params{{Key: "id", Value: strconv.FormatUint(created.ID, 10)}}
 
-	// 改成 1800：回滚 1500 后可用 = 200 + 1500 = 1700 < 1800 → 拒
+	// 改成 1800（消费桶）：透支允许 → 放行
 	w3 := callJSON(t, uid, "PUT",
 		`{"amount":1800,"sourceBucket":"consumption"}`, PutTx, params)
-	resp3 := decodeResp(t, w3)
-	if w3.Code != 400 {
-		t.Fatalf("改成超额应被拒，实际 %d（%s）", w3.Code, w3.Body.String())
+	if w3.Code != 200 {
+		t.Fatalf("消费桶透支应放行，实际 %d（%s）", w3.Code, w3.Body.String())
 	}
-	want := "「消费额度」余额不足：当前 1700.00 元，本次支出 1800.00 元"
-	if resp3.Message != want {
-		t.Fatalf("文案 = %q，期望 %q", resp3.Message, want)
-	}
-	// 改成 1600：≤1700 → 放行
+	// 改成走储蓄桶超额：硬拦（回滚 1800 后储蓄桶可用 = 0）
+	// 注意 daily 不允许 saving 来源，需同时改成 big_purchase
 	w4 := callJSON(t, uid, "PUT",
+		`{"amount":1800,"category":"big_purchase","sourceBucket":"saving"}`, PutTx, params)
+	resp4 := decodeResp(t, w4)
+	if w4.Code != 400 {
+		t.Fatalf("储蓄桶超额应被拒，实际 %d（%s）", w4.Code, w4.Body.String())
+	}
+	want := "「储蓄桶」余额不足：当前 0.00 元，本次支出 1800.00 元"
+	if resp4.Message != want {
+		t.Fatalf("文案 = %q，期望 %q", resp4.Message, want)
+	}
+	// 改成 1600（消费桶）：回滚后合法调整放行
+	w5 := callJSON(t, uid, "PUT",
 		`{"amount":1600,"sourceBucket":"consumption"}`, PutTx, params)
-	if w4.Code != 200 {
-		t.Fatalf("回滚后合法调整应放行，实际 %d（%s）", w4.Code, w4.Body.String())
+	if w5.Code != 200 {
+		t.Fatalf("回滚后合法调整应放行，实际 %d（%s）", w5.Code, w5.Body.String())
 	}
 	if got := overview(t, uid).ConsumptionBalance; got != 100 {
 		t.Fatalf("改账后消费桶余额 = %.2f，期望 100.00（2500 − 1600 − 800）", got)
@@ -262,18 +288,26 @@ func TestMultiSourcePerBucketValidation(t *testing.T) {
 	if ov.SavingBalance != 600 {
 		t.Fatalf("储蓄桶余额 = %.2f，期望 600.00", ov.SavingBalance)
 	}
-	// 多来源：consumption 2600 超余额（1900）→ 只拦超的那个来源
+	// 多来源：consumption 2600 超余额（1900）→ 消费桶允许透支，整体放行
 	w2 := callJSON(t, uid, "POST",
 		`{"scope":"personal","type":"expense","category":"big_purchase","amount":2700,
 		  "sourceDetails":[{"bucket":"consumption","amount":2600},{"bucket":"saving","amount":100}]}`,
 		CreateTx, nil)
-	resp2 := decodeResp(t, w2)
-	if w2.Code != 400 {
-		t.Fatalf("多来源超额应被拒，实际 %d（%s）", w2.Code, w2.Body.String())
+	if w2.Code != 200 {
+		t.Fatalf("消费桶透支应放行，实际 %d（%s）", w2.Code, w2.Body.String())
 	}
-	want := "「消费额度」余额不足：当前 1900.00 元，本次支出 2600.00 元"
-	if resp2.Message != want {
-		t.Fatalf("文案 = %q，期望 %q", resp2.Message, want)
+	// 多来源：saving 99999 超余额 → 硬拦（非消费桶）
+	w3 := callJSON(t, uid, "POST",
+		`{"scope":"personal","type":"expense","category":"big_purchase","amount":99999,
+		  "sourceDetails":[{"bucket":"consumption","amount":100},{"bucket":"saving","amount":99899}]}`,
+		CreateTx, nil)
+	resp3 := decodeResp(t, w3)
+	if w3.Code != 400 {
+		t.Fatalf("储蓄桶超额应被拒，实际 %d（%s）", w3.Code, w3.Body.String())
+	}
+	want := "「储蓄桶」余额不足：当前 500.00 元，本次支出 99899.00 元"
+	if resp3.Message != want {
+		t.Fatalf("文案 = %q，期望 %q", resp3.Message, want)
 	}
 }
 

@@ -16,7 +16,7 @@ import (
 // 错误文案一律中文，禁止英文/异常类名/HTTP 状态码外露。
 
 // bindJSON 解析请求体。失败统一中文提示 —— gin validator 的报错是英文
-//（"failed on the 'required' tag" 等），绝不允许透给用户。
+// （"failed on the 'required' tag" 等），绝不允许透给用户。
 func bindJSON(c *gin.Context, obj interface{}) bool {
 	if err := c.ShouldBindJSON(obj); err != nil {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgRequestFormat)
@@ -191,8 +191,14 @@ func validateTxRule(tx *models.Transaction, balances map[string]float64, rollbac
 				return fmt.Sprintf("各来源金额之和 (%.2f) 与总金额 (%.2f) 不一致", totalSource, tx.Amount)
 			}
 		}
-		// 来源余额校验（含未显式指定来源、默认走现金的支出）
+		// 来源余额校验（含未显式指定来源、默认走现金的支出）。
+		// 口径（用户拍板 v0.5.1）：**消费额度桶允许透支** —— 超支计入月末结转、
+		// 下月额度全额扣减（"上月多消费的下月全额扣除"），所以这里不拦；
+		// 其余桶（待支配/储蓄/投资/应急/养老/公积金）余额不足一律硬拦。
 		for _, sd := range sources {
+			if sd.Bucket == "consumption" {
+				continue // 允许透支，由月末结转扣减下月额度
+			}
 			avail := utils.Round2(balances[sd.Bucket] + rollback[sd.Bucket])
 			if sd.Amount > avail+0.005 {
 				return fmt.Sprintf("「%s」余额不足：当前 %.2f 元，本次支出 %.2f 元",
