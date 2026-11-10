@@ -38,6 +38,11 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   String? _exceedWorry;
   int _page = 1;
   int _total = 0;
+
+  /// 整表刷新代际：每次 `_load(reset:true)` 自增，在途的旧响应按代际丢弃。
+  /// 用于修 B2 重复账单：添加账单后的 `_load()` 与下拉刷新并发时，
+  /// 旧响应不再 `addAll`，列表不会出现两笔相同账单。
+  int _loadGen = 0;
   double _worryPerBuy = 0;
   double _sumIncome = 0;
   double _sumExpense = 0;
@@ -83,9 +88,15 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   }
 
   Future<void> _load({bool reset = true}) async {
+    final int gen;
     if (reset) {
+      // 整表刷新：新开一代，作废所有在途响应；分页请求不受阻塞
+      gen = ++_loadGen;
       _page = 1;
       _list = [];
+    } else {
+      // 加载更多：跟随当前代际；若随后发生整表刷新则本响应被丢弃
+      gen = _loadGen;
     }
     setState(() => _loading = true);
     // 当前 tab 类型作为过滤条件
@@ -101,13 +112,16 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       size: 30,
     );
     if (!mounted) return;
+    if (gen != _loadGen) return; // 过期响应：已有更新的加载，直接丢弃
     if (r.ok && r.data != null) {
-      final raw = r.data!['list'] as List;
+      final raw = r.data!['list'] as List? ?? [];
       final list =
           raw.map((e) => TxRecord.fromJson(e as Map<String, dynamic>)).toList();
       setState(() {
-        _list.addAll(list);
-        _total = (r.data!['total'] as num).toInt();
+        // 按 id 去重合并：并发刷新/分页重叠时绝不重复入账
+        final seen = _list.map((e) => e.id).toSet();
+        _list.addAll(list.where((e) => seen.add(e.id)));
+        _total = (r.data!['total'] as num? ?? 0).toInt();
         _worryPerBuy = (r.data!['worryPerBuy'] as num? ?? 0).toDouble();
         _sumIncome = (r.data!['sumIncome'] as num? ?? 0).toDouble();
         _sumExpense = (r.data!['sumExpense'] as num? ?? 0).toDouble();
@@ -1080,6 +1094,20 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     return total;
   }
 
+  /// 待支配余额（存钱来源固定为待支配）；未加载到时不做过期拦截
+  double? get _pendingBalance => _bucketBalances['cash'];
+
+  String _fmt(double v) => NumberFormat('#,##0.00').format(v);
+
+  /// 存钱金额是否超出待支配余额（输入时就地红字提示 + 提交前拦下）
+  bool get _transferOverBalance {
+    if (_type != TxType.transfer) return false;
+    final bal = _pendingBalance;
+    if (bal == null) return false;
+    final v = double.tryParse(_amount.text) ?? 0;
+    return v > bal + 0.005;
+  }
+
   void _parseSourceDetails(String jsonStr) {
     if (jsonStr.isEmpty) return;
     try {
@@ -1186,6 +1214,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
             'emergency': data.emergencyBalance,
             'pension': data.pensionBalance,
             'housing_fund': data.totalHousingFund,
+            'consumption': data.consumptionBalance,
           };
         });
       }
@@ -1240,8 +1269,10 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     return ActionChip(
       label: Text(label),
       onPressed: () {
-        // 按比例计算，取整到十位
-        final v = (_monthlyIncome * ratio / 10).roundToDouble() * 10;
+        // 按比例计算，取整到十位；不超过待支配余额
+        var v = (_monthlyIncome * ratio / 10).roundToDouble() * 10;
+        final bal = _pendingBalance;
+        if (bal != null && v > bal) v = bal.floorToDouble();
         _amount.text = v.toStringAsFixed(0);
       },
     );
@@ -1323,6 +1354,36 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       _showTopSnack('投资收益请选择目标桶');
       return;
     }
+    // 存钱：来源固定为待支配，金额不得超过待支配余额
+    if (_type == TxType.transfer) {
+      final bal = _pendingBalance;
+      if (bal != null && v > bal + 0.005) {
+        _showTopSnack('存钱金额超出待支配余额（可用 ${_fmt(bal)} 元）');
+        return;
+      }
+    }
+    // 支出：各来源金额分别不超过对应桶余额
+    if (_type == TxType.expense) {
+      if (_selectedSources.length > 1) {
+        for (final src in _selectedSources) {
+          final amt = double.tryParse(_sourceControllers[src]?.text ?? '') ?? 0;
+          final bal = _bucketBalances[src];
+          if (bal != null && amt > bal + 0.005) {
+            _showTopSnack(
+                '${TxCategory.sourceBucketLabels[src] ?? src}余额不足（当前 ${_fmt(bal)} 元）');
+            return;
+          }
+        }
+      } else {
+        final src = _selectedSources.first;
+        final bal = _bucketBalances[src];
+        if (bal != null && v > bal + 0.005) {
+          _showTopSnack(
+              '${TxCategory.sourceBucketLabels[src] ?? src}余额不足（当前 ${_fmt(bal)} 元）');
+          return;
+        }
+      }
+    }
 
     setState(() {
       _busy = true;
@@ -1362,10 +1423,18 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       }
     }
     dynamic r;
-    if (widget.existing != null) {
-      r = await ApiClient.instance.updateTx(widget.existing!.id, body);
-    } else {
-      r = await ApiClient.instance.createTx(body);
+    try {
+      if (widget.existing != null) {
+        r = await ApiClient.instance.updateTx(widget.existing!.id, body);
+      } else {
+        r = await ApiClient.instance.createTx(body);
+      }
+    } catch (_) {
+      // 网络异常不外露技术字眼
+      if (!mounted) return;
+      _showTopSnack('网络异常，请稍后重试');
+      setState(() => _busy = false);
+      return;
     }
     if (!mounted) return;
     if (r.ok) {
@@ -1620,7 +1689,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
                   onSelected: (_) => setState(() => _targetBucket = 'pension')),
             ]),
           ],
-          // 存钱：显示提示
+          // 存钱：显示提示 + 来源固定为待支配（含余额）
           if (_type == TxType.transfer) ...[
             const SizedBox(height: 8),
             Container(
@@ -1628,13 +1697,32 @@ class _AddTxSheetState extends State<_AddTxSheet> {
               decoration: BoxDecoration(
                   color: Colors.indigo.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(8)),
-              child: const Row(children: [
-                Icon(Icons.info_outline, size: 14, color: Colors.indigo),
-                SizedBox(width: 6),
-                Expanded(
-                  child: Text('存钱模块的转账不影响家庭总财富',
-                      style: TextStyle(fontSize: 11, color: Colors.indigo)),
-                ),
+              child: Column(children: [
+                const Row(children: [
+                  Icon(Icons.info_outline, size: 14, color: Colors.indigo),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('存钱模块的转账不影响家庭总财富',
+                        style: TextStyle(fontSize: 11, color: Colors.indigo)),
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.account_balance_wallet_outlined,
+                      size: 14, color: Colors.indigo),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _pendingBalance == null
+                          ? '来源：待支配'
+                          : '来源：待支配（余额 ${_fmt(_pendingBalance!)} 元）',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.indigo,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ]),
               ]),
             ),
           ],
@@ -1718,6 +1806,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
               ],
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: '金额',
                 prefixText: '¥ ',
@@ -1725,6 +1814,17 @@ class _AddTxSheetState extends State<_AddTxSheet> {
                     TextStyle(color: color, fontWeight: FontWeight.w700),
               ),
             ),
+          // 存钱金额超待支配余额：就地红字中文提示（提交前也会拦下）
+          if (_transferOverBalance) ...[
+            const SizedBox(height: 6),
+            Text(
+              '超出待支配余额（可用 ${_fmt(_pendingBalance!)} 元）',
+              style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFFB3261E),
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
           // 存钱快捷比例：按月收入（非意外收入）自动计算并取整到十位
           if (_type == TxType.transfer) ...[
             const SizedBox(height: 8),

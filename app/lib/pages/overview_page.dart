@@ -154,7 +154,7 @@ class _OverviewPageState extends State<OverviewPage> {
         icon: Icons.account_balance_wallet_outlined,
         iconColor: const Color(0xFF7EE0A6),
         bg: Colors.green.withValues(alpha: 0.14),
-        top: (title: '剩余可消费', value: ov.monthConsumableLeft),
+        top: (title: '剩余可消费', value: ov.consumptionBalance),
         bottom: (title: '剩余待支配', value: ov.remainingBudget),
         onTopTap: () => _showConsumptionDetail(context),
         onBottomTap: () => _showDisposableDetail(context),
@@ -394,6 +394,23 @@ class _OverviewPageState extends State<OverviewPage> {
                   f: f,
                 ),
               ),
+            ]),
+            const SizedBox(height: 8),
+            // 消费额度桶（每月自动入账，支出可选作来源）
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: _bucketTile(
+                  name: '消费额度',
+                  icon: Icons.shopping_bag_outlined,
+                  color: const Color(0xFF7EE0A6),
+                  balance: ov.consumptionBalance,
+                  thisMonth: a.consumptionThisMonth,
+                  thisMonthTarget: a.consumptionTarget,
+                  f: f,
+                  onTap: () => _showConsumptionDetail(context),
+                ),
+              ),
+              const Expanded(child: SizedBox()),
             ]),
           ],
         ),
@@ -823,20 +840,10 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  // 消费细则弹窗
-  Future<void> _showConsumptionDetail(BuildContext context) async {
+  // 消费额度明细弹窗
+  void _showConsumptionDetail(BuildContext context) {
     final f = NumberFormat('#,##0.00');
     final ov = _ov!;
-    final a = ov.allocation;
-
-    // 计算投资补差扣除
-    final r = await ApiClient.instance.investmentSettlement(scope: _scope);
-    double monthlyDeduction = 0;
-    if (r.ok && r.data != null) {
-      monthlyDeduction = (r.data!['monthlyDeduction'] as num? ?? 0).toDouble();
-    }
-
-    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -844,58 +851,39 @@ class _OverviewPageState extends State<OverviewPage> {
         title: Row(children: [
           Icon(Icons.account_balance_wallet, color: Colors.green.shade700),
           const SizedBox(width: 8),
-          const Text('本月消费明细'),
+          const Text('消费额度明细'),
         ]),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _detailRow('月收入', f.format(a.monthlyIncome), Colors.indigo),
+              _detailRow('本月自动入账', f.format(ov.consumptionAutoIn), Colors.indigo),
+              _detailRow('上月结转入', f.format(ov.consumptionCarryIn),
+                  ov.consumptionCarryIn >= 0 ? Colors.green : Colors.red),
+              _detailRow('本月已支出', f.format(ov.consumptionSpend), Colors.red),
               const Divider(),
-              Text('硬性扣除',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600, color: AppTheme.textDim)),
-              _detailRow(
-                  '  储蓄 (${a.monthlyIncome > 0 ? (a.savingTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
-                  '- ${f.format(a.savingTarget)}',
-                  Colors.orange),
-              _detailRow(
-                  '  投资 (${a.monthlyIncome > 0 ? (a.investmentTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
-                  '- ${f.format(a.investmentTarget)}',
-                  Colors.indigo),
-              _detailRow(
-                  '  应急 (${a.monthlyIncome > 0 ? (a.emergencyTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
-                  '- ${f.format(a.emergencyTarget)}',
-                  Colors.deepOrange),
-              _detailRow(
-                  '  养老 (${a.monthlyIncome > 0 ? (a.pensionTarget / a.monthlyIncome * 100).toStringAsFixed(0) : '0'}%)',
-                  '- ${f.format(a.pensionTarget)}',
-                  Colors.teal),
-              if (monthlyDeduction > 0) ...[
-                const Divider(),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.trending_down,
-                        size: 16, color: Colors.orange.shade700),
-                    const SizedBox(width: 6),
-                    Expanded(
-                        child: Text('投资补差扣除：- ${f.format(monthlyDeduction)}',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.orange.shade700))),
-                  ]),
+              _detailRow('当前余额', f.format(ov.consumptionBalance),
+                  ov.consumptionBalance >= 0 ? Colors.green : Colors.red),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(6),
                 ),
-              ],
-              const Divider(),
-              _detailRow('可消费额度', f.format(a.consumption), Colors.green),
-              _detailRow('已消费', f.format(ov.dailySpent), Colors.red),
-              _detailRow('剩余可消费', f.format(ov.monthConsumableLeft),
-                  ov.monthConsumableLeft >= 0 ? Colors.green : Colors.red),
+                child: Row(children: [
+                  Icon(Icons.info_outline,
+                      size: 14, color: Colors.green.shade700),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      '消费额度每月按比例自动入账，无需手动存钱；月末余额一半转入下月、一半回待支配，超支则全额结转扣减下月。',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF2E7D32)),
+                    ),
+                  ),
+                ]),
+              ),
             ],
           ),
         ),
@@ -942,6 +930,8 @@ class _OverviewPageState extends State<OverviewPage> {
                       fontWeight: FontWeight.w600, color: AppTheme.textDim)),
               _detailRow('  工资 + 意外收入 + 投资收益 + 过往存款',
                   f.format(ov.cashPoolIncome), Colors.green),
+              _detailRow('  结转回流（消费额度月末结转）',
+                  f.format(ov.consumptionRefund), Colors.green),
               const Divider(),
               Text('已分配与已支出（累计）',
                   style: TextStyle(

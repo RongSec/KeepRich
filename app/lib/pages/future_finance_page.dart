@@ -826,6 +826,9 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
           : '');
   late String _method = widget.initialMethod;
 
+  /// 就地中文错误提示（金额>0、必填校验）
+  String? _formError;
+
   @override
   void dispose() {
     _name.dispose();
@@ -1008,6 +1011,14 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
                       style: const TextStyle(fontSize: 12)),
                 ),
               ],
+              if (_formError != null) ...[
+                const SizedBox(height: 8),
+                Text(_formError!,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFB3261E),
+                        fontWeight: FontWeight.w600)),
+              ],
             ],
           ),
         ),
@@ -1017,12 +1028,27 @@ class _LoanEditDialogState extends State<_LoanEditDialog> {
             onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(
           onPressed: () {
+            // 录入合法性：名称必填、贷款总额>0、期数>0
+            if (_name.text.trim().isEmpty) {
+              setState(() => _formError = '请输入名称');
+              return;
+            }
+            final total = double.tryParse(_total.text);
+            if (total == null || total <= 0) {
+              setState(() => _formError = '请输入大于 0 的贷款总额');
+              return;
+            }
+            final months = int.tryParse(_months.text);
+            if (months == null || months <= 0) {
+              setState(() => _formError = '请输入大于 0 的总期数');
+              return;
+            }
             final m = {
               'scope': widget.scope,
               'name': _name.text,
-              'total': double.tryParse(_total.text) ?? 0,
+              'total': total,
               'annualRate': double.tryParse(_rate.text) ?? 0,
-              'termMonths': int.tryParse(_months.text) ?? 0,
+              'termMonths': months,
               'paidMonths': int.tryParse(_paid.text) ?? 0,
               'interest': double.tryParse(_interest.text) ?? 0,
               'method': _method,
@@ -1217,6 +1243,11 @@ class _BenefitEditDialogState extends State<_BenefitEditDialog> {
             onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(
           onPressed: () {
+            if (_name.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('请输入名称')));
+              return;
+            }
             if (_payoutDate == null) {
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('请选择发放时间')));

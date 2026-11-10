@@ -268,9 +268,16 @@ class OverviewData {
   final double worryFreePerBuy;
   final double annualIncome; // 年薪
   final double monthlyConsumable;
-  final double monthConsumableLeft; // 本月剩余可消费
+  final double monthConsumableLeft; // 本月剩余可消费（口径 = consumptionBalance）
   final double savingCarryOver;
-  final double remainingBudget;
+  final double remainingBudget; // 剩余待支配（现金池 + 历史结转回流）
+
+  // 消费额度桶（v0.5.1）：每月按比例自动入账，月末按 50/50 结转
+  final double consumptionBalance; // 消费额度桶余额 = 剩余可消费
+  final double consumptionAutoIn; // 本月自动入账
+  final double consumptionCarryIn; // 本月结转入（上月结转，可能为负）
+  final double consumptionSpend; // 本月消费桶已支出
+  final double consumptionRefund; // 结转回待支配金额
 
   // 现金池（待支配）构成明细
   final double cashPoolIncome; // 累计进入待支配的收入（工资+意外+投资收益+过往存款）
@@ -320,6 +327,11 @@ class OverviewData {
     required this.allocation,
     required this.topPurchases,
     this.monthConsumableLeft = 0,
+    this.consumptionBalance = 0,
+    this.consumptionAutoIn = 0,
+    this.consumptionCarryIn = 0,
+    this.consumptionSpend = 0,
+    this.consumptionRefund = 0,
     this.futureWealth = 0,
     this.totalWealth = 0,
     this.cumulativeIncome = 0,
@@ -351,6 +363,12 @@ class OverviewData {
         monthlyConsumable: (json['monthlyConsumable'] as num? ?? 0).toDouble(),
         monthConsumableLeft:
             (json['monthConsumableLeft'] as num? ?? 0).toDouble(),
+        // 消费额度桶字段：num/String 兼容、缺失=0（后端未就绪时不阻塞前端）
+        consumptionBalance: _parseNum(json['consumptionBalance']).toDouble(),
+        consumptionAutoIn: _parseNum(json['consumptionAutoIn']).toDouble(),
+        consumptionCarryIn: _parseNum(json['consumptionCarryIn']).toDouble(),
+        consumptionSpend: _parseNum(json['consumptionSpend']).toDouble(),
+        consumptionRefund: _parseNum(json['consumptionRefund']).toDouble(),
         savingCarryOver: (json['savingCarryOver'] as num? ?? 0).toDouble(),
         remainingBudget: (json['remainingBudget'] as num? ?? 0).toDouble(),
         cashPoolIncome: (json['cashPoolIncome'] as num? ?? 0).toDouble(),
@@ -734,13 +752,18 @@ class TxCategory {
     transferToPension: 'pension',
   };
 
-  // 各支出类别允许的来源桶
+  // 各支出类别允许的来源桶（所有支出门类都可用「消费额度」）
   static const Map<String, List<String>> allowedSourceBuckets = {
-    expenseDaily: ['cash'], // 日常消费：仅现金
-    expenseBigPurchase: ['cash', 'saving'], // 大件购物：现金、储蓄桶
-    expensePension: ['pension'], // 养老：仅养老桶
-    expenseEmergency: ['emergency'], // 应急：仅应急桶
-    expenseLoanRepay: ['cash', 'saving', 'housing_fund'], // 偿还贷款：现金、储蓄桶、公积金
+    expenseDaily: ['cash', 'consumption'], // 日常消费：可支配、消费额度
+    expenseBigPurchase: ['cash', 'saving', 'consumption'], // 大件购物：现金、储蓄桶、消费额度
+    expensePension: ['pension', 'consumption'], // 养老：养老桶、消费额度
+    expenseEmergency: ['emergency', 'consumption'], // 应急：应急桶、消费额度
+    expenseLoanRepay: [
+      'cash',
+      'saving',
+      'housing_fund',
+      'consumption'
+    ], // 偿还贷款：现金、储蓄桶、公积金、消费额度
   };
 
   // 来源桶显示名
@@ -750,6 +773,7 @@ class TxCategory {
     'housing_fund': '公积金',
     'emergency': '应急桶',
     'pension': '养老桶',
+    'consumption': '消费额度',
   };
 
   // 不计入年薪的收入分类

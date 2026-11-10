@@ -57,53 +57,82 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
     var priceText = initial != null ? initial.price.toString() : '';
     var priorityText = '${initial?.priority ?? 1}';
     var noteText = initial?.note ?? '';
+    String? errText; // 就地中文错误提示
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Text(initial == null ? '新增大件' : '编辑大件'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                initialValue: nameText,
-                onChanged: (v) => nameText = v,
-                decoration: const InputDecoration(labelText: '名称'),
-              ),
-              TextFormField(
-                initialValue: priceText,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: Text(initial == null ? '新增大件' : '编辑大件'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  initialValue: nameText,
+                  onChanged: (v) => nameText = v,
+                  decoration: const InputDecoration(labelText: '名称'),
+                ),
+                TextFormField(
+                  initialValue: priceText,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                  ],
+                  onChanged: (v) => priceText = v,
+                  decoration: const InputDecoration(
+                      labelText: '预算（元）', prefixText: '¥ '),
+                ),
+                TextFormField(
+                  initialValue: priorityText,
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) => priorityText = v,
+                  decoration:
+                      const InputDecoration(labelText: '优先级（数字越小越优先）'),
+                ),
+                TextFormField(
+                  initialValue: noteText,
+                  onChanged: (v) => noteText = v,
+                  decoration: const InputDecoration(labelText: '备注（可选）'),
+                ),
+                if (errText != null) ...[
+                  const SizedBox(height: 8),
+                  Text(errText!,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFFB3261E),
+                          fontWeight: FontWeight.w600)),
                 ],
-                onChanged: (v) => priceText = v,
-                decoration:
-                    const InputDecoration(labelText: '预算（元）', prefixText: '¥ '),
-              ),
-              TextFormField(
-                initialValue: priorityText,
-                keyboardType: TextInputType.number,
-                onChanged: (v) => priorityText = v,
-                decoration: const InputDecoration(labelText: '优先级（数字越小越优先）'),
-              ),
-              TextFormField(
-                initialValue: noteText,
-                onChanged: (v) => noteText = v,
-                decoration: const InputDecoration(labelText: '备注（可选）'),
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogCtx, false),
+                child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                // 录入合法性：名称必填、预算>0、优先级为有效数字
+                if (nameText.trim().isEmpty) {
+                  setDialogState(() => errText = '请输入名称');
+                  return;
+                }
+                final price = double.tryParse(priceText);
+                if (price == null || price <= 0) {
+                  setDialogState(() => errText = '请输入大于 0 的预算金额');
+                  return;
+                }
+                if (int.tryParse(priorityText.trim()) == null) {
+                  setDialogState(() => errText = '请输入有效的优先级数字');
+                  return;
+                }
+                Navigator.pop(dialogCtx, true);
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(dialogCtx, true),
-              child: const Text('保存')),
-        ],
       ),
     );
     if (ok != true) return;
