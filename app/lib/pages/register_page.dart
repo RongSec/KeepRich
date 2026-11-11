@@ -316,6 +316,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             clearError: () =>
                                 setState(() => _nickServerError = null),
                             next: true,
+                            chineseIME: true,
                           ),
                           _passwordField(
                             controller: _pwd,
@@ -425,6 +426,7 @@ class _RegisterPageState extends State<RegisterPage> {
     List<TextInputFormatter> formatters = const [],
     TextInputType keyboardType = TextInputType.text,
     VoidCallback? onSubmitted,
+    bool chineseIME = false,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -434,8 +436,10 @@ class _RegisterPageState extends State<RegisterPage> {
         children: [
           TextFormField(
             controller: controller,
-            autocorrect: false,
-            enableSuggestions: false,
+            // 中文输入（如昵称）必须开启联想/建议，否则部分安卓输入法无法切中文、
+            // 弹不出候选词（enableSuggestions=false 会禁用 IME 候选）。
+            autocorrect: !chineseIME,
+            enableSuggestions: !chineseIME,
             textCapitalization: TextCapitalization.none,
             keyboardType: keyboardType,
             inputFormatters: formatters,
@@ -584,7 +588,6 @@ class _ServerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final host = AppConfig.serverHost;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => showServerAddressDialog(context),
@@ -601,7 +604,8 @@ class _ServerRow extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                host.replaceFirst(RegExp(r'^https?://'), ''),
+                // 显示完整可用地址（含 sharecode），复制即可用
+                AppConfig.fullServerUrl.replaceFirst(RegExp(r'^https?://'), ''),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: AppTheme.text),

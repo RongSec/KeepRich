@@ -787,7 +787,6 @@ class _ServerChip extends StatefulWidget {
 class _ServerChipState extends State<_ServerChip> {
   @override
   Widget build(BuildContext context) {
-    final host = AppConfig.serverHost;
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: () async {
@@ -812,7 +811,9 @@ class _ServerChipState extends State<_ServerChip> {
             const Icon(Icons.dns_outlined, size: 14, color: AppTheme.gold),
             const SizedBox(width: 6),
             Text(
-              host.replaceFirst(RegExp(r'^https?://'), ''),
+              // 显示完整可用地址（含 sharecode），用户复制即可用；
+              // 裸域名缺码会被网关 403，别让用户照着裸域名手输。
+              AppConfig.fullServerUrl.replaceFirst(RegExp(r'^https?://'), ''),
               style: const TextStyle(fontSize: 11, color: AppTheme.text),
             ),
             const SizedBox(width: 6),

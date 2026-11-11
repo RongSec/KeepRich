@@ -27,7 +27,7 @@ class AppConfig {
 
   /// 应用版本号（与 pubspec.yaml 保持一致；构建脚本会用 --dart-define 覆盖）
   static const String appVersion =
-      String.fromEnvironment('APP_VERSION', defaultValue: '0.5.3');
+      String.fromEnvironment('APP_VERSION', defaultValue: '0.5.4');
 
   /// Android 模拟器映射到宿主机
   static const String androidEmulatorHost = 'http://10.0.2.2:28080';
@@ -195,6 +195,18 @@ class AppConfig {
       ...uri.queryParameters,
       'sharecode': code,
     }).toString();
+  }
+
+  /// 完整可用的服务端地址（**含分享码**）。
+  ///
+  /// 用户「查看地址」看到的就是这个：直接复制即可用。裸域名
+  /// `https://xxx.app.workbuddy.host` 缺 sharecode 会被网关 403，
+  /// 所以展示和分享一律用本方法，避免"看着对、手输却连不上"。
+  static String get fullServerUrl {
+    final host = serverHost;
+    final code = _shareCode;
+    if (code == null || code.isEmpty) return host;
+    return '$host/?sharecode=$code';
   }
 
   /// WebSocket 地址

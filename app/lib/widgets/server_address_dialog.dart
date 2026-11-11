@@ -99,7 +99,7 @@ class _ServerAddressDialogState extends State<_ServerAddressDialog> {
               keyboardType: TextInputType.url,
               decoration: InputDecoration(
                 labelText: 'API 地址',
-                hintText: 'http://192.168.1.8:28080',
+                hintText: 'https://xxx.app.workbuddy.host/?sharecode=XXXX',
                 prefixIcon: const Icon(Icons.dns_outlined),
                 // 手机上支持扫 Web 端的服务端二维码
                 suffixIcon: kIsWeb
