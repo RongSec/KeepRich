@@ -49,6 +49,10 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   double _sumTransfer = 0;
   List<FamilyMember> _members = [];
 
+  /// 家庭范围下「只看某个成员」的 uid；null/0 = 整个家庭聚合。
+  /// 选了成员后，后端用 memberUid 只返回该成员的个人账单。
+  int? _memberUid;
+
   static const Map<String, IconData> _typeIcons = {
     TxType.income: Icons.south_west,
     TxType.expense: Icons.north_east,
@@ -105,6 +109,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       type: _tabType,
       category: _category,
       recorder: _recorder,
+      memberUid: _scope == 'family' ? _memberUid : null,
       startAt: _startAt,
       endAt: _endAt,
       exceedWorry: _exceedWorry,
@@ -139,6 +144,45 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     if (r.ok && r.data != null && mounted) {
       setState(() => _members = r.data!);
     }
+  }
+
+  /// 家庭范围下拉：「整个家庭」+ 每个活跃成员（昵称优先，重名补用户名）。
+  /// 选成员 → 只看该成员的个人账单（每位成员都可查看其他成员）。
+  Widget _familyScopeDropdown() {
+    // 昵称优先、重名补用户名（memberLabels 统一口径）
+    final labels = memberLabels(_members,
+        nickname: (m) => m.nickname, username: (m) => m.username);
+    final hasMember = _members.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppTheme.textDim.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int?>(
+          isExpanded: true,
+          value: _memberUid,
+          hint: const Text('选择范围'),
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('整个家庭', overflow: TextOverflow.ellipsis),
+            ),
+            if (hasMember)
+              ..._members.asMap().entries.map((e) => DropdownMenuItem<int?>(
+                    value: e.value.userId,
+                    child: Text(labels[e.key],
+                        overflow: TextOverflow.ellipsis),
+                  )),
+          ],
+          onChanged: (v) {
+            setState(() => _memberUid = v);
+            _load();
+          },
+        ),
+      ),
+    );
   }
 
   /// 已选记账人筛选的展示名：昵称优先，重名补用户名（R-10 ⑤⑥）。
@@ -191,21 +235,30 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       ),
       body: Column(
         children: [
-          // scope 切换
+          // 范围切换：个人 / 家庭（家庭为下拉，可选「整个家庭」或某个成员）
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'personal', label: Text('个人')),
-                ButtonSegment(value: 'family', label: Text('家庭')),
+            child: Row(children: [
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'personal', label: Text('个人')),
+                  ButtonSegment(value: 'family', label: Text('家庭')),
+                ],
+                selected: {_scope},
+                onSelectionChanged: (s) {
+                  setState(() {
+                    _scope = s.first;
+                    if (_scope != 'family') _memberUid = null;
+                  });
+                  _load();
+                  _loadMembers();
+                },
+              ),
+              if (_scope == 'family') ...[
+                const SizedBox(width: 10),
+                Expanded(child: _familyScopeDropdown()),
               ],
-              selected: {_scope},
-              onSelectionChanged: (s) {
-                setState(() => _scope = s.first);
-                _load();
-                _loadMembers();
-              },
-            ),
+            ]),
           ),
           // 顶部统计
           _statsBar(),

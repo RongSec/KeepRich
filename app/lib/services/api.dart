@@ -532,6 +532,7 @@ class ApiClient {
     String? type,
     String? category,
     String? recorder,
+    int? memberUid,
     int? startAt,
     int? endAt,
     String? exceedWorry,
@@ -540,6 +541,7 @@ class ApiClient {
   }) async {
     final r = await _dio.get('/transactions', queryParameters: {
       'scope': scope,
+      if (memberUid != null && memberUid > 0) 'memberUid': memberUid,
       if (type != null) 'type': type,
       if (category != null) 'category': category,
       if (recorder != null) 'recorder': recorder,

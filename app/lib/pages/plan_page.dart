@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../services/api.dart';
+import '../services/auth.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -28,6 +30,10 @@ class _PlanPageState extends State<PlanPage> {
   final _consumption = TextEditingController(text: '0.25');
   bool _loading = false;
 
+  /// 当前用户是否家庭管理员（家庭范围下控制能否保存）。
+  /// 未判定前默认 false（先禁用，避免非管理员误改）。
+  bool _isFamilyAdmin = false;
+
   @override
   void dispose() {
     _emergencyTarget.dispose();
@@ -48,6 +54,11 @@ class _PlanPageState extends State<PlanPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    if (_scope == 'family') {
+      await _checkFamilyAdmin();
+    } else {
+      _isFamilyAdmin = true; // 个人规划人人可改
+    }
     final r = await ApiClient.instance.getPlan(scope: _scope);
     if (r.ok && r.data != null) {
       final d = r.data!;
@@ -68,7 +79,26 @@ class _PlanPageState extends State<PlanPage> {
     setState(() => _loading = false);
   }
 
+  /// 判定当前用户是否家庭管理员（家庭范围下控制保存权限）。
+  Future<void> _checkFamilyAdmin() async {
+    final me = context.read<AuthState>().user;
+    final r = await ApiClient.instance.familyMembers();
+    if (r.ok && r.data != null && me != null) {
+      final admins =
+          r.data!.where((m) => m.userId == me.id && m.isAdmin).toList();
+      _isFamilyAdmin = admins.isNotEmpty;
+    } else {
+      _isFamilyAdmin = false;
+    }
+    if (mounted) setState(() {});
+  }
+
   Future<void> _save() async {
+    if (_scope == 'family' && !_isFamilyAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('非家庭管理员，无法修改家庭财务预规划')));
+      return;
+    }
     final sum = _sum();
     if ((sum - 1).abs() > 0.001) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -131,7 +161,14 @@ class _PlanPageState extends State<PlanPage> {
         title: const Text('财务预规划'),
         actions: [
           TextButton(onPressed: _resetDefaults, child: const Text('恢复默认')),
-          IconButton(onPressed: _save, icon: const Icon(Icons.save)),
+          IconButton(
+            onPressed:
+                (_scope == 'family' && !_isFamilyAdmin) ? null : _save,
+            icon: const Icon(Icons.save),
+            tooltip: (_scope == 'family' && !_isFamilyAdmin)
+                ? '仅家庭管理员可修改家庭财务预规划'
+                : '保存',
+          ),
         ],
       ),
       body: _loading

@@ -271,6 +271,9 @@ func ListTx(c *gin.Context) {
 	txType := c.Query("type")
 	category := c.Query("category")
 	recorder := c.Query("recorder") // uid 字符串，"-1" 表示全部
+	// memberUid：家庭范围下「只看某个成员的个人账单」（每位家庭成员都可查看其他成员）。
+	// 0 / 空 = 整个家庭聚合。必须校验目标成员与自己同属一个活跃家庭，防跨家庭窥探。
+	memberUid, _ := strconv.ParseUint(c.Query("memberUid"), 10, 64)
 	startAt, _ := strconv.ParseInt(c.Query("startAt"), 10, 64)
 	endAt, _ := strconv.ParseInt(c.Query("endAt"), 10, 64)
 	exceedWorry := c.Query("exceedWorry") // "1"=仅超支；"0"=仅未超支；空=全部
@@ -300,8 +303,25 @@ func ListTx(c *gin.Context) {
 		if len(memberIDs) == 0 {
 			memberIDs = []uint64{0}
 		}
-		q = q.Where("(scope = ? AND uid IN ?) OR (scope = ? AND family_id = ?)",
-			models.TxScopePersonal, memberIDs, models.TxScopeFamily, m.FamilyID)
+		if memberUid > 0 {
+			// 只看某个成员的个人账单：目标必须是本家庭活跃成员（含自己）
+			isMember := false
+			for _, id := range memberIDs {
+				if id == memberUid {
+					isMember = true
+					break
+				}
+			}
+			if !isMember {
+				utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "该成员不属于当前家庭，无法查看其账单")
+				return
+			}
+			q = q.Where("scope = ? AND uid = ?", models.TxScopePersonal, memberUid)
+		} else {
+			// 整个家庭：聚合所有活跃成员的个人数据 + 家庭数据
+			q = q.Where("(scope = ? AND uid IN ?) OR (scope = ? AND family_id = ?)",
+				models.TxScopePersonal, memberIDs, models.TxScopeFamily, m.FamilyID)
+		}
 	}
 	if txType != "" {
 		q = q.Where("type = ?", txType)
