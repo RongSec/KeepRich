@@ -8,6 +8,10 @@ BASE="${1:-https://keeprich-finance.app.workbuddy.host}"
 SC="${2:-A2OVQW6LVY}"
 Q="sharecode=${SC}"
 APK_TMP="$(mktemp -t kr_apk_XXXX.apk)"
+# 期望版本从部署清单读取（避免硬编码过期）
+VER_JSON="/Users/rongsec/Developer/finance/cloud/finance-server/apk/version.json"
+EXP_VER=$(python3 -c "import json;print(json.load(open('$VER_JSON'))['version'])" 2>/dev/null || echo "0.0.0")
+EXP_BUILD=$(python3 -c "import json;print(json.load(open('$VER_JSON'))['buildNumber'])" 2>/dev/null || echo "0")
 FAIL=0
 
 say() { printf '%s\n' "$*"; }
@@ -52,10 +56,10 @@ if [ -n "$AAPT" ]; then
   vcode=$(echo "$pkg_line" | grep -o "versionCode='[^']*'" | head -1 | sed "s/versionCode='//;s/'//")
   label=$("$AAPT" dump badging "$APK_TMP" 2>/dev/null | grep -m1 "application-label:")
   say "  APK 内部: versionName=$vname versionCode=$vcode | $label"
-  if [ "$vname" = "0.5.2" ]; then
+  if [ "$vname" = "$EXP_VER" ]; then
     ok "APK 版本 = $vname (code $vcode)"
   else
-    bad "APK 版本不符: versionName=$vname (期望 0.5.2)"
+    bad "APK 版本不符: versionName=$vname (期望 $EXP_VER)"
   fi
 else
   say "  [WARN] 未找到 aapt，跳过内部版本校验"
@@ -73,7 +77,14 @@ fi
 # 7. 版本清单
 curl -s -m 30 "$BASE/api/app/version?platform=android&current=0.5.1&build=2008&abi=arm64-v8a&$Q" -o /tmp/kr_ver.json
 ver=$(python3 -c "import json;d=json.load(open('/tmp/kr_ver.json'))['data'];print(d['version'],d['buildNumber'],d['updateAvailable'])" 2>/dev/null)
-echo "$ver" | grep -q '^0.5.2 2009' && ok "版本清单 $ver" || bad "版本清单 $ver"
+# 构建号可能是分 ABI 偏移值（如 version.json=10 → 上报 2010=前缀2+10），只比对版本号 + update 可用
+got_ver=$(echo "$ver" | awk '{print $1}')
+got_upd=$(echo "$ver" | awk '{print $3}')
+if [ "$got_ver" = "$EXP_VER" ] && [ "$got_upd" = "True" ]; then
+  ok "版本清单 ${ver}（版本=${EXP_VER}，可更新）"
+else
+  bad "版本清单 ${ver}（期望版本 ${EXP_VER} 且 update=True）"
+fi
 
 # 8. 管理后台
 code=$(curl -s -m 30 -o /dev/null -w '%{http_code}' "$BASE/admin/?$Q")
