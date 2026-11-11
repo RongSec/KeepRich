@@ -47,8 +47,17 @@ if [ -d "$WEB" ]; then
   cp -R "$WEB" "$DST/web"
 fi
 
-# 管理后台构建产物（--base-href=/admin/）：放进 web/admin 随 web 一起上传
+# 管理后台构建产物：必须用 --base-href=/admin/ 构建，否则 index.html 的 <base href>
+# 会是默认的 "/"，浏览器就去根目录取 main.dart.js（主 App），打开 /admin 会显示成
+# App 登录页而不是管理后台。这里构建时强制带上 base-href，并校验产物里确实是 /admin/。
 ADMIN_BUILD=$ROOT/admin/build/web
+if [ -d "$ROOT/admin" ]; then
+  ( cd "$ROOT/admin" && flutter build web --release --base-href=/admin/ ) || { echo "ADMIN_BUILD_FAIL"; exit 1; }
+  grep -q '<base href="/admin/">' "$ADMIN_BUILD/index.html" || {
+    echo "ADMIN_BASE_HREF_WRONG: admin/build/web/index.html 的 base href 不是 /admin/"
+    exit 1
+  }
+fi
 if [ -d "$ADMIN_BUILD" ]; then
   rm -rf "$DST/web/admin"
   cp -R "$ADMIN_BUILD" "$DST/web/admin"
