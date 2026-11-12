@@ -199,14 +199,14 @@ void main() {
       serveDefault();
       await tester.pumpWidget(const MaterialApp(home: BookkeepingPage()));
       await _settle(tester);
-      expect(find.byType(ListTile), findsOneWidget, reason: '首次加载 1 笔');
+      expect(find.byType(Dismissible), findsOneWidget, reason: '首次加载 1 笔');
 
       // 添加账单后的 _load() 与下拉刷新同款并发：连续两次整表刷新
       markDataChanged();
       markDataChanged();
       await _settle(tester);
 
-      expect(find.byType(ListTile), findsOneWidget,
+      expect(find.byType(Dismissible), findsOneWidget,
           reason: '并发刷新后列表不得出现两笔相同账单');
       await _burnPendingTimers(tester);
     });

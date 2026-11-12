@@ -8,6 +8,7 @@ import '../models.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../services/data_bus.dart';
+import '../utils/category_icons.dart';
 import '../utils/display_name.dart';
 
 class BookkeepingPage extends StatefulWidget {
@@ -434,7 +435,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     );
   }
 
-  // 当前 tab 的列表
+  // 当前 tab 的列表：按日期分组，每组一个日期头 + 一张深色圆角卡片
   Widget _listForTab(String type, List<TxRecord> list) {
     if (list.isEmpty) {
       return ListView(
@@ -451,15 +452,14 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
         ],
       );
     }
+    final groups = _groupByDate(list);
     return ListView(
       padding: const EdgeInsets.only(bottom: 12),
       children: [
-        ...list.map((tx) => _TxTile(
-              tx: tx,
-              worryPerBuy: _worryPerBuy,
-              onTap: () => _editTx(tx),
-              onDelete: () => _deleteTx(tx),
-            )),
+        for (final g in groups) ...[
+          _dateGroupHeader(g),
+          _dateGroupCard(g),
+        ],
         if (_list.length < _total)
           TextButton(
             onPressed: () {
@@ -474,6 +474,86 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
             child: Center(child: Text('没有更多了')),
           ),
       ],
+    );
+  }
+
+  /// 渲染层按 `occurredAt` 的本地日期分组（不动数据加载/分页/去重）。
+  /// 保持遇到顺序（列表本身新→旧），同日内的账单维持原顺序。
+  List<_DayGroup> _groupByDate(List<TxRecord> list) {
+    final map = <String, _DayGroup>{};
+    for (final tx in list) {
+      final d = DateTime.fromMillisecondsSinceEpoch(tx.occurredAt * 1000);
+      final key = '${d.year}-${d.month}-${d.day}';
+      map
+          .putIfAbsent(key, () => _DayGroup(DateTime(d.year, d.month, d.day)))
+          .txs
+          .add(tx);
+    }
+    return map.values.toList();
+  }
+
+  // 日期分组头：左边日期，右边当日支出/收入合计
+  Widget _dateGroupHeader(_DayGroup g) {
+    final f = NumberFormat('#,##0.00');
+    final parts = <String>[
+      '支出: ¥${f.format(g.expenseSum)}',
+      '收入: ¥${f.format(g.incomeSum)}',
+    ];
+    if (g.transferSum > 0) parts.add('存钱: ¥${f.format(g.transferSum)}');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Row(children: [
+        Text(g.label,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.text)),
+        const Spacer(),
+        Flexible(
+          child: Text(parts.join(' | '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  const TextStyle(fontSize: 12, color: AppTheme.textDim)),
+        ),
+      ]),
+    );
+  }
+
+  // 每个日期组一张深色圆角卡片，账单行在卡片内
+  Widget _dateGroupCard(_DayGroup g) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: AppTheme.glassCard(radius: 14),
+      child: Column(children: [
+        for (var i = 0; i < g.txs.length; i++) ...[
+          if (i > 0)
+            const Divider(
+                height: 1, thickness: 0.5, indent: 58, color: AppTheme.line),
+          _txRow(g.txs[i]),
+        ],
+      ]),
+    );
+  }
+
+  // 单条账单：左滑露出删除背景，确认后删除（无常驻删除按钮）
+  Widget _txRow(TxRecord tx) {
+    return Dismissible(
+      key: ValueKey(tx.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: Colors.redAccent,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      confirmDismiss: (_) => _confirmDeleteTx(tx),
+      onDismissed: (_) => _deleteTx(tx),
+      child: _TxTile(
+        tx: tx,
+        worryPerBuy: _worryPerBuy,
+        onTap: () => _editTx(tx),
+      ),
     );
   }
 
@@ -591,7 +671,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     if (updated == true) _load();
   }
 
-  Future<void> _deleteTx(TxRecord tx) async {
+  /// 左滑删除的二次确认对话框（confirmDismiss 用），确认返回 true 才滑除。
+  Future<bool> _confirmDeleteTx(TxRecord tx) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -610,7 +691,12 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    return ok == true;
+  }
+
+  /// 执行删除（onDismissed 用）：无论成败都刷新列表——
+  /// 左滑已把行移出树，删除失败时靠刷新恢复显示。
+  Future<void> _deleteTx(TxRecord tx) async {
     final r = await ApiClient.instance.deleteTxFallback(tx.id);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -618,7 +704,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
         content: Text(r.ok ? '已删除' : r.message),
         duration: const Duration(milliseconds: 1100),
       ));
-    if (r.ok) _load();
+    _load();
   }
 }
 
@@ -919,132 +1005,133 @@ class _FilterSheetState extends State<_FilterSheet> {
   }
 }
 
+/// 按日期分组的账单组（仅渲染层使用）。
+class _DayGroup {
+  final DateTime date;
+  final List<TxRecord> txs = [];
+  _DayGroup(this.date);
+
+  String get label => '${date.month}月${date.day}日';
+
+  double _sumOf(String type) => txs
+      .where((t) => t.type == type)
+      .fold<double>(0, (s, t) => s + t.amount);
+
+  double get expenseSum => _sumOf(TxType.expense);
+  double get incomeSum => _sumOf(TxType.income);
+  double get transferSum => _sumOf(TxType.transfer);
+}
+
+/// 账单行：左=分类图标，中=分类名 + `MM/dd HH:mm | 备注`，右=金额。
+/// 无来源桶标签、无删除按钮（删除走左滑 Dismissible）。
 class _TxTile extends StatelessWidget {
   final TxRecord tx;
   final double worryPerBuy;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
   const _TxTile(
-      {required this.tx,
-      required this.worryPerBuy,
-      required this.onTap,
-      required this.onDelete});
+      {required this.tx, required this.worryPerBuy, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final f = NumberFormat('#,##0.00');
     final color = _BookkeepingPageState.colorOf(tx.type);
-    final icon = _BookkeepingPageState.iconOf(tx.type);
-    final typeLabel = TxType.labels[tx.type] ?? tx.type;
-    final recorder = displayName(tx.nickname, tx.username);
-    return ListTile(
+    final time = DateFormat('MM/dd HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(tx.occurredAt * 1000));
+    // 时间在前、备注在后；备注为空则只显示时间
+    final subLine = tx.note.isEmpty ? time : '$time | ${tx.note}';
+    final sign = tx.type == TxType.expense ? '-' : '+';
+    return InkWell(
       onTap: onTap,
-      leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.15),
-        child: Icon(icon, color: color),
-      ),
-      title: Row(children: [
-        Flexible(
-          child: Text(TxCategory.labelOf(tx.category),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis),
-        ),
-        if (tx.targetBucket.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.22),
-                borderRadius: BorderRadius.circular(4)),
-            child: Text('→${_bucketShort(tx.targetBucket)}',
-                style: const TextStyle(fontSize: 10, color: Colors.brown)),
-          ),
-        ],
-        if (tx.loanName.isNotEmpty) ...[
-        Container(
-          margin: const EdgeInsets.only(top: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-          decoration: BoxDecoration(
-            color: Colors.orange.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text('偿还：${tx.loanName}',
-              style: const TextStyle(fontSize: 10, color: Color(0xFFFFB86B))),
-        ),
-      ],
-      if (tx.type == TxType.expense && tx.sourceBucket.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.20),
-                borderRadius: BorderRadius.circular(4)),
-            child: Text(
-                '←${TxCategory.sourceBucketLabels[tx.sourceBucket] ?? tx.sourceBucket}',
-                style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
-          ),
-        ],
-        if (tx.overWorry && tx.type == TxType.expense) ...[
-          const SizedBox(width: 6),
-          Tooltip(
-            message: '超过无顾虑单笔 (${f.format(worryPerBuy)} 元)',
-            child: const Icon(Icons.warning_amber_rounded,
-                size: 16, color: Colors.deepOrange),
-          ),
-        ],
-      ]),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 2),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(children: [
-          const Icon(Icons.access_time, size: 12, color: AppTheme.textDim),
-          const SizedBox(width: 3),
-          Text(
-              DateFormat('MM-dd HH:mm').format(
-                  DateTime.fromMillisecondsSinceEpoch(tx.occurredAt * 1000)),
-              style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
-          const SizedBox(width: 8),
+          // 分类图标（圆角深色小方块）
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(typeLabel,
-                style: TextStyle(
-                    fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+            child: Icon(categoryIcon(tx.category), color: color, size: 20),
           ),
-          if (recorder.isNotEmpty) ...[
-            const SizedBox(width: 6),
-            // 存量 >16 字昵称不截断，只在展示侧单行省略（PRD §5.3）。
-            Flexible(
-                child: Text('·$recorder',
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Flexible(
+                    child: Text(TxCategory.labelOf(tx.category),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.text)),
+                  ),
+                  ..._extraTags(),
+                ]),
+                const SizedBox(height: 3),
+                Text(subLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textDim))),
-          ],
-          if (tx.note.isNotEmpty) ...[
-            const SizedBox(width: 6),
-            Flexible(
-                child: Text('·${tx.note}',
-                    style:
-                        const TextStyle(fontSize: 12, color: AppTheme.textDim),
-                    overflow: TextOverflow.ellipsis)),
-          ],
+                        fontSize: 12, color: AppTheme.textDim)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 金额：右对齐加粗，支出负号 / 其余正号
+          Text('$sign¥${f.format(tx.amount)}',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w800, color: color)),
         ]),
       ),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(
-          '${tx.type == TxType.expense ? '-' : '+'}${f.format(tx.amount)}',
-          style: TextStyle(color: color, fontWeight: FontWeight.w600),
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-          tooltip: '删除',
-          onPressed: onDelete,
-        ),
-      ]),
     );
+  }
+
+  /// 目标桶 / 贷款名 / 超支警告小标签（来源桶标签已按需求删除）。
+  List<Widget> _extraTags() {
+    final f = NumberFormat('#,##0.00');
+    return [
+      if (tx.targetBucket.isNotEmpty) ...[
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(4)),
+          child: Text('→${_bucketShort(tx.targetBucket)}',
+              style: const TextStyle(fontSize: 10, color: Colors.brown)),
+        ),
+      ],
+      if (tx.loanName.isNotEmpty) ...[
+        const SizedBox(width: 6),
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('偿还：${tx.loanName}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 10, color: Color(0xFFFFB86B))),
+          ),
+        ),
+      ],
+      if (tx.overWorry && tx.type == TxType.expense) ...[
+        const SizedBox(width: 6),
+        Tooltip(
+          message: '超过无顾虑单笔 (${f.format(worryPerBuy)} 元)',
+          child: const Icon(Icons.warning_amber_rounded,
+              size: 16, color: Colors.deepOrange),
+        ),
+      ],
+    ];
   }
 
   String _bucketShort(String b) {

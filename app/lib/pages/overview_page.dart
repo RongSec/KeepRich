@@ -102,19 +102,21 @@ class _OverviewPageState extends State<OverviewPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : RefreshIndicator(
+              :               RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    // 首屏压缩：外边距 16→12/8，卡片间距 12→8
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
                     children: [
                       // 顶部 2x2 卡片阵列：家庭总财富 / 公积金总额 / 本月剩余消费 / 未来财富
                       _cardsGrid(theme),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       // 财务统筹
                       _bucketsCard(theme),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _topPurchasesCard(theme),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _trendChartCard(theme),
                     ],
                   ),
@@ -179,9 +181,10 @@ class _OverviewPageState extends State<OverviewPage> {
           crossAxisCount: cols,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 8,
+          mainAxisSpacing: 6,
           crossAxisSpacing: 8,
-          childAspectRatio: cols == 2 ? 1.5 : 1.3,
+          // 1.5→1.65：卡片变矮，首屏多露一截下方内容
+          childAspectRatio: cols == 2 ? 1.65 : 1.4,
           children: cards,
         );
       },
@@ -203,7 +206,7 @@ class _OverviewPageState extends State<OverviewPage> {
     Widget row(({String title, double value}) item, VoidCallback onTap) => InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.symmetric(vertical: 1),
             child: Row(children: [
               Expanded(
                 child: Text(item.title,
@@ -236,7 +239,7 @@ class _OverviewPageState extends State<OverviewPage> {
         onTap: onTopTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -254,9 +257,9 @@ class _OverviewPageState extends State<OverviewPage> {
                           fontWeight: FontWeight.w600)),
                 ),
               ]),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               row(top, onTopTap),
-              Divider(height: 6, thickness: 0.6, color: Colors.white.withValues(alpha: 0.10)),
+              Divider(height: 4, thickness: 0.6, color: Colors.white.withValues(alpha: 0.10)),
               row(bottom, onBottomTap),
             ],
           ),
@@ -284,7 +287,7 @@ class _OverviewPageState extends State<OverviewPage> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -328,7 +331,7 @@ class _OverviewPageState extends State<OverviewPage> {
     final a = ov.allocation;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -341,7 +344,7 @@ class _OverviewPageState extends State<OverviewPage> {
               Text('月收入 ${f.format(a.monthlyIncome)} 元',
                   style: theme.textTheme.bodySmall),
             ]),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             // 储蓄 + 长远投资（一行 2 列）
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
@@ -369,7 +372,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
               ),
             ]),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             // 应急备用金 + 养老金（一行 2 列，含预估剩余月数）
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
@@ -433,7 +436,7 @@ class _OverviewPageState extends State<OverviewPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
@@ -455,18 +458,18 @@ class _OverviewPageState extends State<OverviewPage> {
                         color: color)),
               ),
             ]),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.bottomLeft,
               child: Text('${f.format(balance)} 元',
                   style: const TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.text)),
             ),
             if (hasTarget) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Row(children: [
                 Text('总进度', style: TextStyle(fontSize: 10, color: color)),
                 const SizedBox(width: 4),
@@ -496,7 +499,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
               ],
             ],
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Row(children: [
               Text('本月',
                   style:
@@ -546,7 +549,7 @@ class _OverviewPageState extends State<OverviewPage> {
     final list = _ov!.topPurchases;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -595,7 +598,7 @@ class _OverviewPageState extends State<OverviewPage> {
     if (w.isEmpty) {
       return Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Text('暂无财富数据', style: theme.textTheme.titleMedium),
         ),
       );
@@ -643,7 +646,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
               ),
             ]),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             SizedBox(
               height: 200,
               child: LineChart(
