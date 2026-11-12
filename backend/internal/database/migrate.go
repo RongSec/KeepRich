@@ -17,6 +17,9 @@ func Migrate() error {
 		&models.PurchasePlan{},
 		&models.InvestmentRecord{},
 		&models.Notification{},
+		// 通知设置（每用户每类型一行）：不进云端快照/备份 Tables() 清单
+		// （同 sync_state 口径：纯偏好，丢失回默认），仅建表。
+		&models.NotificationSetting{},
 		&models.DeleteFamilyRequest{},
 		&models.DeleteFamilyVote{},
 		&models.AuditLog{},

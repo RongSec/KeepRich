@@ -39,7 +39,7 @@ func txTestDB(t *testing.T) (*gorm.DB, uint64) {
 		&models.User{}, &models.Transaction{}, &models.FinancialPlan{}, &models.FamilyMember{},
 		&models.PurchasePlan{}, &models.InvestmentRecord{}, &models.FutureBenefit{},
 		&models.HousingFundLoan{}, &models.CommercialLoan{}, &models.BorrowedMoney{},
-		&models.Notification{},
+		&models.Notification{}, &models.NotificationSetting{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

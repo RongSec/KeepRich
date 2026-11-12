@@ -137,7 +137,7 @@ func ApplyJoin(c *gin.Context) {
 
 	// 通知家庭管理员
 	ns := services.NewNotifyService(database.DB)
-	_ = ns.PushTo(f.AdminID, models.NotifyTypeFamilyApply, "新加入申请", "有用户申请加入家庭："+f.Name, "")
+	_ = ns.PushTo(f.AdminID, models.NotifyTypeFamilyApply, map[string]string{"家庭名": f.Name}, "")
 
 	utils.OK(c, r)
 }
@@ -246,7 +246,9 @@ func ApproveJoin(c *gin.Context) {
 	r.HandledAt = &now
 
 	ns := services.NewNotifyService(database.DB)
-	_ = ns.PushTo(r.UserID, models.NotifyTypeFamilyResult, "家庭加入结果", map[bool]string{true: "已通过", false: "已拒绝"}[req.Approve], "")
+	_ = ns.PushTo(r.UserID, models.NotifyTypeFamilyResult, map[string]string{
+		"结果": map[bool]string{true: "已通过", false: "已拒绝"}[req.Approve],
+	}, "")
 
 	utils.OK(c, r)
 }
@@ -334,7 +336,10 @@ func RequestDeleteFamily(c *gin.Context) {
 		database.DB.Where("family_id = ? AND status = ? AND user_id != ?", m.FamilyID, models.MemberStatusActive, uid).Find(&members)
 		ns := services.NewNotifyService(database.DB)
 		for _, member := range members {
-			_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, "家庭删除投票", "有成员发起了解散家庭的请求，请前往家庭管理页面投票", "")
+			_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, map[string]string{
+				"标题": "家庭删除投票",
+				"内容": "有成员发起了解散家庭的请求，请前往家庭管理页面投票",
+			}, "")
 		}
 	}
 
@@ -419,7 +424,10 @@ func VoteDeleteFamily(c *gin.Context) {
 		database.DB.Where("family_id = ? AND status = ?", request.FamilyID, models.MemberStatusActive).Find(&members)
 		ns := services.NewNotifyService(database.DB)
 		for _, member := range members {
-			_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, "家庭删除已通过", "全体成员已同意解散家庭，7 天冷静期结束后可执行；期间可取消", "")
+			_ = ns.PushTo(member.UserID, models.NotifyTypeSystem, map[string]string{
+				"标题": "家庭删除已通过",
+				"内容": "全体成员已同意解散家庭，7 天冷静期结束后可执行；期间可取消",
+			}, "")
 		}
 		utils.OK(c, gin.H{"message": "所有成员同意，已进入 7 天冷静期", "status": "approved", "executeAt": request.ExecuteAt})
 		return

@@ -15,6 +15,7 @@ import '../services/web_updater.dart';
 import '../theme.dart';
 import '../utils/display_name.dart';
 import '../widgets/server_address_dialog.dart';
+import 'notification_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -154,6 +155,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   MaterialPageRoute(builder: (_) => const NotificationsPage()));
               if (mounted) notify.loadUnreadCount();
             },
+          ),
+          // 通知设置：类型开关 + 文案模板（支持 {占位符}）
+          ListTile(
+            leading: const Icon(Icons.tune_outlined, color: Colors.indigo),
+            title: const Text('通知设置'),
+            subtitle: const Text('按类型开关通知、编辑通知文案格式'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const NotificationSettingsPage())),
           ),
           ListTile(
             leading: const Icon(Icons.family_restroom),
@@ -667,6 +679,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
         duplicated: duplicates.contains(m.nickname.trim()));
   }
 
+  Future<void> _editNotifySettings(FamilyMember m) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => NotificationSettingsPage(member: m)),
+    );
+  }
+
   Future<void> _toggleAdmin(FamilyMember m) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -793,10 +812,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         trailing: _isAdmin && !isMe
                             ? PopupMenuButton<String>(
                                 onSelected: (v) {
+                                  if (v == 'notify') _editNotifySettings(m);
                                   if (v == 'admin') _toggleAdmin(m);
                                   if (v == 'remove') _removeMember(m);
                                 },
                                 itemBuilder: (_) => [
+                                  const PopupMenuItem(
+                                      value: 'notify', child: Text('通知设置')),
                                   PopupMenuItem(
                                       value: 'admin',
                                       child:

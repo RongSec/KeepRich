@@ -1055,4 +1055,49 @@ class ApiClient {
     return ApiResponse.fromJson(
         r.data as Map<String, dynamic>, (d) => d as Map<String, dynamic>);
   }
+
+  // ===== 通知设置（类型开关 + 文案模板） =====
+
+  List<NotificationSetting> _parseNotificationSettings(dynamic d) {
+    final map = d as Map<String, dynamic>;
+    final list = (map['settings'] as List<dynamic>?) ?? [];
+    return list
+        .map((e) => NotificationSetting.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 查询自己的 5 类通知设置
+  Future<ApiResponse<List<NotificationSetting>>>
+      getNotificationSettings() async {
+    final r = await _dio.get('/notifications/settings');
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, _parseNotificationSettings);
+  }
+
+  /// 更新自己的通知设置（body：settings 列表，每项含 type/enabled/titleTemplate/contentTemplate）
+  Future<ApiResponse<List<NotificationSetting>>> updateNotificationSettings(
+      List<NotificationSetting> settings) async {
+    final r = await _dio.put('/notifications/settings',
+        data: {'settings': settings.map((e) => e.toJson()).toList()});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, _parseNotificationSettings);
+  }
+
+  /// 家庭管理员查某成员的通知设置（普通成员查他人返回 403）
+  Future<ApiResponse<List<NotificationSetting>>>
+      getMemberNotificationSettings(int uid) async {
+    final r = await _dio.get('/notifications/settings/$uid');
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, _parseNotificationSettings);
+  }
+
+  /// 家庭管理员改某成员的通知设置（普通成员改他人返回 403）
+  Future<ApiResponse<List<NotificationSetting>>>
+      updateMemberNotificationSettings(
+          int uid, List<NotificationSetting> settings) async {
+    final r = await _dio.put('/notifications/settings/$uid',
+        data: {'settings': settings.map((e) => e.toJson()).toList()});
+    return ApiResponse.fromJson(
+        r.data as Map<String, dynamic>, _parseNotificationSettings);
+  }
 }

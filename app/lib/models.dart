@@ -1165,6 +1165,15 @@ class NotifyType {
   static const String familyResult = 'family_result';
   static const String system = 'system';
 
+  /// 5 类固定顺序（与后端 NotifyTypes 一致）
+  static const List<String> all = [
+    overSpend,
+    bigPurchase,
+    familyApply,
+    familyResult,
+    system,
+  ];
+
   static const Map<String, String> labels = {
     overSpend: '超支提醒',
     bigPurchase: '大件可购买',
@@ -1173,6 +1182,54 @@ class NotifyType {
     system: '系统通知',
   };
   static String labelOf(String t) => labels[t] ?? '通知';
+
+  /// 各类型可用的模板占位符（提示文案用）
+  static const Map<String, String> placeholders = {
+    overSpend: '{分类} {金额} {限额} {日期}',
+    bigPurchase: '{名称}',
+    familyApply: '{家庭名}',
+    familyResult: '{结果}',
+    system: '{标题} {内容}',
+  };
+  static String placeholdersOf(String t) => placeholders[t] ?? '';
+}
+
+/// 通知设置（每类一项：类型开关 + 文案模板）
+///
+/// 模板留空 = 用后端默认模板；支持 {占位符}（见 NotifyType.placeholders）。
+class NotificationSetting {
+  final String type;
+  final bool enabled;
+  final String titleTemplate;
+  final String contentTemplate;
+  final String defaultTitleTemplate;
+  final String defaultContentTemplate;
+
+  NotificationSetting({
+    required this.type,
+    required this.enabled,
+    required this.titleTemplate,
+    required this.contentTemplate,
+    this.defaultTitleTemplate = '',
+    this.defaultContentTemplate = '',
+  });
+
+  factory NotificationSetting.fromJson(Map<String, dynamic> json) =>
+      NotificationSetting(
+        type: json['type'] as String? ?? 'system',
+        enabled: json['enabled'] as bool? ?? true,
+        titleTemplate: json['titleTemplate'] as String? ?? '',
+        contentTemplate: json['contentTemplate'] as String? ?? '',
+        defaultTitleTemplate: json['defaultTitleTemplate'] as String? ?? '',
+        defaultContentTemplate: json['defaultContentTemplate'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'enabled': enabled,
+        'titleTemplate': titleTemplate,
+        'contentTemplate': contentTemplate,
+      };
 }
 
 /// 云端快照同步状态（`GET /api/sync/status`，R-11）

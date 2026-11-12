@@ -28,15 +28,52 @@ class NotifyService extends ChangeNotifier {
   List<NotificationItem> get recentNotifications =>
       List.unmodifiable(_recentNotifications);
 
-  /// 初始化本地通知
+  /// 初始化本地通知 + 申请系统通知权限（Android 13+ / iOS）
+  ///
+  /// 系统通知是"锦上添花"：拿不到权限就只保留 App 内通知，不崩不挡启动。
   Future<void> initLocalNotifications() async {
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidSettings);
+    // iOS/macOS：初始化即请求 UNUserNotificationCenter 授权（弹系统通知栏）
+    const darwinSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
+    );
     await _localNotifications.initialize(initSettings);
+    await _requestSystemNotificationPermission();
   }
 
-  /// 显示本地通知
+  /// 申请手机系统通知权限：
+  /// Android 13+ 需要 POST_NOTIFICATIONS 运行时授权（Manifest 已声明），
+  /// iOS 走 UNUserNotificationCenter 授权。任一平台失败只降级记日志。
+  Future<void> _requestSystemNotificationPermission() async {
+    if (kIsWeb) return;
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final android = _localNotifications
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        // Android 13 以下直接返回 true；13+ 弹运行时权限框
+        await android?.requestNotificationsPermission();
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final ios = _localNotifications
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>();
+        await ios?.requestPermissions(
+            alert: true, badge: true, sound: true);
+      }
+    } catch (e) {
+      debugPrint('[notify] 系统通知权限申请失败（降级为仅 App 内通知）: $e');
+    }
+  }
+
+  /// 显示本地通知（系统通知栏）；无权限/平台不支持时静默降级
   Future<void> _showLocalNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'family_finance',
@@ -47,12 +84,17 @@ class NotifyService extends ChangeNotifier {
       showWhen: true,
     );
     const details = NotificationDetails(android: androidDetails);
-    await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      details,
-    );
+    try {
+      await _localNotifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title,
+        body,
+        details,
+      );
+    } catch (e) {
+      // 权限被拒/系统限制：不弹系统通知即可，App 内通知列表仍可用
+      debugPrint('[notify] 系统通知展示失败: $e');
+    }
   }
 
   /// 连接 WebSocket（?token= 携带 access token 鉴权，浏览器 WS 无法带 Authorization 头）

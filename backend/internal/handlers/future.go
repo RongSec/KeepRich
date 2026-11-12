@@ -956,7 +956,10 @@ func MonthlyInvestmentCheck(c *gin.Context) {
 	if len(pending) > 0 {
 		ns := services.NewNotifyService(database.DB)
 		monthStr := fmt.Sprintf("%d年%d月", prevYear, prevMonth)
-		_ = ns.PushTo(uid, "system", "投资收益待记录", monthStr+"的投资收益尚未录入，请前往「未来财务」页面记录", "")
+		_ = ns.PushTo(uid, models.NotifyTypeSystem, map[string]string{
+			"标题": "投资收益待记录",
+			"内容": monthStr + "的投资收益尚未录入，请前往「未来财务」页面记录",
+		}, "")
 	}
 
 	utils.OK(c, gin.H{

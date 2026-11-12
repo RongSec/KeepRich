@@ -257,8 +257,13 @@ func CreateTx(c *gin.Context) {
 		if worryPerBuy > 0 && req.Amount > worryPerBuy {
 			ns := services.NewNotifyService(database.DB)
 			f := "%.0f"
-			_ = ns.PushTo(uid, models.NotifyTypeOverSpend, "超支提醒",
-				"一笔 "+models.CategoryLabel[req.Category]+" 支出 ¥"+fmt.Sprintf(f, req.Amount)+" 超过无顾虑单笔 ¥"+fmt.Sprintf(f, worryPerBuy), "")
+			// 模板变量：{分类}/{金额}/{限额}/{日期}，默认/自定义模板统一在 PushTo 渲染
+			_ = ns.PushTo(uid, models.NotifyTypeOverSpend, map[string]string{
+				"分类": models.CategoryLabel[req.Category],
+				"金额": fmt.Sprintf(f, req.Amount),
+				"限额": fmt.Sprintf(f, worryPerBuy),
+				"日期": time.Now().Format("2006-01-02"),
+			}, "")
 		}
 	}
 
@@ -461,19 +466,22 @@ func txScopeQuery(scope string, uid uint64, familyID *uint64) func(db *gorm.DB) 
 // computeWorryFreePerBuy 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20
 // 文档 §4 公式结果以万元表述，API 与前端统一使用元，故此处不再 ÷10000
 func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 {
+	// scopeQ 是 scope 条件函数：必须用 Scopes 应用。
+	// 历史 bug：曾写成 Where(scopeQ)——函数被当 SQL 绑定参数报错，
+	// 查询静默失败，无顾虑单笔恒为 0，超支提醒从不触发。
 	scopeQ := txScopeQuery(scope, uid, familyID)
 
 	// 储蓄桶余额
 	var savingBalance float64
 	database.DB.Model(&models.Transaction{}).
 		Where("type = ? AND category = ?", models.TxTypeTransfer, models.TransferToSaving).
-		Where(scopeQ).
+		Scopes(scopeQ).
 		Select("COALESCE(SUM(amount),0)").Scan(&savingBalance)
 
 	var interestSaving float64
 	database.DB.Model(&models.Transaction{}).
 		Where("type = ? AND category = ? AND target_bucket = ?", models.TxTypeIncome, models.IncomeInvestment, "saving").
-		Where(scopeQ).
+		Scopes(scopeQ).
 		Select("COALESCE(SUM(amount),0)").Scan(&interestSaving)
 	savingBalance += interestSaving
 
@@ -482,7 +490,7 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 	var salaryIncome float64
 	database.DB.Model(&models.Transaction{}).
 		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
-		Where(scopeQ).
+		Scopes(scopeQ).
 		Select("COALESCE(SUM(amount),0)").Scan(&salaryIncome)
 
 	baseIncome := salaryIncome
@@ -491,7 +499,7 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 	activeMonths := services.CountDistinctMonths(
 		database.DB.Model(&models.Transaction{}).
 			Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
-			Where(scopeQ))
+			Scopes(scopeQ))
 	if activeMonths < 1 {
 		activeMonths = 1
 	}
