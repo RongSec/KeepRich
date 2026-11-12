@@ -1,6 +1,9 @@
   #!/bin/bash
   set -e
 
+  # 固化 JDK 17（否则 Gradle/JVM 报 --enable-native-access 不识别，构建失败）
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/ensure_jdk17.sh" || exit 1
+
   echo "=== 编译 Flutter Web ==="
   cd admin && flutter build web --release && cd ..
 

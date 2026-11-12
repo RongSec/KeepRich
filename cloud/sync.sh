@@ -3,6 +3,9 @@
 # 用法：bash cloud/sync.sh
 set -euo pipefail
 
+# 固化 JDK 17（否则 Gradle/JVM 报 --enable-native-access 不识别，构建失败）
+source /Users/rongsec/Developer/finance/scripts/ensure_jdk17.sh || exit 1
+
 ROOT=/Users/rongsec/Developer/finance
 SRC=$ROOT/backend
 DST=$ROOT/cloud/finance-server

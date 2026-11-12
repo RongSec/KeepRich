@@ -9,6 +9,9 @@
 # 已打开页面的用户会看到"新版本，立即刷新"。
 set -euo pipefail
 
+# 固化 JDK 17（否则 Gradle/JVM 报 --enable-native-access 不识别，构建失败）
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ensure_jdk17.sh" || exit 1
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/app"
 
