@@ -359,9 +359,6 @@ func ListTx(c *gin.Context) {
 		q = q.Where("amount <= ?", worryPerBuy)
 	}
 
-	var total int64
-	q.Count(&total)
-
 	// 收入/支出/存钱合计（按当前筛选条件全量聚合；用 Session 复用 q 上的 where 但不复用 limit/order）
 	var sumIncome, sumExpense, sumTransfer float64
 	qIncome := q.Session(&gorm.Session{})
@@ -375,6 +372,10 @@ func ListTx(c *gin.Context) {
 	if txType != "" {
 		q = q.Where("type = ?", txType)
 	}
+
+	// total 与 list 都按 type 过滤（三联求和不受影响）
+	var total int64
+	q.Count(&total)
 
 	var list []models.Transaction
 	q.Order("occurred_at DESC").Offset((page - 1) * size).Limit(size).Find(&list)
