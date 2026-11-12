@@ -490,20 +490,28 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 		Select("COALESCE(SUM(amount),0)").Scan(&interestSaving)
 	savingBalance += interestSaving
 
-	// 年薪 = 月均工资 × 12，按实际有收入的月数年化（不含公积金）
+	// 年薪 = 月均（工资 + 当月公积金）× 12，按实际有收入的月数年化
+	// （过往公积金/过往存款/意外收入仍不计入）
 	yearAgo := time.Now().AddDate(-1, 0, 0).Unix()
 	var salaryIncome float64
 	database.DB.Model(&models.Transaction{}).
 		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
 		Scopes(scopeQ).
 		Select("COALESCE(SUM(amount),0)").Scan(&salaryIncome)
+	var housingIncome float64
+	database.DB.Model(&models.Transaction{}).
+		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeHousingFund, yearAgo).
+		Scopes(scopeQ).
+		Select("COALESCE(SUM(amount),0)").Scan(&housingIncome)
 
-	baseIncome := salaryIncome
+	baseIncome := salaryIncome + housingIncome
 
-	// 计算实际有工资收入的月数（不含公积金）
+	// 计算实际有收入的月数（工资或当月公积金）
 	activeMonths := services.CountDistinctMonths(
 		database.DB.Model(&models.Transaction{}).
-			Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
+			Where("type = ? AND category IN ? AND occurred_at >= ?",
+				models.TxTypeIncome,
+				[]string{models.IncomeSalary, models.IncomeHousingFund}, yearAgo).
 			Scopes(scopeQ))
 	if activeMonths < 1 {
 		activeMonths = 1

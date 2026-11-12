@@ -433,31 +433,18 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     return map.values.toList();
   }
 
-  // 日期分组头：左边日期，右边当日支出/收入合计
+  // 日期分组头：只显示日期（不再跟随 支出/收入 合计）
   Widget _dateGroupHeader(_DayGroup g) {
-    final f = NumberFormat('#,##0.00');
-    final parts = <String>[
-      '支出: ¥${f.format(g.expenseSum)}',
-      '收入: ¥${f.format(g.incomeSum)}',
-    ];
-    if (g.transferSum > 0) parts.add('存钱: ¥${f.format(g.transferSum)}');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      child: Row(children: [
-        Text(g.label,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(g.label,
             style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.text)),
-        const Spacer(),
-        Flexible(
-          child: Text(parts.join(' | '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  const TextStyle(fontSize: 12, color: AppTheme.textDim)),
-        ),
-      ]),
+      ),
     );
   }
 

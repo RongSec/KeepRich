@@ -224,20 +224,26 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 		totalCash = 0
 	}
 
-	// 年薪计算：仅基于工资收入（不包含公积金、过往存款等）
+	// 年薪计算：工资 + 当月公积金（过往公积金/过往存款/意外收入仍不计入）
 	yearAgo := time.Now().AddDate(-1, 0, 0).Unix()
 	var salaryIncome float64
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeSalary, yearAgo, &salaryIncome)
+	var housingIncome float64
+	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeHousingFund, yearAgo, &housingIncome)
+	baseIncome := salaryIncome + housingIncome
 
-	// 计算实际有工资收入的月数（与 salaryIncome 同一聚合口径，否则家庭空间月数缺失导致年薪虚增）
+	// 计算实际有收入的月数（工资或当月公积金，与 baseIncome 同一聚合口径，
+	// 否则家庭空间月数缺失导致年薪虚增）
 	mq := s.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo)
+		Where("type = ? AND category IN ? AND occurred_at >= ?",
+			models.TxTypeIncome,
+			[]string{models.IncomeSalary, models.IncomeHousingFund}, yearAgo)
 	mq = s.applyScopeQuery(mq, scope, uid, familyID)
 	activeMonths := CountDistinctMonths(mq)
 	if activeMonths < 1 {
 		activeMonths = 1
 	}
-	annualIncome := utils.Round2(salaryIncome / float64(activeMonths) * 12.0)
+	annualIncome := utils.Round2(baseIncome / float64(activeMonths) * 12.0)
 
 	plan, err := s.getPlan(scope, uid, familyID)
 	if err != nil {

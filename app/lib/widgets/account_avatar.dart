@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -26,8 +28,11 @@ class AccountAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final initial = initialOf(nickname, username);
-    final showNetworkImage =
-        avatar.trim().toLowerCase().startsWith('http');
+    final av = avatar.trim();
+    final avLower = av.toLowerCase();
+    // 三种取值：http(s) 网络图 / data:image...;base64 本地图（相册上传）/ 空
+    final showNetworkImage = avLower.startsWith('http');
+    final showDataUri = avLower.startsWith('data:image');
     return Container(
       width: size,
       height: size,
@@ -51,12 +56,19 @@ class AccountAvatar extends StatelessWidget {
       child: ClipOval(
         child: showNetworkImage
             ? Image.network(
-                avatar,
+                av,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => _InitialGlyph(
                     initial: initial, size: size),
               )
-            : _InitialGlyph(initial: initial, size: size),
+            : showDataUri
+                ? Image.memory(
+                    base64Decode(av.substring(av.indexOf(',') + 1)),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _InitialGlyph(initial: initial, size: size),
+                  )
+                : _InitialGlyph(initial: initial, size: size),
       ),
     );
   }

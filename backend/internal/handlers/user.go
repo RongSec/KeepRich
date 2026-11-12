@@ -165,7 +165,13 @@ func UpdateProfile(c *gin.Context) {
 		updates["nickname"] = trimmed
 	}
 	if req.Avatar != nil {
-		updates["avatar"] = *req.Avatar
+		// 头像为 data URI（base64）。限制 400KB，防滥用超大 payload 撑爆用户表。
+		av := *req.Avatar
+		if len(av) > 400*1024 {
+			utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, "头像图片过大，请换一张较小的图片")
+			return
+		}
+		updates["avatar"] = av
 	}
 	if req.Email != nil {
 		updates["email"] = *req.Email

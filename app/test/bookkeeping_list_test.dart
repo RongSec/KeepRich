@@ -149,7 +149,7 @@ void main() {
       await server.close(force: true);
     });
 
-    testWidgets('按日期分组：日期头 + 当日支出/收入合计', (tester) async {
+    testWidgets('按日期分组：只有日期，不再显示当日支出/收入合计', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookkeepingPage()));
       await _settle(tester);
 
@@ -157,9 +157,10 @@ void main() {
       expect(find.text('11月12日'), findsOneWidget);
       expect(find.text('11月10日'), findsOneWidget);
 
-      // 日期头右侧当日合计（11/12：194+30；11/10：42）
-      expect(find.text('支出: ¥224.00 | 收入: ¥0.00'), findsOneWidget);
-      expect(find.text('支出: ¥42.00 | 收入: ¥0.00'), findsOneWidget);
+      // 日期行后面不再跟 支出/收入 合计（用户要求去掉）
+      expect(find.textContaining('支出:'), findsNothing);
+      expect(find.textContaining('收入:'), findsNothing);
+      expect(find.textContaining('存钱:'), findsNothing);
 
       // 每笔账单一个左滑删除容器
       expect(find.byType(Dismissible), findsNWidgets(3));

@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +10,7 @@ import '../models.dart';
 import '../services/api.dart';
 import '../utils/dialog_dispose.dart';
 import '../services/auth.dart';
+import '../widgets/account_avatar.dart';
 import '../utils/display_name.dart';
 
 class SecurityPage extends StatefulWidget {
@@ -142,18 +146,69 @@ class _SecurityPageState extends State<SecurityPage> {
     final u = context.read<AuthState>().user;
     if (u == null) return;
     final nickname = TextEditingController(text: u.nickname);
-    final avatar = TextEditingController(text: u.avatar);
+    // 头像改为相册上传：不再用 URL 文本框。pickedAvatar 存 data URI（base64）。
+    String pickedAvatar = u.avatar;
     final email = TextEditingController(text: u.email);
     final phone = TextEditingController(text: u.phone);
     final formKey = GlobalKey<FormState>();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
         title: const Text('编辑资料'),
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // 头像：从相册上传（不再手输 URL）
+              Center(
+                child: Column(children: [
+                  AccountAvatar(
+                      avatar: pickedAvatar,
+                      nickname: nickname.text,
+                      username: u.username,
+                      size: 72),
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        // 相册选图，压到 256px/质量 75，转 data URI 存库
+                        final x = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            maxWidth: 256,
+                            maxHeight: 256,
+                            imageQuality: 75);
+                        if (x == null) return;
+                        final bytes = await x.readAsBytes();
+                        if (bytes.lengthInBytes > 400 * 1024) {
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                                content:
+                                    Text('头像图片过大，请换一张较小的图片')));
+                          }
+                          return;
+                        }
+                        final mime = x.mimeType == null || x.mimeType!.isEmpty
+                            ? 'image/jpeg'
+                            : x.mimeType!;
+                        setDialogState(() => pickedAvatar =
+                            'data:$mime;base64,${base64Encode(bytes)}');
+                      },
+                      icon: const Icon(Icons.photo_library_outlined, size: 18),
+                      label: const Text('从相册选择'),
+                    ),
+                    if (pickedAvatar.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () =>
+                            setDialogState(() => pickedAvatar = ''),
+                        child: const Text('移除'),
+                      ),
+                    ],
+                  ]),
+                ]),
+              ),
+              const SizedBox(height: 8),
               // 存量 >16 字昵称不截断不报错，只有主动编辑提交时才按 16 字校验。
               TextFormField(
                   controller: nickname,
@@ -161,10 +216,6 @@ class _SecurityPageState extends State<SecurityPage> {
                   validator: (v) => nicknameError(v, required: false),
                   decoration: const InputDecoration(
                       labelText: '昵称', helperText: '最多 16 个字')),
-              const SizedBox(height: 8),
-              TextFormField(
-                  controller: avatar,
-                  decoration: const InputDecoration(labelText: '头像 URL')),
               const SizedBox(height: 8),
               TextFormField(
                   controller: email,
@@ -189,20 +240,19 @@ class _SecurityPageState extends State<SecurityPage> {
               child: const Text('保存')),
         ],
       ),
+      ),
     );
     if (ok != true) {
       disposeDialogController(nickname);
-      disposeDialogController(avatar);
       disposeDialogController(email);
       disposeDialogController(phone);
       return;
     }
     final nicknameText = nickname.text;
-    final avatarText = avatar.text;
+    final avatarText = pickedAvatar;
     final emailText = email.text;
     final phoneText = phone.text;
     disposeDialogController(nickname);
-    disposeDialogController(avatar);
     disposeDialogController(email);
     disposeDialogController(phone);
     final r = await ApiClient.instance.updateProfile({

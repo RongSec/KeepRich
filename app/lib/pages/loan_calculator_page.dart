@@ -149,17 +149,22 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                             color: Colors.blue.shade700)),
                   ]),
                   const SizedBox(height: 8),
-                  Text('月收入：¥${f.format(widget.monthlyIncome)}'),
+                  // 本卡片是浅色底（blue.shade50），正文必须用深色，
+                  // 否则会落到全局深色主题的浅色文字上，浅底浅字看不清。
+                  Text('月收入：¥${f.format(widget.monthlyIncome)}',
+                      style: TextStyle(color: Colors.blue.shade900)),
                   Text(
-                      '可用于还贷：¥${f.format(widget.monthlyIncome * widget.loanRatio)}（${(widget.loanRatio * 100).toStringAsFixed(0)}%）'),
-                  const Divider(),
+                      '可用于还贷：¥${f.format(widget.monthlyIncome * widget.loanRatio)}（${(widget.loanRatio * 100).toStringAsFixed(0)}%）',
+                      style: TextStyle(color: Colors.blue.shade900)),
+                  Divider(color: Colors.blue.shade200),
                   Text('最大可贷款额：¥${f.format(_maxLoanAmount)}',
                       style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color: Colors.green.shade700,
+                          color: Colors.green.shade800,
                           fontSize: 16)),
                   Text('基于等额本息、当前利率和期限计算',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textDim)),
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.blue.shade700)),
                 ],
               ),
             ),
