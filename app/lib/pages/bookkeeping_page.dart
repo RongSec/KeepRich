@@ -54,19 +54,12 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   /// 选了成员后，后端用 memberUid 只返回该成员的个人账单。
   int? _memberUid;
 
-  static const Map<String, IconData> _typeIcons = {
-    TxType.income: Icons.south_west,
-    TxType.expense: Icons.north_east,
-    TxType.transfer: Icons.savings,
-  };
   static const Map<String, Color> _typeColors = {
     TxType.income: Colors.green,
     TxType.expense: Colors.redAccent,
     TxType.transfer: Colors.indigo,
   };
 
-  static IconData iconOf(String t) =>
-      _typeIcons[t] ?? Icons.account_balance_wallet;
   static Color colorOf(String t) => _typeColors[t] ?? AppTheme.textDim;
 
   String get _filterLabel {
@@ -218,15 +211,16 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     // 选中当前 tab 的账单/合计
     final selectedType = _tabType;
     final selectedList = _list.where((t) => t.type == selectedType).toList();
-    final selectedSum = selectedType == TxType.income
-        ? _sumIncome
-        : selectedType == TxType.expense
-            ? _sumExpense
-            : _sumTransfer;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('记账'),
+        titleSpacing: 16,
+        title: Row(children: [
+          const Text('记账'),
+          const SizedBox(width: 12),
+          // 个人/家庭选择：与标题同行（对齐其它页面）
+          Expanded(child: _scopeSelector()),
+        ]),
         actions: [
           IconButton(
               icon: const Icon(Icons.filter_list),
@@ -236,31 +230,6 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       ),
       body: Column(
         children: [
-          // 范围切换：个人 / 家庭（家庭为下拉，可选「整个家庭」或某个成员）
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(children: [
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'personal', label: Text('个人')),
-                  ButtonSegment(value: 'family', label: Text('家庭')),
-                ],
-                selected: {_scope},
-                onSelectionChanged: (s) {
-                  setState(() {
-                    _scope = s.first;
-                    if (_scope != 'family') _memberUid = null;
-                  });
-                  _load();
-                  _loadMembers();
-                },
-              ),
-              if (_scope == 'family') ...[
-                const SizedBox(width: 10),
-                Expanded(child: _familyScopeDropdown()),
-              ],
-            ]),
-          ),
           // 顶部统计
           _statsBar(),
           // 已应用筛选条件
@@ -293,8 +262,6 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
                       }),
               ]),
             ),
-          // 当前 tab 的小头部
-          _selectedTabHeader(selectedType, selectedList.length, selectedSum),
           // 列表
           Expanded(
             child: _loading && _list.isEmpty
@@ -306,9 +273,41 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           ),
         ],
       ),
+      // 记账按钮：右下角悬浮钮，不占列表空间；记「当前 tab」类型的账
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _add(_tabType),
+        tooltip: '记一笔',
+        child: const Icon(Icons.add),
+      ),
       // 底部 1 行 3 列导航栏
       bottomNavigationBar: _buildBottomNav(),
     );
+  }
+
+  /// 个人 / 家庭 范围选择（与标题同行）；家庭时展开成员下拉
+  Widget _scopeSelector() {
+    return Row(children: [
+      SegmentedButton<String>(
+        style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        segments: const [
+          ButtonSegment(value: 'personal', label: Text('个人')),
+          ButtonSegment(value: 'family', label: Text('家庭')),
+        ],
+        selected: {_scope},
+        onSelectionChanged: (s) {
+          setState(() {
+            _scope = s.first;
+            if (_scope != 'family') _memberUid = null;
+          });
+          _load();
+          _loadMembers();
+        },
+      ),
+      if (_scope == 'family') ...[
+        const SizedBox(width: 8),
+        Expanded(child: _familyScopeDropdown()),
+      ],
+    ]);
   }
 
   // 底部 1 行 3 列导航栏
@@ -374,64 +373,6 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           ),
         ),
       ),
-    );
-  }
-
-  // 当前 tab 的小头部
-  Widget _selectedTabHeader(String type, int count, double amount) {
-    final f = NumberFormat('#,##0.00');
-    final color = _BookkeepingPageState.colorOf(type);
-    final label = TxType.labels[type] ?? type;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            color.withValues(alpha: 0.12),
-            color.withValues(alpha: 0.04)
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-              color: color, borderRadius: BorderRadius.circular(8)),
-          child: Icon(_BookkeepingPageState.iconOf(type),
-              color: Colors.white, size: 18),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('$label · $count 笔',
-                style: TextStyle(
-                    fontSize: 12, color: color, fontWeight: FontWeight.w600)),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.bottomLeft,
-              child: Text(
-                '${type == TxType.expense ? '-' : '+'}${f.format(amount)} 元',
-                style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w800, color: color),
-              ),
-            ),
-          ]),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: () => _add(type),
-          style: FilledButton.styleFrom(
-              backgroundColor: color, foregroundColor: Colors.white),
-          icon: const Icon(Icons.add, size: 18),
-          label: Text('记$label'),
-        ),
-      ]),
     );
   }
 

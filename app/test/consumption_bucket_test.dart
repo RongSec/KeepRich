@@ -219,7 +219,7 @@ void main() {
       // 切到存钱 tab，打开记账表单
       await tester.tap(find.widgetWithText(InkWell, '存钱'));
       await _settle(tester);
-      await tester.tap(find.text('记存钱'));
+      await tester.tap(find.byType(FloatingActionButton));
       await _settle(tester);
 
       // 表单显示来源与待支配余额
@@ -257,7 +257,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: BookkeepingPage()));
       await _settle(tester);
 
-      await tester.tap(find.text('记支出'));
+      await tester.tap(find.byType(FloatingActionButton));
       await _settle(tester);
 
       // 来源选择器：消费额度与可支配额度并列，且显示各自余额
@@ -294,7 +294,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: BookkeepingPage()));
       await _settle(tester);
 
-      await tester.tap(find.text('记支出'));
+      await tester.tap(find.byType(FloatingActionButton));
       await _settle(tester);
 
       // 单来源（默认可支配额度）超额 → 硬拦，不得发到后端

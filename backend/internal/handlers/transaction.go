@@ -328,9 +328,8 @@ func ListTx(c *gin.Context) {
 				models.TxScopePersonal, memberIDs, models.TxScopeFamily, m.FamilyID)
 		}
 	}
-	if txType != "" {
-		q = q.Where("type = ?", txType)
-	}
+	// 注意：type 过滤挪到「三联求和」之后——收入/支出/存钱合计必须恒显示全部三项
+	// （不随当前 tab 的 type 变成 0），只有列表和 total 才按 type 过滤。
 	if category != "" && category != "all" {
 		q = q.Where("category = ?", category)
 	}
@@ -371,6 +370,11 @@ func ListTx(c *gin.Context) {
 	qExpense.Where("type = ?", models.TxTypeExpense).Select("COALESCE(SUM(amount),0)").Scan(&sumExpense)
 	qTransfer := q.Session(&gorm.Session{})
 	qTransfer.Where("type = ?", models.TxTypeTransfer).Select("COALESCE(SUM(amount),0)").Scan(&sumTransfer)
+
+	// 三联求和已用「不含 type 过滤」的 q 算完；下面才按 type 过滤列表与 total。
+	if txType != "" {
+		q = q.Where("type = ?", txType)
+	}
 
 	var list []models.Transaction
 	q.Order("occurred_at DESC").Offset((page - 1) * size).Limit(size).Find(&list)
