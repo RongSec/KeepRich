@@ -76,7 +76,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     // 同时清掉上一页残留的报错，免得登录页顶上还挂着旧的英文错误。
     ApiClient.onSessionExpired = (reason) {
       _auth.sessionExpired(reason);
-      _AppShell.scaffoldMessengerKey.currentState?.clearSnackBars();
+      _AppShellState.scaffoldMessengerKey.currentState?.clearSnackBars();
     };
     _bootstrap();
     _notify.initLocalNotifications();
@@ -138,33 +138,38 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   }
 }
 
-class _AppShell extends StatelessWidget {
+class _AppShell extends StatefulWidget {
   final AuthState auth;
   const _AppShell({required this.auth});
 
+  @override
+  State<_AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<_AppShell> {
   /// 用来在跳登录页前清掉上一页残留的错误提示
   static final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
-  @override
-  Widget build(BuildContext context) {
-    final router = GoRouter(
-      refreshListenable: auth,
+  /// 路由器只创建一次：主题切换会重建 MaterialApp，若在 build 里 new GoRouter
+  /// 会重置导航栈回到首页（模拟器实测抓到的 bug）。
+  late final GoRouter _router = GoRouter(
+      refreshListenable: widget.auth,
       initialLocation: '/splash',
       redirect: (ctx, state) {
-        if (auth.loading) return null;
+        if (widget.auth.loading) return null;
         final loc = state.matchedLocation;
         // 开屏页不重定向
         if (loc == '/splash') return null;
         // 管理后台区域独立鉴权
         if (loc.startsWith('/admin')) {
           if (loc == '/admin/login') return null;
-          if (!auth.isLoggedIn) return '/admin/login';
-          if (auth.user?.role != 'admin') return '/admin/login';
+          if (!widget.auth.isLoggedIn) return '/admin/login';
+          if (widget.auth.user?.role != 'admin') return '/admin/login';
           return null;
         }
         // 未登录可进：登录页 + 注册页
         final openWhenLoggedOut = loc == '/login' || loc == '/register';
-        if (!auth.isLoggedIn) return openWhenLoggedOut ? null : '/login';
+        if (!widget.auth.isLoggedIn) return openWhenLoggedOut ? null : '/login';
         // 已登录还停在登录/注册页 → 直接进概览
         if (openWhenLoggedOut) return '/overview';
         return null;
@@ -191,6 +196,8 @@ class _AppShell extends StatelessWidget {
       ],
     );
 
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: '永远富裕',
@@ -199,7 +206,7 @@ class _AppShell extends StatelessWidget {
       themeMode: context.watch<ThemeController>().themeMode,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      routerConfig: router,
+      routerConfig: _router,
       // 沙漏背景铺在最底层：登录前饱满、登录后变淡。
       // 同时把当前亮度注入 AppTheme 令牌（text/glass 等运行时 getter），整树随之换色。
       builder: (ctx, child) {
@@ -207,7 +214,7 @@ class _AppShell extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            HourglassSandBackground(dimmed: auth.isLoggedIn, density: 1.0),
+            HourglassSandBackground(dimmed: widget.auth.isLoggedIn, density: 1.0),
             if (child != null) child,
           ],
         );
