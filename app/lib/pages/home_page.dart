@@ -254,13 +254,13 @@ class _BottomNavWithBall extends StatelessWidget {
             child: Container(
               height: 64,
               decoration: BoxDecoration(
-                color: const Color(0xF20C0C12),
+                color: AppTheme.navBg,
                 border: Border(
-                  top: BorderSide(color: AppTheme.gold.withValues(alpha: 0.16)),
+                  top: BorderSide(color: AppTheme.navBorder),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.55),
+                    color: AppTheme.navShadow,
                     blurRadius: 18,
                     offset: const Offset(0, -4),
                   ),

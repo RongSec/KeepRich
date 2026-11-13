@@ -291,10 +291,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xF20C0C12),
-          border: Border(
-              top: BorderSide(
-                  color: AppTheme.gold.withValues(alpha: 0.16), width: 1)),
+          color: AppTheme.navBg,
+          border: Border(top: BorderSide(color: AppTheme.navBorder, width: 1)),
         ),
         child: Row(children: [
           _navItem(TxType.income, Colors.green, Icons.south_west, '收入'),

@@ -56,6 +56,18 @@ class AppTheme {
   static Color get line =>
       _isDark ? const Color(0x1FFFFFFF) : const Color(0xFFE4E4EA);
 
+  /// 底部导航栏背景
+  static Color get navBg =>
+      _isDark ? const Color(0xF20C0C12) : const Color(0xF7FFFFFF);
+
+  /// 底部导航栏顶部描边
+  static Color get navBorder =>
+      _isDark ? const Color(0x29FFC65C) : const Color(0xFFE4E4EA);
+
+  /// 底部导航栏上浮阴影
+  static Color get navShadow =>
+      _isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.12);
+
   /// 卡片边框
   static Color get cardBorder =>
       _isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE8E8EE);

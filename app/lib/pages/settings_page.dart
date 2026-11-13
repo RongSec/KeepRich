@@ -14,6 +14,7 @@ import '../services/theme_controller.dart';
 import '../services/updater.dart';
 import '../services/web_updater.dart';
 import '../theme.dart';
+import '../widgets/account_avatar.dart';
 import '../utils/display_name.dart';
 import '../widgets/server_address_dialog.dart';
 import 'notification_settings_page.dart';
@@ -89,18 +90,12 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: Text(
-                      avatarInitial(user?.nickname ?? '', user?.username ?? ''),
-                      style: TextStyle(
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700),
-                    ),
+                  // 用 AccountAvatar：有头像图（网络/data URI）就显示图，否则首字兜底
+                  AccountAvatar(
+                    avatar: user?.avatar ?? '',
+                    nickname: user?.nickname ?? '',
+                    username: user?.username ?? '',
+                    size: 60,
                   ),
                   const SizedBox(width: 14),
                   Expanded(
