@@ -10,6 +10,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/device_auth.dart';
 import '../services/notify.dart';
+import '../services/theme_controller.dart';
 import '../services/updater.dart';
 import '../services/web_updater.dart';
 import '../theme.dart';
@@ -74,243 +75,478 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthState>().user;
     final notify = context.watch<NotifyService>();
+    final theme = context.watch<ThemeController>();
     final unreadCount = notify.unreadCount;
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primaryContainer,
-                  child: Text(
-                    avatarInitial(user?.nickname ?? '', user?.username ?? ''),
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        fontSize: 24),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                          displayName(
-                              user?.nickname ?? '', user?.username ?? ''),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium),
-                      Text(user?.email ?? user?.phone ?? '',
-                          style: Theme.of(context).textTheme.bodySmall),
-                    ],
-                  ),
-                ),
-                IconButton(
-                    icon: const Icon(Icons.edit),
-                    tooltip: '编辑资料',
-                    // 之前是空回调（点了没反应）：跳到「安全」页的编辑资料入口
-                    onPressed: () => context.push('/security')),
-              ],
-            ),
-          ),
-          const Divider(),
-          ListTile(
-            leading: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_outlined),
-                if (unreadCount > 0)
-                  Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(8)),
-                      constraints: const BoxConstraints(minWidth: 14),
-                      child: Text(
-                        unreadCount > 99 ? '99+' : '$unreadCount',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600),
-                        textAlign: TextAlign.center,
-                      ),
+          // ── 账号卡片（独立卡，仿参考图顶部服务卡）──
+          Container(
+            decoration: AppTheme.glassCard(radius: 16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    child: Text(
+                      avatarInitial(user?.nickname ?? '', user?.username ?? ''),
+                      style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700),
                     ),
                   ),
-              ],
-            ),
-            title: const Text('通知中心'),
-            subtitle: const Text('查看超支提醒、大件可购买、家庭申请等通知'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              await Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const NotificationsPage()));
-              if (mounted) notify.loadUnreadCount();
-            },
-          ),
-          // 通知设置：类型开关 + 文案模板（支持 {占位符}）
-          ListTile(
-            leading: const Icon(Icons.tune_outlined, color: Colors.indigo),
-            title: const Text('通知设置'),
-            subtitle: const Text('按类型开关通知、编辑通知文案格式'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const NotificationSettingsPage())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.family_restroom),
-            title: const Text('家庭管理'),
-            subtitle: const Text('创建/加入家庭、家庭码、终身绑定'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/family'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.people, color: Colors.blue),
-            title: const Text('用户管理'),
-            subtitle: const Text('查看家庭成员、调整管理员、移除成员'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const UserManagementPage())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.assignment),
-            title: const Text('财务预规划'),
-            subtitle: const Text('收入分配比例、储蓄目标、投资参数'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/plan'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.security),
-            title: const Text('账号安全'),
-            subtitle: const Text('修改密码、MFA 多因子认证'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/security'),
-          ),
-          // 在线更新
-          ListTile(
-            leading: const Icon(Icons.system_update, color: Colors.teal),
-            title: const Text('检查更新'),
-            subtitle: const Text('查看新版本并在线升级'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              // Web 端：走前端版本接口，提示刷新即可拿到新构建
-              if (kIsWeb) {
-                final info = await WebUpdater.instance.check(force: true);
-                if (!context.mounted) return;
-                if (info == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('当前已是最新版本')),
-                  );
-                  return;
-                }
-                await showDialog<void>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: Text('发现新版本 v${info.version}'),
-                    content:
-                        Text(info.notes.isEmpty ? '点击刷新即可加载最新界面。' : info.notes),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('稍后')),
-                      FilledButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          WebUpdater.instance.applyUpdate();
-                        },
-                        child: const Text('立即刷新'),
-                      ),
-                    ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            displayName(
+                                user?.nickname ?? '', user?.username ?? ''),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text(user?.email ?? user?.phone ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ],
+                    ),
                   ),
-                );
-                return;
-              }
-              final info = await UpdaterService.check();
-              if (!context.mounted) return;
-              if (info != null) {
-                UpdaterService.checkAndPrompt(context);
-              } else {
-                // 带上本机版本号：出现「服务端明明发了新版却提示已是最新」时，
-                // 一眼就能看出是不是版本号没递增导致的
-                final pkg = await PackageInfo.fromPlatform();
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        '当前已是最新版本 v${pkg.version}+${pkg.buildNumber}（服务端无更新构建）'),
-                  ),
-                );
-              }
-            },
-          ),
-          // 服务端地址（本地联调 / 私有部署切换）
-          ListTile(
-            leading: const Icon(Icons.dns_outlined, color: AppTheme.gold),
-            title: const Text('服务端地址'),
-            subtitle: Text(
-              AppConfig.serverHost,
-              style: TextStyle(fontSize: 12, color: AppTheme.textDim),
+                  IconButton(
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: '编辑资料',
+                      onPressed: () => context.push('/security')),
+                ],
+              ),
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              await showServerAddressDialog(context);
-              if (mounted) setState(() {});
-            },
           ),
-          // 已登录设备（R-16）：撤销单个设备 / 一键撤销其他设备，本机保持登录
-          ListTile(
-            leading:
-                const Icon(Icons.devices_other_outlined, color: AppTheme.gold),
-            title: const Text('已登录设备'),
-            subtitle: const Text('查看并撤销其他设备的登录'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/devices'),
-          ),
-          // 生物识别开关：设备凭据由服务端签发，本版不再要求输入密码启用
-          Consumer<DeviceAuthService>(
-            builder: (ctx, deviceAuth, _) {
-              return ListTile(
-                leading: Icon(
-                  Icons.fingerprint,
-                  color: deviceAuth.isSupported
-                      ? AppTheme.gold
-                      : AppTheme.textDim,
-                ),
-                title: const Text('生物识别登录'),
-                subtitle: Text(deviceAuth.getStatusDescription()),
+
+          // ── 通用 ──
+          const _SectionLabel('外观与通用'),
+          _GroupCard(children: [
+            _ThemeTile(theme: theme),
+            _Tile(
+              icon: Icons.dns_outlined,
+              title: '服务端地址',
+              value: AppConfig.serverHost,
+              onTap: () async {
+                await showServerAddressDialog(context);
+                if (mounted) setState(() {});
+              },
+            ),
+            _Tile(
+              icon: Icons.system_update_outlined,
+              iconColor: Colors.teal,
+              title: '检查更新',
+              subtitle: '查看新版本并在线升级',
+              onTap: () => _checkUpdate(context),
+            ),
+          ]),
+
+          // ── 通知 ──
+          const _SectionLabel('通知'),
+          _GroupCard(children: [
+            _Tile(
+              icon: Icons.notifications_outlined,
+              title: '通知中心',
+              subtitle: '超支提醒、大件可购买、家庭申请等',
+              badge: unreadCount,
+              onTap: () async {
+                await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const NotificationsPage()));
+                if (mounted) notify.loadUnreadCount();
+              },
+            ),
+            _Tile(
+              icon: Icons.tune_outlined,
+              iconColor: Colors.indigo,
+              title: '通知设置',
+              subtitle: '按类型开关通知、编辑通知文案格式',
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const NotificationSettingsPage())),
+            ),
+          ]),
+
+          // ── 家庭与成员 ──
+          const _SectionLabel('家庭与成员'),
+          _GroupCard(children: [
+            _Tile(
+              icon: Icons.family_restroom_outlined,
+              title: '家庭管理',
+              subtitle: '创建/加入家庭、家庭码、终身绑定',
+              onTap: () => context.push('/family'),
+            ),
+            _Tile(
+              icon: Icons.people_outline,
+              iconColor: Colors.blue,
+              title: '用户管理',
+              subtitle: '查看家庭成员、调整管理员、移除成员',
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const UserManagementPage())),
+            ),
+          ]),
+
+          // ── 财务 ──
+          const _SectionLabel('财务'),
+          _GroupCard(children: [
+            _Tile(
+              icon: Icons.assignment_outlined,
+              title: '财务预规划',
+              subtitle: '收入分配比例、储蓄目标、投资参数',
+              onTap: () => context.push('/plan'),
+            ),
+          ]),
+
+          // ── 安全 ──
+          const _SectionLabel('安全'),
+          _GroupCard(children: [
+            _Tile(
+              icon: Icons.security_outlined,
+              title: '账号安全',
+              subtitle: '修改密码、MFA 多因子认证',
+              onTap: () => context.push('/security'),
+            ),
+            _Tile(
+              icon: Icons.devices_other_outlined,
+              title: '已登录设备',
+              subtitle: '查看并撤销其他设备的登录',
+              onTap: () => context.push('/devices'),
+            ),
+            Consumer<DeviceAuthService>(
+              builder: (ctx, deviceAuth, _) => _Tile(
+                icon: Icons.fingerprint,
+                iconColor:
+                    deviceAuth.isSupported ? AppTheme.gold : AppTheme.textDim,
+                title: '生物识别登录',
+                subtitle: deviceAuth.getStatusDescription(),
                 trailing: kIsWeb || !deviceAuth.isSupported
                     ? null
                     : Switch(
                         value: deviceAuth.isEnabled,
                         onChanged: (v) => deviceAuth.setEnabled(v),
                       ),
-              );
-            },
-          ),
-          const Divider(),
-          // 「切换账号」在「退出登录」上方，两者二次确认文案不同
-          ListTile(
-            leading: const Icon(Icons.switch_account_outlined),
-            title: const Text('切换账号'),
-            subtitle: const Text('保留已记住的账号，回到登录页选择其他账号'),
-            onTap: () => _confirmSwitchAccount(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('退出登录'),
-            onTap: () => _confirmLogout(context),
+              ),
+            ),
+          ]),
+
+          // ── 账号 ──
+          const _SectionLabel('账号'),
+          _GroupCard(children: [
+            _Tile(
+              icon: Icons.switch_account_outlined,
+              title: '切换账号',
+              subtitle: '保留已记住的账号，回到登录页选择其他账号',
+              onTap: () => _confirmSwitchAccount(context),
+            ),
+            _Tile(
+              icon: Icons.logout,
+              title: '退出登录',
+              subtitle: '清除本机凭据，需重新输入密码',
+              danger: true,
+              onTap: () => _confirmLogout(context),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  /// 检查更新（Web 刷新 / 移动端在线升级）
+  Future<void> _checkUpdate(BuildContext context) async {
+    if (kIsWeb) {
+      final info = await WebUpdater.instance.check(force: true);
+      if (!context.mounted) return;
+      if (info == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前已是最新版本')),
+        );
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('发现新版本 v${info.version}'),
+          content: Text(info.notes.isEmpty ? '点击刷新即可加载最新界面。' : info.notes),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('稍后')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                WebUpdater.instance.applyUpdate();
+              },
+              child: const Text('立即刷新'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final info = await UpdaterService.check();
+    if (!context.mounted) return;
+    if (info != null) {
+      UpdaterService.checkAndPrompt(context);
+    } else {
+      final pkg = await PackageInfo.fromPlatform();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('当前已是最新版本 v${pkg.version}+${pkg.buildNumber}（服务端无更新构建）'),
+        ),
+      );
+    }
+  }
+}
+
+/// 组标题：小号弱化文字，位于卡片组上方（参考图「唤醒设置」样式）。
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 20, 0, 8),
+      child: Text(
+        text,
+        style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+            color: AppTheme.textDim),
+      ),
+    );
+  }
+}
+
+/// 分组卡片：圆角容器，行间细分隔线（左缩进对齐文字）。
+class _GroupCard extends StatelessWidget {
+  const _GroupCard({required this.children});
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      if (i > 0) {
+        rows.add(Padding(
+          padding: const EdgeInsets.only(left: 60),
+          child: Divider(height: 1, color: AppTheme.line),
+        ));
+      }
+      rows.add(children[i]);
+    }
+    return Container(
+      decoration: AppTheme.glassCard(radius: 16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: rows),
+    );
+  }
+}
+
+/// 单行设置项：图标 | 标题+副标题 | 尾部（值/开关/箭头）。
+class _Tile extends StatelessWidget {
+  const _Tile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.value,
+    this.iconColor,
+    this.badge = 0,
+    this.trailing,
+    this.danger = false,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final String? value;
+  final Color? iconColor;
+  final int badge;
+  final Widget? trailing;
+  final bool danger;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleColor = danger ? Theme.of(context).colorScheme.error : null;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon,
+                size: 22,
+                color: iconColor ??
+                    (danger ? Theme.of(context).colorScheme.error : AppTheme.textDim)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w600,
+                            color: titleColor),
+                      ),
+                    ),
+                    if (badge > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.error,
+                            borderRadius: BorderRadius.circular(10)),
+                        child: Text(
+                          badge > 99 ? '99+' : '$badge',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ]),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: AppTheme.textDim),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (value != null) ...[
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  value!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 12.5, color: AppTheme.textDim),
+                ),
+              ),
+            ],
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ] else if (onTap != null) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, size: 20, color: AppTheme.textDim),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 外观（主题三档：跟随系统 / 浅色 / 深色），点击切换。
+class _ThemeTile extends StatelessWidget {
+  const _ThemeTile({required this.theme});
+  final ThemeController theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.palette_outlined, size: 22, color: AppTheme.textDim),
+            const SizedBox(width: 12),
+            Text('外观',
+                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
+          ]),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (final m in AppThemeMode.values)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: _ThemeOption(
+                        mode: m,
+                        selected: theme.mode == m,
+                        onTap: () => theme.setMode(m)),
+                  ),
+                ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  const _ThemeOption(
+      {required this.mode, required this.selected, required this.onTap});
+  final AppThemeMode mode;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? scheme.primary.withValues(alpha: 0.16)
+              : AppTheme.glassSoft,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? scheme.primary : AppTheme.cardBorder,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(children: [
+          Icon(mode.icon,
+              size: 20, color: selected ? scheme.primary : AppTheme.textDim),
+          const SizedBox(height: 4),
+          Text(
+            mode.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? scheme.primary : AppTheme.textDim,
+            ),
+          ),
+        ]),
       ),
     );
   }

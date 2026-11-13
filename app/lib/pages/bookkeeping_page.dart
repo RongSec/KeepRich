@@ -140,43 +140,16 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     }
   }
 
-  /// 家庭范围下拉：「整个家庭」+ 每个活跃成员（昵称优先，重名补用户名）。
-  /// 选成员 → 只看该成员的个人账单（每位成员都可查看其他成员）。
-  Widget _familyScopeDropdown() {
-    // 昵称优先、重名补用户名（memberLabels 统一口径）
+  /// 已选「查看范围」成员的展示名：昵称优先，重名补用户名。
+  String _memberLabel() {
+    final id = _memberUid;
+    if (id == null) return '整个家庭';
     final labels = memberLabels(_members,
         nickname: (m) => m.nickname, username: (m) => m.username);
-    final hasMember = _members.isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppTheme.textDim.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int?>(
-          isExpanded: true,
-          value: _memberUid,
-          hint: const Text('选择范围'),
-          items: [
-            const DropdownMenuItem<int?>(
-              value: null,
-              child: Text('整个家庭', overflow: TextOverflow.ellipsis),
-            ),
-            if (hasMember)
-              ..._members.asMap().entries.map((e) => DropdownMenuItem<int?>(
-                    value: e.value.userId,
-                    child: Text(labels[e.key],
-                        overflow: TextOverflow.ellipsis),
-                  )),
-          ],
-          onChanged: (v) {
-            setState(() => _memberUid = v);
-            _load();
-          },
-        ),
-      ),
-    );
+    for (var i = 0; i < _members.length; i++) {
+      if (_members[i].userId == id) return labels[i];
+    }
+    return '成员';
   }
 
   /// 已选记账人筛选的展示名：昵称优先，重名补用户名（R-10 ⑤⑥）。
@@ -235,6 +208,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           // 已应用筛选条件
           if (_category != null ||
               (_recorder != null && _recorder != 'all') ||
+              _memberUid != null ||
               _exceedWorry != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -244,6 +218,13 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
                       label: Text(TxCategory.labelOf(_category!)),
                       onDeleted: () {
                         setState(() => _category = null);
+                        _load();
+                      }),
+                if (_memberUid != null)
+                  Chip(
+                      label: Text('查看 ${_memberLabel()}'),
+                      onDeleted: () {
+                        setState(() => _memberUid = null);
                         _load();
                       }),
                 if (_recorder != null && _recorder != 'all')
@@ -286,28 +267,23 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
 
   /// 个人 / 家庭 范围选择（与标题同行）；家庭时展开成员下拉
   Widget _scopeSelector() {
-    return Row(children: [
-      SegmentedButton<String>(
-        style: const ButtonStyle(visualDensity: VisualDensity.compact),
-        segments: const [
-          ButtonSegment(value: 'personal', label: Text('个人')),
-          ButtonSegment(value: 'family', label: Text('家庭')),
-        ],
-        selected: {_scope},
-        onSelectionChanged: (s) {
-          setState(() {
-            _scope = s.first;
-            if (_scope != 'family') _memberUid = null;
-          });
-          _load();
-          _loadMembers();
-        },
-      ),
-      if (_scope == 'family') ...[
-        const SizedBox(width: 8),
-        Expanded(child: _familyScopeDropdown()),
+    // 只保留 个人/家庭 分段；「查看整个家庭/某成员」已并入筛选面板
+    return SegmentedButton<String>(
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+      segments: const [
+        ButtonSegment(value: 'personal', label: Text('个人')),
+        ButtonSegment(value: 'family', label: Text('家庭')),
       ],
-    ]);
+      selected: {_scope},
+      onSelectionChanged: (s) {
+        setState(() {
+          _scope = s.first;
+          if (_scope != 'family') _memberUid = null;
+        });
+        _load();
+        _loadMembers();
+      },
+    );
   }
 
   // 底部 1 行 3 列导航栏
@@ -574,6 +550,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           initialExceedWorry: _exceedWorry,
           members: _members,
           isFamily: _scope == 'family',
+          initialMemberUid: _memberUid,
           onApply: (s) {
             setState(() {
               _category = s.category;
@@ -581,6 +558,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
               _startAt = s.startAt;
               _endAt = s.endAt;
               _exceedWorry = s.exceedWorry;
+              _memberUid = s.memberUid;
             });
             _load();
           },
@@ -643,13 +621,15 @@ class _FilterResult {
   int? startAt;
   int? endAt;
   String? exceedWorry;
+  int? memberUid; // 家庭范围：只看某成员的个人账单（null = 整个家庭）
   _FilterResult(
       {this.type,
       this.category,
       this.recorder,
       this.startAt,
       this.endAt,
-      this.exceedWorry});
+      this.exceedWorry,
+      this.memberUid});
 }
 
 class _FilterSheet extends StatefulWidget {
@@ -661,6 +641,7 @@ class _FilterSheet extends StatefulWidget {
   final String? initialExceedWorry;
   final List<FamilyMember> members;
   final bool isFamily;
+  final int? initialMemberUid;
   final void Function(_FilterResult) onApply;
 
   const _FilterSheet({
@@ -672,6 +653,7 @@ class _FilterSheet extends StatefulWidget {
     required this.initialExceedWorry,
     required this.members,
     required this.isFamily,
+    required this.initialMemberUid,
     required this.onApply,
   });
 
@@ -685,6 +667,7 @@ class _FilterSheetState extends State<_FilterSheet> {
   int? _startAt;
   int? _endAt;
   String? _exceedWorry;
+  int? _memberUid;
   int _dateRange = 0;
 
   @override
@@ -695,6 +678,7 @@ class _FilterSheetState extends State<_FilterSheet> {
     _startAt = widget.initialStartAt;
     _endAt = widget.initialEndAt;
     _exceedWorry = widget.initialExceedWorry;
+    _memberUid = widget.initialMemberUid;
     _dateRange = _inferDateRange(_startAt, _endAt);
   }
 
@@ -785,6 +769,23 @@ class _FilterSheetState extends State<_FilterSheet> {
             ]),
             const SizedBox(height: 12),
             if (widget.isFamily) ...[
+              // 查看范围：整个家庭 / 某成员（原标题行的下拉框并入此处）
+              Text('查看范围', style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 4),
+              Wrap(spacing: 8, runSpacing: 4, children: [
+                ChoiceChip(
+                    label: const Text('整个家庭'),
+                    selected: _memberUid == null,
+                    onSelected: (_) => setState(() => _memberUid = null)),
+                ...widget.members.asMap().entries.map((e) => ChoiceChip(
+                      label: Text(labels[e.key],
+                          overflow: TextOverflow.ellipsis),
+                      selected: _memberUid == e.value.userId,
+                      onSelected: (_) => setState(
+                          () => _memberUid = e.value.userId),
+                    )),
+              ]),
+              const SizedBox(height: 12),
               Text('记账人', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 4),
               Wrap(spacing: 8, runSpacing: 4, children: [
@@ -918,6 +919,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                       startAt: _startAt,
                       endAt: _endAt,
                       exceedWorry: _exceedWorry,
+                      memberUid: _memberUid,
                     ));
                     Navigator.pop(context);
                   },
