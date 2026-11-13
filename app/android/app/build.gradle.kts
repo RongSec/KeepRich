@@ -71,7 +71,16 @@ android {
     }
 }
 
+java {
+    // 编译期锁定 JDK 17（jvmToolchain 会自动选择/下载 JDK17，不吃外层 JAVA_HOME）。
+    // 避免默认 JDK8 下 Flutter 注入的 --enable-native-access 参数不被识别导致构建失败。
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
 kotlin {
+    jvmToolchain(17)
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
