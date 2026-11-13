@@ -1,7 +1,7 @@
 name: family_finance_app
 description: 家庭与个人财务管理系统客户端
 publish_to: 'none'
-version: 0.5.7+14
+version: 0.6.0+15
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -37,6 +37,7 @@ dependencies:
   device_info_plus: ^10.1.2
   image_picker: ^1.2.4
 
+  material_ui: any
 dev_dependencies:
   flutter_test:
     sdk: flutter
