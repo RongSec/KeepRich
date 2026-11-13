@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// 全局主题：支持「浅色 / 深色 / 跟随系统」三档。
@@ -131,6 +132,12 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         foregroundColor: const Color(0xFFF3EFE6),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarBrightness: Brightness.dark,
+          statusBarIconBrightness: Brightness.light,
+          systemNavigationBarColor: Color(0xF20C0C12),
+          systemNavigationBarIconBrightness: Brightness.light,
+        ),
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.notoSansSc(
@@ -308,6 +315,12 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         foregroundColor: const Color(0xFF17171C),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarBrightness: Brightness.light,
+          statusBarIconBrightness: Brightness.dark,
+          systemNavigationBarColor: Colors.white,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.notoSansSc(

@@ -81,7 +81,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
-    _load();
+    _initScope();
     _loadMembers();
   }
 
@@ -218,29 +218,25 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
                       label: Text(TxCategory.labelOf(_category!)),
                       onDeleted: () {
                         setState(() => _category = null);
-                        _load();
-                      }),
+                                          }),
                 if (_memberUid != null)
                   Chip(
                       label: Text('查看 ${_memberLabel()}'),
                       onDeleted: () {
                         setState(() => _memberUid = null);
-                        _load();
-                      }),
+                                          }),
                 if (_recorder != null && _recorder != 'all')
                   Chip(
                       label: Text('记账人 ${_recorderLabel()}'),
                       onDeleted: () {
                         setState(() => _recorder = null);
-                        _load();
-                      }),
+                                          }),
                 if (_exceedWorry != null)
                   Chip(
                       label: Text(_exceedWorry == '1' ? '超无顾虑单笔' : '未超无顾虑单笔'),
                       onDeleted: () {
                         setState(() => _exceedWorry = null);
-                        _load();
-                      }),
+                                          }),
               ]),
             ),
           // 列表
@@ -271,8 +267,8 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     return SegmentedButton<String>(
       style: const ButtonStyle(visualDensity: VisualDensity.compact),
       segments: const [
-        ButtonSegment(value: 'personal', label: Text('个人')),
         ButtonSegment(value: 'family', label: Text('家庭')),
+        ButtonSegment(value: 'personal', label: Text('个人')),
       ],
       selected: {_scope},
       onSelectionChanged: (s) {
@@ -288,8 +284,9 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
 
   // 底部 1 行 3 列导航栏
   Widget _buildBottomNav() {
-    return SafeArea(
-      child: Container(
+    // 不套 SafeArea：此栏并非贴在屏幕物理底部（下面还有主导航），
+    // SafeArea 会误加手势区 padding 制造缝隙露出深色背景
+    return Container(
         decoration: BoxDecoration(
           color: AppTheme.navBg,
           border: Border(top: BorderSide(color: AppTheme.navBorder, width: 1)),
@@ -299,7 +296,6 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           _navItem(TxType.expense, Colors.redAccent, Icons.north_east, '支出'),
           _navItem(TxType.transfer, Colors.indigo, Icons.savings, '存钱'),
         ]),
-      ),
     );
   }
 
@@ -314,8 +310,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
             _tabType = type;
             _category = null; // 切换 tab 清空分类筛选
           });
-          _load();
-        },
+              },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Column(
@@ -558,8 +553,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
               _exceedWorry = s.exceedWorry;
               _memberUid = s.memberUid;
             });
-            _load();
-          },
+                  },
         );
       },
     );
@@ -608,6 +602,15 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
         content: Text(r.ok ? '已删除' : r.message),
         duration: const Duration(milliseconds: 1100),
       ));
+    _load();
+  }
+
+  /// 有家庭的用户默认看家庭范围（用户反馈）；无家庭保持个人。
+  Future<void> _initScope() async {
+    final r = await ApiClient.instance.getFamily();
+    if (mounted && r.ok && r.data != null) {
+      setState(() => _scope = 'family');
+    }
     _load();
   }
 }

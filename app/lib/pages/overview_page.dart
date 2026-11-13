@@ -36,6 +36,15 @@ class _OverviewPageState extends State<OverviewPage> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
+    _initScope();
+  }
+
+  /// 有家庭的用户默认看家庭范围（用户反馈）；无家庭保持个人。
+  Future<void> _initScope() async {
+    final r = await ApiClient.instance.getFamily();
+    if (mounted && r.ok && r.data != null) {
+      setState(() => _scope = 'family');
+    }
     _load();
   }
 

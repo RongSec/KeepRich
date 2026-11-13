@@ -3,10 +3,12 @@
     <!-- 启动主题：深色背景 -->
     <style name="LaunchTheme" parent="@android:style/Theme.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
-        <item name="android:windowFullscreen">true</item>
+        <!-- 不要 windowFullscreen=true：会把系统状态栏（信号/电量）整个藏掉 -->
+        <item name="android:windowFullscreen">false</item>
     </style>
     <!-- 正常主题：也使用深色背景，避免过渡时白色闪烁 -->
     <style name="NormalTheme" parent="@android:style/Theme.NoTitleBar">
         <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:windowFullscreen">false</item>
     </style>
 </resources>

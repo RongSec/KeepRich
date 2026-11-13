@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -210,7 +211,20 @@ class _AppShellState extends State<_AppShell> {
       // 沙漏背景铺在最底层：登录前饱满、登录后变淡。
       // 同时把当前亮度注入 AppTheme 令牌（text/glass 等运行时 getter），整树随之换色。
       builder: (ctx, child) {
-        AppTheme.setBrightness(Theme.of(ctx).brightness);
+        final brightness = Theme.of(ctx).brightness;
+        AppTheme.setBrightness(brightness);
+        // 全局状态栏/导航栏样式：无 AppBar 的页面也生效（随主题）
+        SystemChrome.setSystemUIOverlayStyle(brightness == Brightness.dark
+            ? const SystemUiOverlayStyle(
+                statusBarIconBrightness: Brightness.light,
+                systemNavigationBarColor: Color(0xF20C0C12),
+                systemNavigationBarIconBrightness: Brightness.light,
+              )
+            : const SystemUiOverlayStyle(
+                statusBarIconBrightness: Brightness.dark,
+                systemNavigationBarColor: Colors.white,
+                systemNavigationBarIconBrightness: Brightness.dark,
+              ));
         return Stack(
           fit: StackFit.expand,
           children: [

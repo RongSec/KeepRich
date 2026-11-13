@@ -179,8 +179,9 @@ class _HomePageState extends State<HomePage> {
   Widget _narrowLayout(BuildContext context) {
     final unreadCount = context.watch<NotifyService>().unreadCount;
     return Scaffold(
-      // 同宽屏：容器不刷底色，避免与各 tab 页的 Scaffold 底色叠加把沙漏压死
-      backgroundColor: Colors.transparent,
+      // 主框架铺主题底色：覆盖系统手势区（原透明时露出深色沙漏成黑条），
+      // 各 tab 页自带的 Scaffold 底色与之同色系，叠加不明显
+      backgroundColor: AppTheme.bg,
       // IndexedStack 保活：切换 tab 不销毁页面状态
       // 顶部提示条必须避开系统状态栏（QA 复核 P2）：SafeArea 扣掉 top padding，
       // 各页 AppBar 因此不会重复留状态栏高度，无横幅时布局与改前一致。
@@ -246,6 +247,8 @@ class _BottomNavWithBall extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
+          // 整块铺导航底色：球上方那圈原是透明的，会透出深色背景形成黑边
+          Positioned.fill(child: ColoredBox(color: AppTheme.navBg)),
           // 底部栏
           Positioned(
             left: 0,
