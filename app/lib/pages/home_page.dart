@@ -91,12 +91,14 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  static const _pages = [
-    OverviewPage(),
-    FutureFinancePage(),
-    BookkeepingPage(),
-    SettingsPage(),
-  ];
+  // 每次 build 新建页面实例：Flutter 对「同一个 widget 实例」会跳过子级重建，
+  // static const 的页面在主题切换后颜色不刷新（状态由 Element 保留，不受影响）。
+  List<Widget> get _pages => [
+        OverviewPage(),
+        FutureFinancePage(),
+        BookkeepingPage(),
+        SettingsPage(),
+      ];
 
   @override
   Widget build(BuildContext context) {

@@ -153,8 +153,12 @@ class _AppShellState extends State<_AppShell> {
 
   /// 路由器只创建一次：主题切换会重建 MaterialApp，若在 build 里 new GoRouter
   /// 会重置导航栈回到首页（模拟器实测抓到的 bug）。
+  /// 主题切换时强制路由重建页面：GoRouter 会缓存子页，不刷新则页面颜色
+  /// 停留在旧主题（用户反馈"切主题后要刷新一下才准确"）。
+  /// late final 首次访问在 build 内，context 可用。
   late final GoRouter _router = GoRouter(
-      refreshListenable: widget.auth,
+      refreshListenable:
+          Listenable.merge([widget.auth, context.read<ThemeController>()]),
       initialLocation: '/splash',
       redirect: (ctx, state) {
         if (widget.auth.loading) return null;
@@ -176,24 +180,24 @@ class _AppShellState extends State<_AppShell> {
         return null;
       },
       routes: [
-        GoRoute(path: '/splash', builder: (_, __) => const SplashPage()),
-        GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
-        GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
+        GoRoute(path: '/splash', builder: (_, __) => SplashPage()),
+        GoRoute(path: '/login', builder: (_, __) => LoginPage()),
+        GoRoute(path: '/register', builder: (_, __) => RegisterPage()),
         GoRoute(
-            path: '/admin/login', builder: (_, __) => const AdminLoginPage()),
-        GoRoute(path: '/admin', builder: (_, __) => const AdminShell()),
-        GoRoute(path: '/overview', builder: (_, __) => const HomePage(tab: 0)),
-        GoRoute(path: '/future', builder: (_, __) => const HomePage(tab: 1)),
+            path: '/admin/login', builder: (_, __) => AdminLoginPage()),
+        GoRoute(path: '/admin', builder: (_, __) => AdminShell()),
+        GoRoute(path: '/overview', builder: (_, __) => HomePage(tab: 0)),
+        GoRoute(path: '/future', builder: (_, __) => HomePage(tab: 1)),
         GoRoute(
-            path: '/bookkeeping', builder: (_, __) => const HomePage(tab: 2)),
-        GoRoute(path: '/settings', builder: (_, __) => const HomePage(tab: 3)),
-        GoRoute(path: '/family', builder: (_, __) => const FamilyManagePage()),
-        GoRoute(path: '/plan', builder: (_, __) => const PlanPage()),
+            path: '/bookkeeping', builder: (_, __) => HomePage(tab: 2)),
+        GoRoute(path: '/settings', builder: (_, __) => HomePage(tab: 3)),
+        GoRoute(path: '/family', builder: (_, __) => FamilyManagePage()),
+        GoRoute(path: '/plan', builder: (_, __) => PlanPage()),
         GoRoute(
-            path: '/big-purchase', builder: (_, __) => const BigPurchasePage()),
-        GoRoute(path: '/security', builder: (_, __) => const SecurityPage()),
-        GoRoute(path: '/users', builder: (_, __) => const UserManagementPage()),
-        GoRoute(path: '/devices', builder: (_, __) => const DevicesPage()),
+            path: '/big-purchase', builder: (_, __) => BigPurchasePage()),
+        GoRoute(path: '/security', builder: (_, __) => SecurityPage()),
+        GoRoute(path: '/users', builder: (_, __) => UserManagementPage()),
+        GoRoute(path: '/devices', builder: (_, __) => DevicesPage()),
       ],
     );
 
