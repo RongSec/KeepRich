@@ -329,7 +329,7 @@ class _FamilyManagePageState extends State<FamilyManagePage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.family_restroom, size: 64, color: AppTheme.textDim),
+          Icon(Icons.family_restroom, size: 64, color: AppTheme.textDim),
           const SizedBox(height: 16),
           const Text('尚未加入任何家庭'),
           const SizedBox(height: 24),

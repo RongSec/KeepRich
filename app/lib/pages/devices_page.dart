@@ -180,7 +180,7 @@ class _DevicesPageState extends State<DevicesPage> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                     children: [
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                         child: Text(
                           '连续 24 小时未使用的设备会自动退出，可在这里提前撤销。',
@@ -188,7 +188,7 @@ class _DevicesPageState extends State<DevicesPage> {
                         ),
                       ),
                       if (_items.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(top: 48),
                           child: Center(
                             child: Text('暂无其他登录设备',
@@ -270,14 +270,14 @@ class _DevicesPageState extends State<DevicesPage> {
                     '${_platformLabel(item.platform)} · ${_timeLabel(item.lastSeenAt)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.textDim),
                   ),
                 ],
               ),
             ),
             if (item.current)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12),
                 child: Text('保持登录',
                     style: TextStyle(fontSize: 11, color: AppTheme.textDim)),
@@ -306,11 +306,11 @@ class _ErrorView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off, size: 48, color: AppTheme.line),
+          Icon(Icons.cloud_off, size: 48, color: AppTheme.line),
           const SizedBox(height: 10),
           Text(message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textDim, fontSize: 13)),
+              style: TextStyle(color: AppTheme.textDim, fontSize: 13)),
           const SizedBox(height: 14),
           OutlinedButton.icon(
             onPressed: onRetry,

@@ -114,7 +114,7 @@ class _ServerAddressDialogState extends State<_ServerAddressDialog> {
             const SizedBox(height: 12),
             Text(
               '当前生效：${AppConfig.serverHost}\n来源：${AppConfig.sourceLabel}',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textDim),
+              style: TextStyle(fontSize: 12, color: AppTheme.textDim),
             ),
             const SizedBox(height: 12),
             Wrap(

@@ -331,7 +331,7 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: AppTheme.textDim)),
+          Text(label, style: TextStyle(color: AppTheme.textDim)),
           Text(value,
               style: TextStyle(
                   fontWeight: FontWeight.w600, color: color, fontSize: 16)),

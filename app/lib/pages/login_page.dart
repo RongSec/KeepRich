@@ -448,7 +448,7 @@ class _LoginPageState extends State<LoginPage>
   }
 
   Widget _buildBioWaiting() {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 34),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -505,7 +505,7 @@ class _LoginPageState extends State<LoginPage>
               style: TextButton.styleFrom(
                   minimumSize: const Size(0, 30),
                   padding: const EdgeInsets.symmetric(horizontal: 8)),
-              child: const Text('用密码登录',
+              child: Text('用密码登录',
                   style: TextStyle(fontSize: 12, color: AppTheme.textDim)),
             ),
           ),
@@ -623,7 +623,7 @@ class _LoginPageState extends State<LoginPage>
                 style: TextStyle(fontSize: 13)),
           ),
         ),
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.lock_clock, size: 13, color: AppTheme.textDim),
@@ -814,10 +814,10 @@ class _ServerChipState extends State<_ServerChip> {
               // 显示完整可用地址（含 sharecode），用户复制即可用；
               // 裸域名缺码会被网关 403，别让用户照着裸域名手输。
               AppConfig.fullServerUrl.replaceFirst(RegExp(r'^https?://'), ''),
-              style: const TextStyle(fontSize: 11, color: AppTheme.text),
+              style: TextStyle(fontSize: 11, color: AppTheme.text),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.edit_outlined, size: 12, color: AppTheme.textDim),
+            Icon(Icons.edit_outlined, size: 12, color: AppTheme.textDim),
           ],
         ),
       ),

@@ -80,9 +80,10 @@ class _SecurityPageState extends State<SecurityPage> {
               mfaEnabled: true,
             ));
       }
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('MFA 已启用')));
+      }
     }
   }
 

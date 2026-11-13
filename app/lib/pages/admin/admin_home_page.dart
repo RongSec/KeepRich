@@ -200,8 +200,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             trailing: PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'toggle') _toggle(u['id'] as int, disabled);
-                if (v == 'reset_pwd')
+                if (v == 'reset_pwd') {
                   _resetPassword(u['id'] as int, u['username']);
+                }
                 if (v == 'reset_mfa') _resetMfa(u['id'] as int, u['username']);
               },
               itemBuilder: (_) => [

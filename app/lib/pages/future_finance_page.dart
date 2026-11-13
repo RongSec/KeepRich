@@ -170,7 +170,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                           onTap: () {
                             final monthlyIncome =
                                 _overview?.allocation.monthlyIncome ?? 10000;
-                            final loanRatio = 0.4; // 默认贷款比例
+                            const loanRatio = 0.4; // 默认贷款比例
                             Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -231,7 +231,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, color: AppTheme.textDim),
+                Icon(Icons.chevron_right, color: AppTheme.textDim),
               ]),
               const SizedBox(height: 8),
               Text('${f.format(d.totalPending)} 元',
@@ -249,11 +249,11 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
               ),
               const SizedBox(height: 8),
               Row(children: [
-                const Icon(Icons.schedule, size: 14, color: AppTheme.textDim),
+                Icon(Icons.schedule, size: 14, color: AppTheme.textDim),
                 const SizedBox(width: 4),
                 Text('预估还清：$monthsText（$payoffText）',
                     style:
-                        const TextStyle(fontSize: 12, color: AppTheme.textDim)),
+                        TextStyle(fontSize: 12, color: AppTheme.textDim)),
               ]),
             ],
           ),
@@ -338,7 +338,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                 const Spacer(),
                 Text('$count',
                     style:
-                        const TextStyle(fontSize: 12, color: AppTheme.textDim)),
+                        TextStyle(fontSize: 12, color: AppTheme.textDim)),
               ]),
               const SizedBox(height: 4),
               Text(summary,
@@ -471,7 +471,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
               Text(
                   '${f.format(sm.remainingAmount)} 元 / ${f.format(sm.monthlyPayment)}/月',
                   style:
-                      const TextStyle(fontSize: 11, color: AppTheme.textDim)),
+                      TextStyle(fontSize: 11, color: AppTheme.textDim)),
               IconButton(
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -485,12 +485,12 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
               const SizedBox(width: 6),
               Text('年利率 ${rate.toStringAsFixed(2)}%',
                   style:
-                      const TextStyle(fontSize: 11, color: AppTheme.textDim)),
+                      TextStyle(fontSize: 11, color: AppTheme.textDim)),
               const SizedBox(width: 6),
               Text(
                   '已还 ${sm.paidAmount.toStringAsFixed(0)}/${sm.totalPayment.toStringAsFixed(0)}',
                   style:
-                      const TextStyle(fontSize: 11, color: AppTheme.textDim)),
+                      TextStyle(fontSize: 11, color: AppTheme.textDim)),
             ]),
             const SizedBox(height: 2),
             ClipRRect(
@@ -503,7 +503,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
             ),
             const SizedBox(height: 2),
             Text('进度 $pct100% · 剩余 ${sm.remainingMonths} 个月',
-                style: const TextStyle(fontSize: 10, color: AppTheme.textDim)),
+                style: TextStyle(fontSize: 10, color: AppTheme.textDim)),
           ],
         ),
       ),
@@ -545,7 +545,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
             ]),
             Text(
                 '${BenefitType.labels[b.type] ?? b.type} · 发放额 ${f.format(b.payoutAmount)} 元',
-                style: const TextStyle(fontSize: 11, color: AppTheme.textDim),
+                style: TextStyle(fontSize: 11, color: AppTheme.textDim),
                 overflow: TextOverflow.ellipsis),
           ],
         ),

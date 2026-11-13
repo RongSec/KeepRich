@@ -52,7 +52,7 @@ class AccountCard extends StatelessWidget {
                 account.username,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.textDim,
                   fontSize: 12,
                 ),
@@ -89,7 +89,7 @@ class RememberedAccountsRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           '本机已记住的账号',
           style: TextStyle(fontSize: 12, color: AppTheme.textDim),
         ),
@@ -121,7 +121,7 @@ class RememberedAccountsRow extends StatelessWidget {
                           account.displayName(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             color: AppTheme.text,
                           ),

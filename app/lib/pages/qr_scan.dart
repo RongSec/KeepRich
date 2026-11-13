@@ -5,4 +5,5 @@
 ///
 /// dart.library.io 在 Web 上也有 stub（恒为 true），不能用作条件；
 /// dart.library.html 只在 Web 为 true —— 条件命中时用占位实现。
+library;
 export 'qr_scan_mobile.dart' if (dart.library.html) 'qr_scan_none.dart';

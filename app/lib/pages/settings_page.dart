@@ -259,7 +259,7 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('服务端地址'),
             subtitle: Text(
               AppConfig.serverHost,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textDim),
+              style: TextStyle(fontSize: 12, color: AppTheme.textDim),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
@@ -491,11 +491,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.cloud_off,
+                      Icon(Icons.cloud_off,
                           size: 48, color: AppTheme.line),
                       const SizedBox(height: 8),
                       Text(_error!,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: AppTheme.textDim, fontSize: 13)),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
@@ -507,7 +507,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   ),
                 )
               : _list.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -589,7 +589,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     const SizedBox(width: 8),
                                     Text(
                                       _timeStr(n.createdAt),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 11,
                                           color: AppTheme.textDim),
                                     ),

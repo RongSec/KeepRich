@@ -324,7 +324,7 @@ class _QrScanPageState extends State<QrScanPage> {
               ),
             ),
           if (failure == null)
-            const Positioned(
+            Positioned(
               left: 0,
               right: 0,
               bottom: 48,
@@ -368,7 +368,7 @@ class _FailureView extends StatelessWidget {
               Text(
                 copy.title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.text,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -378,7 +378,7 @@ class _FailureView extends StatelessWidget {
               Text(
                 copy.message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppTheme.textDim, fontSize: 14),
+                style: TextStyle(color: AppTheme.textDim, fontSize: 14),
               ),
               const SizedBox(height: 24),
               SizedBox(

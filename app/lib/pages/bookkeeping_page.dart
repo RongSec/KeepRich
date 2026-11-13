@@ -387,7 +387,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
               type == TxType.transfer
                   ? '暂无存钱记录（不影响家庭总财富）'
                   : '暂无${TxType.labels[type]}记录',
-              style: const TextStyle(color: AppTheme.textDim, fontSize: 12),
+              style: TextStyle(color: AppTheme.textDim, fontSize: 12),
             ),
           ),
         ],
@@ -440,7 +440,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(g.label,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.text)),
@@ -456,7 +456,7 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
       child: Column(children: [
         for (var i = 0; i < g.txs.length; i++) ...[
           if (i > 0)
-            const Divider(
+            Divider(
                 height: 1, thickness: 0.5, indent: 58, color: AppTheme.line),
           _txRow(g.txs[i]),
         ],
@@ -528,13 +528,13 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            const Icon(Icons.event, size: 14, color: AppTheme.textDim),
+            Icon(Icons.event, size: 14, color: AppTheme.textDim),
             const SizedBox(width: 4),
             Text(_filterLabel,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
+                style: TextStyle(fontSize: 12, color: AppTheme.textDim)),
             const Spacer(),
             Text('共 $_total 条',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textDim)),
+                style: TextStyle(fontSize: 12, color: AppTheme.textDim)),
           ]),
         ],
       ),
@@ -993,7 +993,7 @@ class _TxTile extends StatelessWidget {
                     child: Text(TxCategory.labelOf(tx.category),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.text)),
@@ -1004,7 +1004,7 @@ class _TxTile extends StatelessWidget {
                 Text(subLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.textDim)),
               ],
             ),
@@ -1353,7 +1353,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       children: [
         if (_monthlyIncome > 0)
           Text('本月收入 ${f.format(_monthlyIncome)} 元（按预规划比例计算）',
-              style: const TextStyle(fontSize: 11, color: AppTheme.textDim)),
+              style: TextStyle(fontSize: 11, color: AppTheme.textDim)),
         const SizedBox(height: 6),
         Wrap(
           spacing: 8,
@@ -1520,8 +1520,9 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       'note': _note.text,
     };
     if (_loanRef != null && _loanRef!.isNotEmpty) body['loanRef'] = _loanRef;
-    if (_targetBucket != null && _targetBucket!.isNotEmpty)
+    if (_targetBucket != null && _targetBucket!.isNotEmpty) {
       body['targetBucket'] = _targetBucket;
+    }
     // 支出时添加来源桶（支持多来源）
     if (_type == TxType.expense) {
       if (_selectedSources.length > 1) {
@@ -1610,7 +1611,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
               onSelectionChanged: (s) => _onTypeChanged(s.first),
             ),
           const SizedBox(height: 12),
-          Text('${label}类型', style: Theme.of(context).textTheme.bodySmall),
+          Text('$label类型', style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8,

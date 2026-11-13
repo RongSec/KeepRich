@@ -212,7 +212,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 child: Text(item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textDim)),
               ),
               // 数字可能很长（含千分位/小数），用 FittedBox 防溢出
@@ -309,14 +309,14 @@ class _OverviewPageState extends State<OverviewPage> {
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.bottomLeft,
                 child: Text(value,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.text)),
               ),
               Text(unit,
                   style:
-                      const TextStyle(fontSize: 10, color: AppTheme.textDim)),
+                      TextStyle(fontSize: 10, color: AppTheme.textDim)),
             ],
           ),
         ),
@@ -463,7 +463,7 @@ class _OverviewPageState extends State<OverviewPage> {
               fit: BoxFit.scaleDown,
               alignment: Alignment.bottomLeft,
               child: Text('${f.format(balance)} 元',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.text)),
@@ -503,7 +503,7 @@ class _OverviewPageState extends State<OverviewPage> {
             Row(children: [
               Text('本月',
                   style:
-                      const TextStyle(fontSize: 10, color: AppTheme.textDim)),
+                      TextStyle(fontSize: 10, color: AppTheme.textDim)),
               const SizedBox(width: 4),
               Expanded(
                 child: ClipRRect(
@@ -520,7 +520,7 @@ class _OverviewPageState extends State<OverviewPage> {
               const SizedBox(width: 4),
               Text('${(monthPct * 100).toStringAsFixed(0)}%',
                   style:
-                      const TextStyle(fontSize: 10, color: AppTheme.textDim)),
+                      TextStyle(fontSize: 10, color: AppTheme.textDim)),
             ]),
             // 本月剩余应存入量
             if (thisMonthTarget > 0) ...[
@@ -528,9 +528,9 @@ class _OverviewPageState extends State<OverviewPage> {
               Builder(builder: (_) {
                 final remaining = thisMonthTarget - thisMonth;
                 if (remaining <= 0) {
-                  return Text('本月已完成',
+                  return const Text('本月已完成',
                       style: TextStyle(
-                          fontSize: 10, color: const Color(0xFF7EE0A6)));
+                          fontSize: 10, color: Color(0xFF7EE0A6)));
                 }
                 return Text('本月剩余 ${f.format(remaining)} 待转入',
                     style: TextStyle(
@@ -640,7 +640,7 @@ class _OverviewPageState extends State<OverviewPage> {
                   setState(() => _chartPeriod = s.first);
                   _reloadChart();
                 },
-                style: ButtonStyle(
+                style: const ButtonStyle(
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -679,8 +679,9 @@ class _OverviewPageState extends State<OverviewPage> {
                         interval: 1,
                         getTitlesWidget: (v, _) {
                           final i = v.toInt();
-                          if (i < 0 || i >= w.length)
+                          if (i < 0 || i >= w.length) {
                             return const SizedBox.shrink();
+                          }
                           final label = w[i].month;
                           // month 格式 "YYYY-MM"（月视图）或 "YYYY"（年视图），按长度安全截取
                           final text =
@@ -761,7 +762,7 @@ class _OverviewPageState extends State<OverviewPage> {
         title: Row(children: [
           const Icon(Icons.trending_up, color: Colors.indigo),
           const SizedBox(width: 8),
-          Text('${lastYear}年投资汇算'),
+          Text('$lastYear年投资汇算'),
         ]),
         content: SingleChildScrollView(
           child: Column(
@@ -1042,7 +1043,7 @@ class _OverviewPageState extends State<OverviewPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: AppTheme.textDim)),
+          Text(label, style: TextStyle(color: AppTheme.textDim)),
           Text(value,
               style: TextStyle(fontWeight: FontWeight.w600, color: color)),
         ],

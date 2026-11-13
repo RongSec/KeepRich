@@ -23,6 +23,7 @@ import 'services/auth.dart';
 import 'services/device_auth.dart';
 import 'services/notify.dart';
 import 'services/sync_status.dart';
+import 'services/theme_controller.dart';
 import 'services/web_updater.dart';
 import 'theme.dart';
 import 'widgets/hourglass_sand.dart';
@@ -58,6 +59,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
   final _accounts = AccountsRepo();
   final _deviceAuth = DeviceAuthService();
   final _notify = NotifyService();
+  final _theme = ThemeController();
   late final AuthState _auth;
 
   @override
@@ -88,6 +90,8 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     await _accounts.load();
     await _deviceAuth.init();
     await _auth.bootstrap();
+    // 主题偏好（跟随系统/浅色/深色），失败静默走默认
+    await _theme.load();
   }
 
   @override
@@ -115,6 +119,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _auth.removeListener(_onAuthChanged);
     _notify.dispose();
+    _theme.dispose();
     super.dispose();
   }
 
@@ -126,6 +131,7 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _notify),
         ChangeNotifierProvider.value(value: _accounts),
         ChangeNotifierProvider.value(value: _deviceAuth),
+        ChangeNotifierProvider.value(value: _theme),
       ],
       child: _AppShell(auth: _auth),
     );
@@ -189,19 +195,23 @@ class _AppShell extends StatelessWidget {
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: '永远富裕',
       debugShowCheckedModeBanner: false,
-      // 全程深色（不跟随系统亮度，避免与金沙背景冲突）
-      themeMode: ThemeMode.dark,
-      theme: AppTheme.dark(),
+      // 三档主题：跟随系统 / 浅色 / 深色（设置页可切，shared_preferences 持久化）
+      themeMode: context.watch<ThemeController>().themeMode,
+      theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       routerConfig: router,
-      // 沙漏背景铺在最底层：登录前饱满、登录后变淡
-      builder: (ctx, child) => Stack(
-        fit: StackFit.expand,
-        children: [
-          HourglassSandBackground(dimmed: auth.isLoggedIn, density: 1.0),
-          if (child != null) child,
-        ],
-      ),
+      // 沙漏背景铺在最底层：登录前饱满、登录后变淡。
+      // 同时把当前亮度注入 AppTheme 令牌（text/glass 等运行时 getter），整树随之换色。
+      builder: (ctx, child) {
+        AppTheme.setBrightness(Theme.of(ctx).brightness);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            HourglassSandBackground(dimmed: auth.isLoggedIn, density: 1.0),
+            if (child != null) child,
+          ],
+        );
+      },
     );
   }
 }

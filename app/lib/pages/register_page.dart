@@ -272,7 +272,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         children: [
                           const _GoldTitle('创建你的账本'),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             '需要管理员提供的邀请码才能注册',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -457,7 +457,7 @@ class _RegisterPageState extends State<RegisterPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
             child: Text(helper,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11, color: AppTheme.textDim)),
           ),
           if (goldHelper != null)
@@ -514,7 +514,7 @@ class _RegisterPageState extends State<RegisterPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
               child: Text(helper,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textDim)),
             ),
         ],
@@ -608,10 +608,10 @@ class _ServerRow extends StatelessWidget {
                 AppConfig.fullServerUrl.replaceFirst(RegExp(r'^https?://'), ''),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: AppTheme.text),
+                style: TextStyle(fontSize: 12, color: AppTheme.text),
               ),
             ),
-            const Icon(Icons.edit_outlined, size: 14, color: AppTheme.textDim),
+            Icon(Icons.edit_outlined, size: 14, color: AppTheme.textDim),
           ],
         ),
       ),

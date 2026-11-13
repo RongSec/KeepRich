@@ -268,8 +268,9 @@ class UpdaterService {
         }
       }
 
-      if (context.mounted)
+      if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop(); // 关进度框
+      }
       final result = await OpenFilex.open(savePath);
       if (result.type != ResultType.done) {
         throw Exception('调起安装失败: ${result.message}');
