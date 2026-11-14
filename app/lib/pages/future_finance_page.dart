@@ -82,8 +82,8 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: SegmentedButton<String>(
                 segments: const [
-                  ButtonSegment(value: 'personal', label: Text('个人')),
                   ButtonSegment(value: 'family', label: Text('家庭')),
+                    ButtonSegment(value: 'personal', label: Text('个人'))
                 ],
                 selected: {_scope},
                 onSelectionChanged: (s) {

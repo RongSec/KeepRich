@@ -23,7 +23,8 @@ func NewFinanceService(db *gorm.DB) *FinanceService { return &FinanceService{DB:
 // 家庭：聚合所有活跃成员的个人数据 + 家庭数据
 func (s *FinanceService) applyScopeQuery(q *gorm.DB, scope string, uid uint64, familyID *uint64) *gorm.DB {
 	if scope == models.TxScopePersonal {
-		return q.Where("scope = ? AND uid = ?", models.TxScopePersonal, uid)
+		// 个人 = 我记的账（含家庭 scope 记录），与账单列表口径一致
+		return q.Where("uid = ?", uid)
 	}
 	// 家庭：获取所有活跃成员的 uid
 	var memberIDs []uint64
@@ -791,7 +792,8 @@ func (s *FinanceService) sumScopeTransferOut(scope string, uid uint64, familyID 
 // applyGenericScopeQuery 通用 scope 查询（适用于非 transactions 表，如 loans、benefits 等）
 func (s *FinanceService) applyGenericScopeQuery(q *gorm.DB, scope string, uid uint64, familyID *uint64) *gorm.DB {
 	if scope == models.TxScopePersonal {
-		return q.Where("scope = ? AND uid = ?", models.TxScopePersonal, uid)
+		// 个人 = 我的记录（含家庭 scope），与账单列表口径一致
+		return q.Where("uid = ?", uid)
 	}
 	var memberIDs []uint64
 	s.DB.Model(&models.FamilyMember{}).

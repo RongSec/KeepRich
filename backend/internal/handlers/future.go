@@ -18,6 +18,15 @@ import (
 
 // ====== 通用 scope 解析 ======
 
+// myScopeQuery：个人范围 = 我的记录（含家庭 scope 记录，与账单列表口径一致）；
+// 家庭范围 = 指定 scope 下我名下的记录。
+func myScopeQuery(db *gorm.DB, scope string, uid uint64) *gorm.DB {
+	if scope == models.TxScopePersonal {
+		return db.Where("uid = ?", uid)
+	}
+	return db.Where("scope = ? AND uid = ?", scope, uid)
+}
+
 func resolveTarget(c *gin.Context, scope string) (targetID uint64, familyID *uint64, ok bool) {
 	uid := middleware.MustUID(c)
 	if scope == models.TxScopePersonal {
@@ -55,7 +64,7 @@ func ListHousingFundLoans(c *gin.Context) {
 		return
 	}
 	var list []models.HousingFundLoan
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	_ = targetID
 	utils.OK(c, list)
 }
@@ -172,7 +181,7 @@ func ListCommercialLoans(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
 	var list []models.CommercialLoan
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	utils.OK(c, list)
 }
 
@@ -288,7 +297,7 @@ func ListBorrowedMoney(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
 	var list []models.BorrowedMoney
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	utils.OK(c, list)
 }
 
@@ -429,7 +438,7 @@ func ListFutureBenefits(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
 	var list []models.FutureBenefit
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	utils.OK(c, list)
 }
 

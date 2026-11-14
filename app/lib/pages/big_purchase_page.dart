@@ -205,8 +205,8 @@ class _BigPurchasePageState extends State<BigPurchasePage> {
                   padding: const EdgeInsets.all(16),
                   child: SegmentedButton<String>(
                     segments: const [
-                      ButtonSegment(value: 'personal', label: Text('个人')),
                       ButtonSegment(value: 'family', label: Text('家庭')),
+                    ButtonSegment(value: 'personal', label: Text('个人'))
                     ],
                     selected: {_scope},
                     onSelectionChanged: (s) {

@@ -962,6 +962,12 @@ class _TxTile extends StatelessWidget {
   const _TxTile(
       {required this.tx, required this.worryPerBuy, required this.onTap});
 
+  /// 记账人展示名：昵称优先，空则用户名
+  String _recorderOf(TxRecord t) {
+    final n = t.nickname.trim();
+    return n.isNotEmpty ? n : t.username.trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final f = NumberFormat('#,##0.00');
@@ -1001,6 +1007,17 @@ class _TxTile extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: AppTheme.text)),
                   ),
+                  // 记账人：昵称优先、重名补用户名（方便一眼看出谁记的）
+                  if (tx.nickname.isNotEmpty || tx.username.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(_recorderOf(tx),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11.5, color: AppTheme.textDim)),
+                    ),
+                  ],
                   ..._extraTags(),
                 ]),
                 const SizedBox(height: 3),

@@ -293,7 +293,8 @@ func ListTx(c *gin.Context) {
 
 	q := database.DB.Model(&models.Transaction{})
 	if scope == models.TxScopePersonal {
-		q = q.Where("scope = ? AND uid = ?", models.TxScopePersonal, uid)
+		// 个人 = 我记的账（含家庭 scope 记录）：用户在家庭记账后也要在个人看得到
+		q = q.Where("uid = ?", uid)
 	} else {
 		// 家庭：聚合所有活跃成员的个人数据 + 家庭数据
 		var m models.FamilyMember
@@ -309,7 +310,8 @@ func ListTx(c *gin.Context) {
 			memberIDs = []uint64{0}
 		}
 		if memberUid > 0 {
-			// 只看某个成员的个人账单：目标必须是本家庭活跃成员（含自己）
+			// 只看某个成员的账：目标必须是本家庭活跃成员（含自己）。
+			// 与「个人」口径一致：该成员的全部记录（含家庭 scope）。
 			isMember := false
 			for _, id := range memberIDs {
 				if id == memberUid {
@@ -321,7 +323,7 @@ func ListTx(c *gin.Context) {
 				utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "该成员不属于当前家庭，无法查看其账单")
 				return
 			}
-			q = q.Where("scope = ? AND uid = ?", models.TxScopePersonal, memberUid)
+			q = q.Where("uid = ?", memberUid)
 		} else {
 			// 整个家庭：聚合所有活跃成员的个人数据 + 家庭数据
 			q = q.Where("(scope = ? AND uid IN ?) OR (scope = ? AND family_id = ?)",
