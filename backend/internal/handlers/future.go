@@ -18,6 +18,16 @@ import (
 
 // ====== 通用 scope 解析 ======
 
+// cascadeDeleteLoanCopy 删除个人贷款时级联删除建家庭时自动复制的家庭复件
+// （family_merge 按 uid+name+total 复制）。否则原件删除后复件成为孤儿，
+// 会以幽灵债务出现在家庭口径里（用户反馈：App 贷款页为空但财富为负）。
+func cascadeDeleteLoanCopy(uid uint64, name string, total float64, model any) {
+	_ = database.DB.
+		Where("scope = ? AND uid = ? AND name = ? AND total = ? AND deleted_at IS NULL",
+			models.TxScopeFamily, uid, name, total).
+		Delete(model)
+}
+
 // myScopeQuery：贷款/保险等元数据按 scope 过滤——建家庭时个人数据被复制成家庭记录
 // （family_merge），个人若含家庭 scope 会把原件+复件都列出来（重复）。
 // 交易流水的「个人含家庭记账」口径见 ListTx，不适用于此类元数据。
@@ -156,6 +166,7 @@ func DeleteHousingFundLoan(c *gin.Context) {
 		failSave(c)
 		return
 	}
+	cascadeDeleteLoanCopy(rec.UID, rec.Name, rec.Total, &models.HousingFundLoan{})
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -272,6 +283,7 @@ func DeleteCommercialLoan(c *gin.Context) {
 		failSave(c)
 		return
 	}
+	cascadeDeleteLoanCopy(rec.UID, rec.Name, rec.Total, &models.CommercialLoan{})
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -388,6 +400,7 @@ func DeleteBorrowedMoney(c *gin.Context) {
 		failSave(c)
 		return
 	}
+	cascadeDeleteLoanCopy(rec.UID, rec.Name, rec.Total, &models.BorrowedMoney{})
 	utils.OK(c, gin.H{"ok": true})
 }
 
