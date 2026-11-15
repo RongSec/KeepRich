@@ -792,8 +792,11 @@ func (s *FinanceService) sumScopeTransferOut(scope string, uid uint64, familyID 
 // applyGenericScopeQuery 通用 scope 查询（适用于非 transactions 表，如 loans、benefits 等）
 func (s *FinanceService) applyGenericScopeQuery(q *gorm.DB, scope string, uid uint64, familyID *uint64) *gorm.DB {
 	if scope == models.TxScopePersonal {
-		// 个人 = 我的记录（含家庭 scope），与账单列表口径一致
-		return q.Where("uid = ?", uid)
+		// 贷款/未来利益等元数据在建家庭时会被【复制】成家庭记录（family_merge），
+		// 个人必须只算 scope=personal 的原件，否则原件+复件会让债务翻倍
+		// （用户反馈总财富 -355 万：实为 2×贷款总还款）。
+		// 注意：交易流水不复制，applyScopeQuery 的个人口径仍为 uid=me（含家庭记账）。
+		return q.Where("scope = ? AND uid = ?", models.TxScopePersonal, uid)
 	}
 	var memberIDs []uint64
 	s.DB.Model(&models.FamilyMember{}).

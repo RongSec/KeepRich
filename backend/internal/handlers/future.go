@@ -18,12 +18,10 @@ import (
 
 // ====== 通用 scope 解析 ======
 
-// myScopeQuery：个人范围 = 我的记录（含家庭 scope 记录，与账单列表口径一致）；
-// 家庭范围 = 指定 scope 下我名下的记录。
+// myScopeQuery：贷款/保险等元数据按 scope 过滤——建家庭时个人数据被复制成家庭记录
+// （family_merge），个人若含家庭 scope 会把原件+复件都列出来（重复）。
+// 交易流水的「个人含家庭记账」口径见 ListTx，不适用于此类元数据。
 func myScopeQuery(db *gorm.DB, scope string, uid uint64) *gorm.DB {
-	if scope == models.TxScopePersonal {
-		return db.Where("uid = ?", uid)
-	}
 	return db.Where("scope = ? AND uid = ?", scope, uid)
 }
 
