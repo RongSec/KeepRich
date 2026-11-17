@@ -194,6 +194,8 @@ class _LoginPageState extends State<LoginPage>
       _mode = LoginPageMode.bio;
       _busy = true;
       _err = null;
+      // 指纹验证即重新登录：清掉上一轮的「登录已失效」提示，避免成功后仍看着像 token 过期
+      _notice = null;
     });
     final result = await deviceAuth.unlock();
     if (!mounted) return;
@@ -237,6 +239,7 @@ class _LoginPageState extends State<LoginPage>
     bool ok = false;
     try {
       final token = await deviceAuth.deviceTokenFor(account.uid);
+      debugPrint('[auth-debug] deviceTokenFor(${account.uid}) = ${token == null ? "null" : "len=${token.length}"}');
       if (token != null && token.isNotEmpty) {
         ok = await auth.loginWithDeviceCredential(account);
       } else if (deviceAuth.hasLegacyCredentials) {

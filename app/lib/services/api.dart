@@ -137,6 +137,9 @@ class ApiClient {
     // 注意：这里必须用局部变量 dio，不能用 _dio（构造期 _dio 还没赋值）
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // 记录本次请求实际使用的 token：401 回来时若它已不是当前 token，
+        // 说明期间已重新登录/刷新（如指纹登录换新会话），绝不能清掉新登录态。
+        options.extra['tokenUsed'] = _accessToken;
         if (_accessToken != null) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
           // 云托管网关会用自家 JWT 覆盖 Authorization 头（实测确认），
@@ -169,6 +172,13 @@ class ApiClient {
         final req = resp.requestOptions;
         // 公开鉴权接口自身返回 401 时由调用方就地提示，不能触发全局失效。
         if (_isPublicAuthPath(req.path)) {
+          handler.next(resp);
+          return;
+        }
+        // 陈旧 401 守卫：请求发出后若 token 已被换新（登录/刷新成功），
+        // 这条 401 属于旧会话，直接透传即可 —— 绝不能清掉新 token 跳回登录页
+        // （用户反馈「指纹验证后依旧显示 token 过期」的根因）。
+        if (req.extra['tokenUsed'] != _accessToken) {
           handler.next(resp);
           return;
         }

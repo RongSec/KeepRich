@@ -165,7 +165,15 @@ class AuthState extends ChangeNotifier {
 
   /// 登录/注册/设备登录共用的收尾：拉 /auth/me → 写账号卡 → 存设备凭据 → 清旧密码。
   Future<bool> _finishLogin(LoginResult result) async {
-    final me = await ApiClient.instance.me();
+    final ApiResponse<UserProfile> me;
+    try {
+      me = await ApiClient.instance.me();
+    } catch (_) {
+      // 网络异常不能吞掉刚换好的登录态，更不能误报「登录已失效」
+      lastLoginError = '网络异常，请稍后重试';
+      notifyListeners();
+      return false;
+    }
     if (!me.ok || me.data == null) {
       // me() 失败不能算登录成功（否则"登录成功又闪回"）
       ApiClient.instance.clearTokens();
@@ -267,8 +275,12 @@ class AuthState extends ChangeNotifier {
   /// 回到前台时调用：access 剩余不足 5 分钟主动刷一次，避免第一屏先吃 401。
   Future<void> refreshIfIdle() async {
     if (!isLoggedIn) return;
+    final tokenBefore = ApiClient.instance.accessToken;
     final reason = await ApiClient.instance.refreshIfNeeded();
     if (reason.isEmpty || reason == 'network') return;
+    // 陈旧刷新守卫：刷新在途期间若已重新登录（如指纹登录换新会话），
+    // 这次失败属于旧会话，绝不能清掉新 token（用户反馈「指纹后依旧 token 过期」）。
+    if (ApiClient.instance.accessToken != tokenBefore) return;
     ApiClient.instance.clearTokens();
     await ApiClient.instance.clearPersisted();
     sessionExpired(reason);

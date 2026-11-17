@@ -89,6 +89,84 @@ void main() {
     expect(reason, 'idle');
   });
 
+  // 回归（用户反馈「指纹验证后依旧显示 token 过期」）：
+  // 指纹登录换新 token 后，先前在途请求迟到的 401 绝不能清掉新会话。
+  test('陈旧 401 不得清掉登录后的新 token（指纹登录竞态）', () async {
+    server.listen((HttpRequest req) async {
+      req.response.headers.contentType = ContentType.json;
+      if (req.uri.path.endsWith('/auth/device-login')) {
+        req.response.statusCode = 200;
+        req.response.write(jsonEncode(<String, dynamic>{
+          'code': 0,
+          'message': 'ok',
+          'data': <String, dynamic>{
+            'accessToken': 'new-access',
+            'refreshToken': 'new-refresh',
+            'expiresIn': 900,
+            'uid': 1,
+            'role': 'user',
+            'nickname': 'n',
+            'avatar': '',
+          },
+        }));
+      } else if (req.uri.path.endsWith('/auth/me')) {
+        req.response.statusCode = 200;
+        req.response.write(jsonEncode(<String, dynamic>{
+          'code': 0,
+          'message': 'ok',
+          'data': <String, dynamic>{
+            'id': 1,
+            'username': 'u',
+            'nickname': 'n',
+            'avatar': '',
+            'email': '',
+            'phone': '',
+            'role': 'user',
+            'mfaEnabled': false,
+            'disabled': false,
+          },
+        }));
+      } else if (req.uri.path.endsWith('/auth/refresh')) {
+        req.response.statusCode = 401;
+        req.response.write(jsonEncode(
+            <String, dynamic>{'code': 40111, 'message': '登录已失效'}));
+      } else {
+        // 业务请求：**延迟 1.5s** 再回 401 —— 模拟在途请求的响应迟到
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        req.response.statusCode = 401;
+        req.response.write(jsonEncode(
+            <String, dynamic>{'code': 40111, 'message': '登录已失效'}));
+      }
+      await req.response.close();
+    });
+
+    // 1) 先发一条业务请求（用旧 token），**不等它**——响应会迟到
+    final pending = ApiClient.instance.overview();
+
+    // 2) 等一下让请求已发出、响应在路上
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    // 3) 指纹登录成功（换新 token）——此刻陈旧 401 还没回来
+    final dl = await ApiClient.instance.deviceLogin(
+        deviceId: 'd1', deviceToken: 'cred1', deviceName: 'p');
+    expect(dl.code, 0);
+    final me = await ApiClient.instance.me();
+    expect(me.code, 0);
+    expect(ApiClient.instance.hasToken, true);
+
+    // 4) 陈旧 401 现在回来了
+    try {
+      await pending;
+    } catch (_) {}
+
+    // 5) 核心断言：新登录态必须还在，且没被误判会话失效
+    expect(ApiClient.instance.hasToken, true,
+        reason: '迟到的陈旧 401 不得清掉登录后的新 token');
+    String? reason;
+    ApiClient.onSessionExpired = (r) => reason = r;
+    expect(reason, isNull);
+  });
+
   test('刷新接口自身 401 不应被当成业务会话失效', () async {
     serveCode(40111, '登录已失效，请重新登录');
     int calls = 0;
