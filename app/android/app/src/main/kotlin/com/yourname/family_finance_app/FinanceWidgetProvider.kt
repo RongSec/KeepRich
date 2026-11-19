@@ -74,7 +74,7 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, layoutId).apply {
                 setTextViewText(R.id.widget_consumable, left)
                 spentViewId?.let { setTextViewText(it, spent) }
-                setTextViewText(R.id.widget_scope, if (scope == "family") "家庭" else "个人")
+                setTextViewText(R.id.widget_scope, if (scope == "family") "· 家庭" else "· 个人")
                 setOnClickPendingIntent(R.id.widget_root, launch(context, "foreverrich://overview"))
                 setOnClickPendingIntent(
                     R.id.widget_add,

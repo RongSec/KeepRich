@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面小卡片（2x2）：大数字+眼睛遮蔽 / 小标签 / 第二项 / 右下圆形加号 -->
+<!-- 桌面小卡片（2x2）：精确复刻参考图布局 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:padding="14dp">
+    android:padding="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,89 +13,92 @@
         android:layout_gravity="top"
         android:orientation="vertical">
 
-        <!-- 大数字 + 眼睛（点击遮蔽/显示金额） -->
-        <LinearLayout
+        <!-- 大数字 -->
+        <TextView
+            android:id="@+id/widget_consumable"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:includeFontPadding="false"
+            android:text="¥ --"
+            android:textColor="@color/widget_value"
+            android:textSize="29sp"
+            android:textStyle="bold" />
+
+        <!-- 标签 + 眼睛 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <TextView
-                android:id="@+id/widget_consumable"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="¥ --"
-                android:textColor="@color/widget_value"
-                android:textSize="21sp"
-                android:textStyle="bold" />
+                android:text="剩余可消费"
+                android:textColor="@color/widget_label"
+                android:textSize="13sp" />
 
             <ImageView
                 android:id="@+id/widget_eye"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_marginStart="6dp"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginStart="7dp"
                 android:contentDescription="隐藏金额"
                 android:src="@drawable/widget_eye" />
         </LinearLayout>
 
-        <TextView
+        <!-- 第二块：标题 + 数值 -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:text="剩余可消费"
-            android:textColor="@color/widget_label"
-            android:textSize="11sp" />
+            android:layout_marginTop="24dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <!-- 第二项：当月已消费 -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="当月已消费"
-            android:textColor="@color/widget_label"
-            android:textSize="11sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="当月已消费"
+                android:textColor="@color/widget_label"
+                android:textSize="13sp" />
+
+            <!-- 范围（点击切换家庭/个人） -->
+            <TextView
+                android:id="@+id/widget_scope"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="7dp"
+                android:text="· 家庭"
+                android:textColor="@color/widget_accent"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/widget_spent"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="6dp"
             android:ellipsize="end"
             android:maxLines="1"
+            android:includeFontPadding="false"
             android:text="¥ --"
-            android:textColor="@color/widget_value"
-            android:textSize="15sp"
+            android:textColor="@color/widget_spent_value"
+            android:textSize="17sp"
             android:textStyle="bold" />
-
-        <!-- 范围切换 -->
-        <TextView
-            android:id="@+id/widget_scope"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/widget_scope_chip"
-            android:paddingStart="8dp"
-            android:paddingTop="2dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="2dp"
-            android:text="家庭"
-            android:textColor="@color/widget_accent"
-            android:textSize="11sp" />
     </LinearLayout>
 
-    <!-- 右下角圆形加号 -->
+    <!-- 右下角大圆加号 -->
     <TextView
         android:id="@+id/widget_add"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
         android:layout_gravity="bottom|end"
         android:background="@drawable/widget_add_btn"
         android:gravity="center"
         android:text="+"
         android:textColor="@color/widget_add_fg"
-        android:textSize="24sp"
-        android:textStyle="bold" />
+        android:textSize="31sp" />
 </FrameLayout>

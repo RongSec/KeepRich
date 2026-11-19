@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 小卡片配色（系统深色模式） -->
+<!-- 小卡片配色（系统深色模式）——对齐参考图 -->
 <resources>
-    <color name="widget_bg">#FF12121A</color>
-    <color name="widget_border">#33E8C268</color>
-    <color name="widget_title">#CCFFFFFF</color>
-    <color name="widget_label">#80FFFFFF</color>
-    <color name="widget_value">#FFFFFFFF</color>
-    <color name="widget_accent">#FFE8C268</color>
-    <color name="widget_chip_bg">#1AE8C268</color>
-    <color name="widget_add_bg">#FFC9C9CE</color>
-    <color name="widget_add_fg">#FF1C1C1E</color>
+    <color name="widget_bg">#FF1C1E1D</color>
+    <color name="widget_border">#00FFFFFF</color>
+    <color name="widget_title">#FFF2F2F2</color>
+    <color name="widget_label">#FF8A8A8A</color>
+    <color name="widget_value">#FFF2F2F2</color>
+    <color name="widget_spent_value">#FF3D8BFD</color>
+    <color name="widget_accent">#FFE8912D</color>
+    <color name="widget_chip_bg">#1AE8912D</color>
+    <color name="widget_add_bg">#FF2C2C2E</color>
+    <color name="widget_add_fg">#FFF2F2F2</color>
 </resources>
