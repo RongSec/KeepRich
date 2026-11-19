@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 范围标签小圆角片 -->
+<!-- 范围标签小圆角片（颜色走色板） -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#1AE8C268" />
+    <solid android:color="@color/widget_chip_bg" />
     <corners android:radius="8dp" />
 </shape>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小卡片配色（系统深色模式） -->
+<resources>
+    <color name="widget_bg">#FF12121A</color>
+    <color name="widget_border">#33E8C268</color>
+    <color name="widget_title">#CCFFFFFF</color>
+    <color name="widget_label">#80FFFFFF</color>
+    <color name="widget_value">#FFFFFFFF</color>
+    <color name="widget_accent">#FFE8C268</color>
+    <color name="widget_chip_bg">#1AE8C268</color>
+    <color name="widget_add_bg">#FFE8C268</color>
+    <color name="widget_add_fg">#FF12121A</color>
+</resources>
