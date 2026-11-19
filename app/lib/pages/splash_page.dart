@@ -70,7 +70,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
           final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
           if (uri != null && (uri.host == 'new' || uri.host == 'bookkeeping')) {
             dest = '/bookkeeping';
-            BookkeepingPage.pendingAutoAdd = true;
+            BookkeepingPage.requestAdd();
           }
         } catch (_) {}
         if (mounted) context.go(dest);

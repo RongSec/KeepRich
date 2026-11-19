@@ -64,7 +64,12 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         val prefs = HomeWidgetPlugin.getData(context)
-        val scope = prefs.getString("fw_scope", "family") ?: "family"
+        var scope = prefs.getString("fw_scope", "family") ?: "family"
+        // 偏好口径还没同步过数据（如家庭未建）时兜底到另一口径，别显示 "--"
+        if (prefs.getString("fw_${scope}_left", null) == null) {
+            val other = if (scope == "family") "personal" else "family"
+            if (prefs.getString("fw_${other}_left", null) != null) scope = other
+        }
         val masked = prefs.getBoolean("fw_mask", false)
         val mask = "¥ ••••••"
         val left = if (masked) mask else "¥ " + (prefs.getString("fw_${scope}_left", "--") ?: "--")

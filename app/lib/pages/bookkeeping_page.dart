@@ -14,8 +14,12 @@ import '../utils/display_name.dart';
 class BookkeepingPage extends StatefulWidget {
   const BookkeepingPage({super.key});
 
-  /// 桌面小卡片加号直开记账表单：SplashPage 置 true，页面首帧后自动弹表单
-  static bool pendingAutoAdd = false;
+  /// 桌面小卡片加号直开记账表单。
+  /// 用 ValueNotifier 而非一次性 bool：热启动时页面已存活（IndexedStack 保活），
+  /// initState 不会再执行，必须能随时接收「弹表单」请求。
+  static final ValueNotifier<int> addRequests = ValueNotifier<int>(0);
+
+  static void requestAdd() => addRequests.value++;
   @override
   State<BookkeepingPage> createState() => _BookkeepingPageState();
 }
@@ -25,8 +29,13 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
     if (mounted) _load();
   }
 
+  void _onAddRequested() {
+    if (mounted) _add(_tabType);
+  }
+
   @override
   void dispose() {
+    BookkeepingPage.addRequests.removeListener(_onAddRequested);
     dataVersion.removeListener(_onDataChanged);
     super.dispose();
   }
@@ -84,9 +93,9 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
-    // 小卡片加号：进页面即弹出记账表单，免去再点一次「记一笔」
-    if (BookkeepingPage.pendingAutoAdd) {
-      BookkeepingPage.pendingAutoAdd = false;
+    // 小卡片加号：进入/收到请求即弹出记账表单
+    BookkeepingPage.addRequests.addListener(_onAddRequested);
+    if (BookkeepingPage.addRequests.value > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _add(_tabType);
       });

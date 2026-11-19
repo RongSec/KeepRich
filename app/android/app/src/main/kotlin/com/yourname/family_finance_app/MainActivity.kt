@@ -1,12 +1,42 @@
 package com.yourname.family_finance_app
 
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterFragmentActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import java.io.File
 
 class MainActivity : FlutterFragmentActivity() {
+    /** 热启动深链：App 在后台时点小卡片，onNewIntent 拿到 URI 送到 Dart */
+    private var linkSink: EventChannel.EventSink? = null
+    private var pendingLink: String? = null
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "foreverrich/widget_link")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    linkSink = events
+                    pendingLink?.let {
+                        events?.success(it)
+                        pendingLink = null
+                    }
+                }
+                override fun onCancel(arguments: Any?) { linkSink = null }
+            })
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val uri = intent.data?.toString() ?: return
+        if (!uri.startsWith("foreverrich://")) return
+        val sink = linkSink
+        if (sink != null) sink.success(uri) else pendingLink = uri
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 按用户要求：允许截屏 / 录屏（不再设置 FLAG_SECURE）
@@ -27,6 +57,9 @@ class MainActivity : FlutterFragmentActivity() {
                     .setCancelable(false)
                     .show()
             }
+        }
+        intent?.data?.toString()?.takeIf { it.startsWith("foreverrich://") }?.let {
+            pendingLink = it
         }
     }
 

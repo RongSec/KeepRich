@@ -9,6 +9,7 @@ import 'config.dart';
 import 'pages/admin/admin_home_page.dart';
 import 'pages/admin/admin_login_page.dart';
 import 'pages/big_purchase_page.dart';
+import 'pages/bookkeeping_page.dart';
 import 'pages/devices_page.dart';
 import 'pages/family_page.dart';
 import 'pages/home_page.dart';
@@ -20,6 +21,7 @@ import 'pages/settings_page.dart' show UserManagementPage;
 import 'pages/splash_page.dart';
 import 'services/accounts.dart';
 import 'services/api.dart';
+import 'services/widget_link.dart';
 import 'services/auth.dart';
 import 'services/device_auth.dart';
 import 'services/notify.dart';
@@ -151,6 +153,25 @@ class _AppShellState extends State<_AppShell> {
   /// 用来在跳登录页前清掉上一页残留的错误提示
   static final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
+  @override
+  void initState() {
+    super.initState();
+    // 热启动深链：App 在后台时点小卡片 → MainActivity.onNewIntent → 这里
+    WidgetLinkService.onLink = (uri) {
+      if (!widget.auth.isLoggedIn) return;
+      try {
+        final u = Uri.parse(uri);
+        if (u.host == 'new' || u.host == 'bookkeeping') {
+          BookkeepingPage.requestAdd();
+          _router.go('/bookkeeping');
+        } else {
+          _router.go('/overview');
+        }
+      } catch (_) {}
+    };
+    WidgetLinkService.start();
+  }
+
   /// 路由器只创建一次：主题切换会重建 MaterialApp，若在 build 里 new GoRouter
   /// 会重置导航栈回到首页（模拟器实测抓到的 bug）。
   /// 主题切换时强制路由重建页面：GoRouter 会缓存子页，不刷新则页面颜色
@@ -161,12 +182,13 @@ class _AppShellState extends State<_AppShell> {
           Listenable.merge([widget.auth, context.read<ThemeController>()]),
       initialLocation: '/splash',
       redirect: (ctx, state) {
+        final loc0 = state.matchedLocation;
+        // 桌面小卡片深链（foreverrich://…）落地时 go_router 收到的 location 是
+        // 空路径 "/"；必须**先于 loading 判断**兜到开屏，否则首帧会闪
+        // 「Page Not Found / no routes for location: /」。
+        if (loc0 == '/' || loc0.isEmpty) return '/splash';
         if (widget.auth.loading) return null;
         final loc = state.matchedLocation;
-        // 桌面小卡片深链（foreverrich://…）落地时 go_router 收到的 location
-        // 是空路径 "/"，没有对应路由会抛 GoException: no routes for location。
-        // 统一回开屏，由 SplashPage 读小卡片 URI 决定落地页。
-        if (loc == '/' || loc.isEmpty) return '/splash';
         // 开屏页不重定向
         if (loc == '/splash') return null;
         // 管理后台区域独立鉴权
