@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 4x2：顶块贴顶、第二块贴底、加号贴右下，四边留白一致（18dp） -->
+<!-- 4x2：同 2x2 结构，更宽更大，四边 16dp -->
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:padding="18dp">
+    android:padding="16dp">
 
     <TextView
         android:id="@+id/widget_consumable"
@@ -21,15 +21,15 @@
         android:maxLines="1"
         android:text="¥ --"
         android:textColor="@color/widget_value"
-        android:textSize="36sp"
+        android:textSize="34sp"
         android:textStyle="bold" />
 
     <LinearLayout
         android:id="@+id/widget_label_row"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/widget_consumable"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="5dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -42,8 +42,8 @@
 
         <ImageView
             android:id="@+id/widget_eye"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
+            android:layout_width="17dp"
+            android:layout_height="17dp"
             android:layout_marginStart="7dp"
             android:contentDescription="隐藏金额"
             android:src="@drawable/widget_eye" />
@@ -59,11 +59,11 @@
     </LinearLayout>
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_toStartOf="@id/widget_add"
-        android:layout_marginEnd="10dp"
+        android:layout_below="@id/widget_label_row"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="60dp"
         android:orientation="vertical">
 
         <TextView
@@ -75,7 +75,7 @@
 
         <TextView
             android:id="@+id/widget_spent"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
             android:ellipsize="end"
@@ -83,19 +83,19 @@
             android:maxLines="1"
             android:text="¥ --"
             android:textColor="@color/widget_spent_value"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/widget_add"
-        android:layout_width="58dp"
-        android:layout_height="58dp"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
         android:layout_alignParentBottom="true"
         android:layout_alignParentEnd="true"
         android:background="@drawable/widget_add_btn"
         android:gravity="center"
         android:text="+"
         android:textColor="@color/widget_add_fg"
-        android:textSize="32sp" />
+        android:textSize="27sp" />
 </RelativeLayout>
