@@ -8,6 +8,6 @@
     <color name="widget_value">#FFFFFFFF</color>
     <color name="widget_accent">#FFE8C268</color>
     <color name="widget_chip_bg">#1AE8C268</color>
-    <color name="widget_add_bg">#FFE8C268</color>
-    <color name="widget_add_fg">#FF12121A</color>
+    <color name="widget_add_bg">#FFC9C9CE</color>
+    <color name="widget_add_fg">#FF1C1C1E</color>
 </resources>

@@ -31,20 +31,31 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val ACTION_TOGGLE_SCOPE =
             "com.yourname.family_finance_app.widget.TOGGLE_SCOPE"
+        private const val ACTION_TOGGLE_MASK =
+            "com.yourname.family_finance_app.widget.TOGGLE_MASK"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == ACTION_TOGGLE_SCOPE) {
-            val prefs = HomeWidgetPlugin.getData(context)
-            val next =
-                if (prefs.getString("fw_scope", "family") == "family") "personal" else "family"
-            prefs.edit().putString("fw_scope", next).apply()
-            val mgr = AppWidgetManager.getInstance(context)
-            val ids = mgr.getAppWidgetIds(ComponentName(context, javaClass))
-            onUpdate(context, mgr, ids)
-            return
+        val prefs = HomeWidgetPlugin.getData(context)
+        when (intent.action) {
+            ACTION_TOGGLE_SCOPE -> {
+                val next =
+                    if (prefs.getString("fw_scope", "family") == "family") "personal" else "family"
+                prefs.edit().putString("fw_scope", next).apply()
+            }
+            ACTION_TOGGLE_MASK -> {
+                // 眼睛：遮蔽 / 显示金额（本地状态，App 无需在跑）
+                val masked = prefs.getBoolean("fw_mask", false)
+                prefs.edit().putBoolean("fw_mask", !masked).apply()
+            }
+            else -> {
+                super.onReceive(context, intent)
+                return
+            }
         }
-        super.onReceive(context, intent)
+        val mgr = AppWidgetManager.getInstance(context)
+        val ids = mgr.getAppWidgetIds(ComponentName(context, javaClass))
+        onUpdate(context, mgr, ids)
     }
 
     override fun onUpdate(
@@ -54,13 +65,15 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
     ) {
         val prefs = HomeWidgetPlugin.getData(context)
         val scope = prefs.getString("fw_scope", "family") ?: "family"
-        val left = prefs.getString("fw_${scope}_left", "¥ --") ?: "¥ --"
-        val spent = prefs.getString("fw_${scope}_spent", "¥ --") ?: "¥ --"
+        val masked = prefs.getBoolean("fw_mask", false)
+        val mask = "¥ ••••••"
+        val left = if (masked) mask else "¥ " + (prefs.getString("fw_${scope}_left", "--") ?: "--")
+        val spent = if (masked) mask else "¥ " + (prefs.getString("fw_${scope}_spent", "--") ?: "--")
 
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, layoutId).apply {
-                setTextViewText(R.id.widget_consumable, "¥ $left")
-                spentViewId?.let { setTextViewText(it, "¥ $spent") }
+                setTextViewText(R.id.widget_consumable, left)
+                spentViewId?.let { setTextViewText(it, spent) }
                 setTextViewText(R.id.widget_scope, if (scope == "family") "家庭" else "个人")
                 setOnClickPendingIntent(R.id.widget_root, launch(context, "foreverrich://overview"))
                 setOnClickPendingIntent(
@@ -69,7 +82,12 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
                 )
                 setOnClickPendingIntent(
                     R.id.widget_scope,
-                    toggleScope(context, appWidgetId)
+                    action(context, appWidgetId, ACTION_TOGGLE_SCOPE)
+                )
+                // 眼睛：遮蔽 / 显示金额
+                setOnClickPendingIntent(
+                    R.id.widget_eye,
+                    action(context, appWidgetId + 10000, ACTION_TOGGLE_MASK)
                 )
             }
             appWidgetManager.updateAppWidget(appWidgetId, views)
@@ -89,13 +107,11 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
         )
     }
 
-    /** 范围切换广播（发给自己，onReceive 里处理） */
-    private fun toggleScope(context: Context, appWidgetId: Int): PendingIntent {
-        val intent = Intent(context, javaClass).apply {
-            action = ACTION_TOGGLE_SCOPE
-        }
+    /** 卡片内小动作广播（范围切换 / 金额遮蔽），发给自己由 onReceive 处理 */
+    private fun action(context: Context, requestCode: Int, action: String): PendingIntent {
+        val intent = Intent(context, javaClass).apply { this.action = action }
         return PendingIntent.getBroadcast(
-            context, appWidgetId, intent,
+            context, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
