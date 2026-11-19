@@ -51,63 +51,58 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 两个数字并排 -->
+    <!-- 剩余可消费 / 当月已消费：上下两行（标签左、金额右） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <LinearLayout
+        <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:text="剩余可消费"
+            android:textColor="@color/widget_label"
+            android:textSize="11sp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="剩余可消费"
-                android:textColor="@color/widget_label"
-                android:textSize="10sp" />
+        <TextView
+            android:id="@+id/widget_consumable"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="¥ --"
+            android:textColor="@color/widget_accent"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
-            <TextView
-                android:id="@+id/widget_consumable"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="¥ --"
-                android:textColor="@color/widget_accent"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-        <LinearLayout
+        <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:text="当月已消费"
+            android:textColor="@color/widget_label"
+            android:textSize="11sp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="当月已消费"
-                android:textColor="@color/widget_label"
-                android:textSize="10sp" />
-
-            <TextView
-                android:id="@+id/widget_spent"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="¥ --"
-                android:textColor="@color/widget_value"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/widget_spent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="¥ --"
+            android:textColor="@color/widget_value"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>
