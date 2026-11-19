@@ -36,6 +36,8 @@ dependencies:
   mobile_scanner: 5.2.3
   device_info_plus: ^10.1.2
   image_picker: ^1.2.4
+  # 桌面小卡片（Home Screen Widget）：Android AppWidget 统一机制
+  home_widget: ^0.10.0
 
   material_ui: any
 dev_dependencies:

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/api.dart';
+import '../services/home_widget_service.dart';
 import '../theme.dart';
 import '../services/data_bus.dart';
 
@@ -70,6 +71,16 @@ class _OverviewPageState extends State<OverviewPage> {
       _chart = cr.ok ? cr.data : null;
       _loading = false;
     });
+    // 同步桌面小卡片（失败不影响主流程，服务内部已兜底）
+    final ov = r.data;
+    if (ov != null) {
+      HomeWidgetService.updateFromOverview(
+        totalWealth: ov.totalWealth,
+        monthConsumableLeft: ov.monthConsumableLeft,
+        remainingBudget: ov.remainingBudget,
+        scope: _scope,
+      );
+    }
   }
 
   Future<void> _reloadChart() async {
