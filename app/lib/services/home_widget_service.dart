@@ -16,8 +16,12 @@ import 'package:intl/intl.dart';
 class HomeWidgetService {
   HomeWidgetService._();
 
-  /// Android receiver 名（与 AndroidManifest 注册、Kotlin 类对应）
-  static const String androidName = 'FinanceWidgetProvider';
+  /// Android receiver 名（与 AndroidManifest 注册、Kotlin 类对应）——
+  /// 两种尺寸各一个，刷新时都要通知到
+  static const List<String> _androidNames = [
+    'FinanceWidgetProvider', // 4x2 中卡
+    'FinanceWidgetProviderSmall', // 2x2 小卡
+  ];
 
   // 共享存储 key：Dart 与 Kotlin 两侧必须一字不差
   static const String _kUpdatedAt = 'fw_updated_at';
@@ -44,7 +48,9 @@ class HomeWidgetService {
       }
       await HomeWidget.saveWidgetData<String>(
           _kUpdatedAt, DateTime.now().millisecondsSinceEpoch.toString());
-      await HomeWidget.updateWidget(androidName: androidName);
+      for (final n in _androidNames) {
+        await HomeWidget.updateWidget(androidName: n);
+      }
     } catch (e) {
       debugPrint('[home_widget] 更新失败（不影响主流程）: $e');
     }

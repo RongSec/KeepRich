@@ -13,6 +13,9 @@ import '../utils/display_name.dart';
 
 class BookkeepingPage extends StatefulWidget {
   const BookkeepingPage({super.key});
+
+  /// 桌面小卡片加号直开记账表单：SplashPage 置 true，页面首帧后自动弹表单
+  static bool pendingAutoAdd = false;
   @override
   State<BookkeepingPage> createState() => _BookkeepingPageState();
 }
@@ -81,6 +84,13 @@ class _BookkeepingPageState extends State<BookkeepingPage> {
   void initState() {
     super.initState();
     dataVersion.addListener(_onDataChanged);
+    // 小卡片加号：进页面即弹出记账表单，免去再点一次「记一笔」
+    if (BookkeepingPage.pendingAutoAdd) {
+      BookkeepingPage.pendingAutoAdd = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _add(_tabType);
+      });
+    }
     _initScope();
     _loadMembers();
   }

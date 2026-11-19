@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小卡片（2x2 紧凑版）：剩余可消费 + 范围切换 + 记账加号 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- 标题行：标题 + 记账加号 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="永远富裕"
+            android:textColor="@color/widget_title"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_add"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/widget_add_btn"
+            android:gravity="center"
+            android:text="+"
+            android:textColor="@color/widget_add_fg"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 剩余可消费 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="剩余可消费"
+        android:textColor="@color/widget_label"
+        android:textSize="10sp" />
+
+    <TextView
+        android:id="@+id/widget_consumable"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="¥ --"
+        android:textColor="@color/widget_accent"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <!-- 范围切换（底部） -->
+    <TextView
+        android:id="@+id/widget_scope"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/widget_scope_chip"
+        android:paddingStart="8dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="2dp"
+        android:text="家庭"
+        android:textColor="@color/widget_accent"
+        android:textSize="10sp" />
+</LinearLayout>

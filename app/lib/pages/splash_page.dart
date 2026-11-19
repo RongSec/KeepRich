@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth.dart';
+import 'bookkeeping_page.dart';
 import '../theme.dart';
 
 /// 开屏页：金沙池全景 + 金色标语（背景由全局 GoldSandBackground 提供）
@@ -63,11 +64,14 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       if (!mounted) return;
       final auth = context.read<AuthState>();
       if (auth.isLoggedIn) {
-        // 桌面小卡片深链：加号直达记账页，其余进总览
+        // 桌面小卡片深链：加号直达记账并直接弹出表单，其余进总览
         String dest = '/overview';
         try {
           final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
-          if (uri != null && uri.host == 'bookkeeping') dest = '/bookkeeping';
+          if (uri != null && uri.host == 'bookkeeping') {
+            dest = '/bookkeeping';
+            BookkeepingPage.pendingAutoAdd = true;
+          }
         } catch (_) {}
         if (mounted) context.go(dest);
       } else {

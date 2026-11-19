@@ -163,6 +163,10 @@ class _AppShellState extends State<_AppShell> {
       redirect: (ctx, state) {
         if (widget.auth.loading) return null;
         final loc = state.matchedLocation;
+        // 桌面小卡片深链（foreverrich://…）落地时 go_router 收到的 location
+        // 是空路径 "/"，没有对应路由会抛 GoException: no routes for location。
+        // 统一回开屏，由 SplashPage 读小卡片 URI 决定落地页。
+        if (loc == '/' || loc.isEmpty) return '/splash';
         // 开屏页不重定向
         if (loc == '/splash') return null;
         // 管理后台区域独立鉴权
