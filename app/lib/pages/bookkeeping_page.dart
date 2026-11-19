@@ -1174,9 +1174,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       _category = _defaultCategory(_type);
       _amount = TextEditingController();
       _note = TextEditingController();
-      // 默认选中第一个允许的来源
-      final allowed = TxCategory.allowedSourceBuckets[_category] ?? ['cash'];
-      _selectedSources = {allowed.first};
+      // 不默认勾选来源（用户拍板）：由用户自己点选，提交时校验必选
+      _selectedSources = {};
     }
     if (_category == TxCategory.expenseLoanRepay && _loanRef == null) {
       _loadLoans();
@@ -1302,8 +1301,8 @@ class _AddTxSheetState extends State<_AddTxSheet> {
           c.dispose();
         }
         _sourceControllers.clear();
-        final allowed = TxCategory.allowedSourceBuckets[c] ?? ['cash'];
-        _selectedSources = {allowed.first};
+        // 切换类别同样不默认勾选
+        _selectedSources = {};
       }
       // 息金需要 targetBucket
       if (c == TxCategory.incomeInvestment) {
@@ -1553,8 +1552,13 @@ class _AddTxSheetState extends State<_AddTxSheet> {
     if (_targetBucket != null && _targetBucket!.isNotEmpty) {
       body['targetBucket'] = _targetBucket;
     }
-    // 支出时添加来源桶（支持多来源）
+    // 支出时添加来源桶（支持多来源）；来源不默认勾选，必须用户点选
     if (_type == TxType.expense) {
+      if (_selectedSources.isEmpty) {
+        _showTopSnack('请选择支出来源');
+        setState(() => _busy = false);
+        return;
+      }
       if (_selectedSources.length > 1) {
         // 多来源模式：各来源金额已在上面自动求和为 v
         final details = <Map<String, dynamic>>[];

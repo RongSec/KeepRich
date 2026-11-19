@@ -65,7 +65,7 @@ abstract class BaseFinanceWidgetProvider : AppWidgetProvider() {
                 setOnClickPendingIntent(R.id.widget_root, launch(context, "foreverrich://overview"))
                 setOnClickPendingIntent(
                     R.id.widget_add,
-                    launch(context, "foreverrich://bookkeeping/new")
+                    launch(context, "foreverrich://new")
                 )
                 setOnClickPendingIntent(
                     R.id.widget_scope,
@@ -107,7 +107,8 @@ class FinanceWidgetProvider : BaseFinanceWidgetProvider() {
     override val spentViewId: Int? get() = R.id.widget_spent
 }
 
-/** 2x2 小卡：只留剩余可消费 + 范围切换 + 记账加号 */
+/** 2x2 小卡：剩余可消费 + 当月已消费 + 范围切换 + 记账加号（紧凑排布） */
 class FinanceWidgetProviderSmall : BaseFinanceWidgetProvider() {
     override val layoutId: Int get() = R.layout.widget_finance_small
+    override val spentViewId: Int? get() = R.id.widget_spent
 }

@@ -753,17 +753,18 @@ class TxCategory {
   };
 
   // 各支出类别允许的来源桶（所有支出门类都可用「消费额度」）
+  // 顺序即展示顺序：消费额度恒排最左（用户拍板：排在可支配额度左边）
   static const Map<String, List<String>> allowedSourceBuckets = {
-    expenseDaily: ['cash', 'consumption'], // 日常消费：可支配、消费额度
-    expenseBigPurchase: ['cash', 'saving', 'consumption'], // 大件购物：现金、储蓄桶、消费额度
-    expensePension: ['pension', 'consumption'], // 养老：养老桶、消费额度
-    expenseEmergency: ['emergency', 'consumption'], // 应急：应急桶、消费额度
+    expenseDaily: ['consumption', 'cash'], // 日常消费：消费额度、可支配
+    expenseBigPurchase: ['consumption', 'cash', 'saving'], // 大件购物
+    expensePension: ['consumption', 'pension'], // 养老
+    expenseEmergency: ['consumption', 'emergency'], // 应急
     expenseLoanRepay: [
+      'consumption',
       'cash',
       'saving',
-      'housing_fund',
-      'consumption'
-    ], // 偿还贷款：现金、储蓄桶、公积金、消费额度
+      'housing_fund'
+    ], // 偿还贷款
   };
 
   // 来源桶显示名

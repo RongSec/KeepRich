@@ -123,9 +123,9 @@ void main() {
             reason: '支出类别 $c 必须支持消费额度来源');
       }
       expect(TxCategory.sourceBucketLabels['consumption'], '消费额度');
-      // 与可支配额度并列（多来源）
+      // 与可支配额度并列（多来源），消费额度排在左边（用户拍板的展示顺序）
       expect(TxCategory.allowedSourceBuckets[TxCategory.expenseDaily],
-          ['cash', 'consumption']);
+          ['consumption', 'cash']);
     });
   });
 
@@ -266,7 +266,9 @@ void main() {
       expect(find.text('余额 300.50 元'), findsOneWidget);
       expect(find.text('余额 500.00 元'), findsOneWidget);
 
-      // 选中消费额度 → 多来源模式
+      // 来源不默认勾选：手动选「可支配额度」+「消费额度」→ 多来源模式
+      await tester.tap(find.text('可支配额度'));
+      await tester.pump();
       await tester.tap(find.text('消费额度'));
       await tester.pump();
       expect(find.text('消费额度 金额'), findsOneWidget);
@@ -297,7 +299,9 @@ void main() {
       await tester.tap(find.byType(FloatingActionButton));
       await _settle(tester);
 
-      // 单来源（默认可支配额度）超额 → 硬拦，不得发到后端
+      // 来源不默认勾选（用户拍板）：先手动选「可支配额度」再超额 → 硬拦
+      await tester.tap(find.text('可支配额度'));
+      await tester.pump();
       await tester.enterText(find.widgetWithText(TextField, '金额'), '99999');
       await tester.pump();
       await tester.ensureVisible(find.text('保存'));
