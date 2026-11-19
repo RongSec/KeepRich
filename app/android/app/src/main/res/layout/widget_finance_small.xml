@@ -7,8 +7,8 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="10dp">
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="12dp">
 
     <!-- 标题行：标题 + 范围片 + 记账加号 -->
     <LinearLayout
@@ -23,7 +23,7 @@
             android:layout_weight="1"
             android:text="永远富裕"
             android:textColor="@color/widget_title"
-            android:textSize="11sp" />
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/widget_scope"
@@ -37,17 +37,17 @@
             android:paddingBottom="2dp"
             android:text="家庭"
             android:textColor="@color/widget_accent"
-            android:textSize="10sp" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/widget_add"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
             android:background="@drawable/widget_add_btn"
             android:gravity="center"
             android:text="+"
             android:textColor="@color/widget_add_fg"
-            android:textSize="19sp"
+            android:textSize="25sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -55,7 +55,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="18dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -65,7 +65,7 @@
             android:layout_weight="1"
             android:text="剩余可消费"
             android:textColor="@color/widget_label"
-            android:textSize="11sp" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/widget_consumable"
@@ -75,14 +75,14 @@
             android:maxLines="1"
             android:text="¥ --"
             android:textColor="@color/widget_accent"
-            android:textSize="15sp"
+            android:textSize="19sp"
             android:textStyle="bold" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="16dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -92,7 +92,7 @@
             android:layout_weight="1"
             android:text="当月已消费"
             android:textColor="@color/widget_label"
-            android:textSize="11sp" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/widget_spent"
@@ -102,7 +102,7 @@
             android:maxLines="1"
             android:text="¥ --"
             android:textColor="@color/widget_value"
-            android:textSize="15sp"
+            android:textSize="19sp"
             android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>
