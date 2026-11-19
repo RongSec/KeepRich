@@ -1,108 +1,105 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 桌面小卡片（2x2）：精确复刻参考图布局 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 2x2：顶块贴顶、第二块贴底、加号贴右下，四边留白一致（16dp） -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:padding="16dp">
 
-    <LinearLayout
+    <!-- 顶部大数字 -->
+    <TextView
+        android:id="@+id/widget_consumable"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top"
+        android:layout_alignParentTop="true"
+        android:autoSizeTextType="uniform"
+        android:autoSizeMinTextSize="18sp"
+        android:autoSizeMaxTextSize="46sp"
+        android:autoSizeStepGranularity="1sp"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="¥ --"
+        android:textColor="@color/widget_value"
+        android:textSize="32sp"
+        android:textStyle="bold" />
+
+    <!-- 标签 + 眼睛 + 范围（紧跟大数字下方） -->
+    <LinearLayout
+        android:id="@+id/widget_label_row"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/widget_consumable"
+        android:layout_marginTop="3dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="剩余可消费"
+            android:textColor="@color/widget_label"
+            android:textSize="14sp" />
+
+        <ImageView
+            android:id="@+id/widget_eye"
+            android:layout_width="17dp"
+            android:layout_height="17dp"
+            android:layout_marginStart="7dp"
+            android:contentDescription="隐藏金额"
+            android:src="@drawable/widget_eye" />
+
+        <TextView
+            android:id="@+id/widget_scope"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:text="· 家庭"
+            android:textColor="@color/widget_accent"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- 第二块：贴底、避开右下加号 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_toStartOf="@id/widget_add"
+        android:layout_marginEnd="8dp"
         android:orientation="vertical">
 
-        <!-- 大数字 -->
         <TextView
-            android:id="@+id/widget_consumable"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:autoSizeTextType="uniform"
-            android:autoSizeMinTextSize="18sp"
-            android:autoSizeMaxTextSize="46sp"
-            android:autoSizeStepGranularity="1sp"
-            android:includeFontPadding="false"
-            android:text="¥ --"
-            android:textColor="@color/widget_value"
-            android:textSize="32sp"
-            android:textStyle="bold" />
-
-        <!-- 标签 + 眼睛 -->
-        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="剩余可消费"
-                android:textColor="@color/widget_label"
-                android:textSize="14sp" />
-
-            <ImageView
-                android:id="@+id/widget_eye"
-                android:layout_width="17dp"
-                android:layout_height="17dp"
-                android:layout_marginStart="7dp"
-                android:contentDescription="隐藏金额"
-                android:src="@drawable/widget_eye" />
-
-            <!-- 范围（点击切换家庭/个人） -->
-            <TextView
-                android:id="@+id/widget_scope"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="7dp"
-                android:text="· 家庭"
-                android:textColor="@color/widget_accent"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <!-- 第二块：标题 + 数值 -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="当月已消费"
-                android:textColor="@color/widget_label"
-                android:textSize="14sp" />
-        </LinearLayout>
+            android:text="当月已消费"
+            android:textColor="@color/widget_label"
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/widget_spent"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
-            android:maxLines="1"
             android:includeFontPadding="false"
+            android:maxLines="1"
             android:text="¥ --"
             android:textColor="@color/widget_spent_value"
-            android:textSize="19sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 右下角大圆加号 -->
+    <!-- 右下角大圆加号（贴右下） -->
     <TextView
         android:id="@+id/widget_add"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:layout_gravity="bottom|end"
+        android:layout_width="54dp"
+        android:layout_height="54dp"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentEnd="true"
         android:background="@drawable/widget_add_btn"
         android:gravity="center"
         android:text="+"
         android:textColor="@color/widget_add_fg"
-        android:textSize="31sp" />
-</FrameLayout>
+        android:textSize="30sp" />
+</RelativeLayout>
