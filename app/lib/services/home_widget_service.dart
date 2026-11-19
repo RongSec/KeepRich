@@ -9,6 +9,9 @@ import 'package:intl/intl.dart';
 /// 读同一份存储渲染 RemoteViews。iOS 未接入（项目 flutter_launcher_icons
 /// 里 ios:false，安卓优先）。
 ///
+/// 卡片显示「剩余可消费 / 当月已消费」，口径（家庭/个人）可在卡片上切换
+/// ——两个口径的数字都写入，切换只是换 key 读取，不依赖 App 进程存活。
+///
 /// 红线：本服务**永不抛异常**——卡片刷新失败绝不能影响 App 主流程。
 class HomeWidgetService {
   HomeWidgetService._();
@@ -17,31 +20,28 @@ class HomeWidgetService {
   static const String androidName = 'FinanceWidgetProvider';
 
   // 共享存储 key：Dart 与 Kotlin 两侧必须一字不差
-  static const String _kWealth = 'fw_total_wealth';
-  static const String _kConsumable = 'fw_month_consumable';
-  static const String _kRemaining = 'fw_remaining_budget';
-  static const String _kScope = 'fw_scope';
   static const String _kUpdatedAt = 'fw_updated_at';
 
   static final NumberFormat _money = NumberFormat('#,##0.00');
 
-  /// 总览数据加载成功后调用：写入卡片数据并触发系统刷新。
+  /// 总览数据刷新后调用：把**两个口径**的数字都写入卡片并触发刷新。
   ///
-  /// [scope] 取值 'family' / 'personal'，卡片右上角显示「家庭 / 个人」。
-  static Future<void> updateFromOverview({
-    required double totalWealth,
-    required double monthConsumableLeft,
-    required double remainingBudget,
+  /// [left] 剩余可消费、[spent] 当月已消费，按 scope 分 key 存储
+  /// （fw_family_left / fw_personal_left …），卡片上切换范围时
+  /// 原生侧直接换 key 读取，无需 App 在跑。
+  static Future<void> updateBothScopes({
     required String scope,
+    required double left,
+    required double spent,
+    String? otherScope,
+    double? otherLeft,
+    double? otherSpent,
   }) async {
     try {
-      await HomeWidget.saveWidgetData<String>(
-          _kWealth, _money.format(totalWealth));
-      await HomeWidget.saveWidgetData<String>(
-          _kConsumable, _money.format(monthConsumableLeft));
-      await HomeWidget.saveWidgetData<String>(
-          _kRemaining, _money.format(remainingBudget));
-      await HomeWidget.saveWidgetData<String>(_kScope, _scopeLabel(scope));
+      await _writeScope(scope, left, spent);
+      if (otherScope != null && otherLeft != null && otherSpent != null) {
+        await _writeScope(otherScope, otherLeft, otherSpent);
+      }
       await HomeWidget.saveWidgetData<String>(
           _kUpdatedAt, DateTime.now().millisecondsSinceEpoch.toString());
       await HomeWidget.updateWidget(androidName: androidName);
@@ -50,5 +50,11 @@ class HomeWidgetService {
     }
   }
 
-  static String _scopeLabel(String scope) => scope == 'personal' ? '个人' : '家庭';
+  static Future<void> _writeScope(
+      String scope, double left, double spent) async {
+    await HomeWidget.saveWidgetData<String>(
+        'fw_${scope}_left', _money.format(left));
+    await HomeWidget.saveWidgetData<String>(
+        'fw_${scope}_spent', _money.format(spent));
+  }
 }

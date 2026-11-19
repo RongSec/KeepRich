@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth.dart';
@@ -58,10 +59,20 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
     });
 
     // 3.2 秒后跳转
-    Timer(const Duration(milliseconds: 3200), () {
+    Timer(const Duration(milliseconds: 3200), () async {
       if (!mounted) return;
       final auth = context.read<AuthState>();
-      context.go(auth.isLoggedIn ? '/overview' : '/login');
+      if (auth.isLoggedIn) {
+        // 桌面小卡片深链：加号直达记账页，其余进总览
+        String dest = '/overview';
+        try {
+          final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+          if (uri != null && uri.host == 'bookkeeping') dest = '/bookkeeping';
+        } catch (_) {}
+        if (mounted) context.go(dest);
+      } else {
+        context.go('/login');
+      }
     });
   }
 

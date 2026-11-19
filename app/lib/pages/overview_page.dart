@@ -71,15 +71,28 @@ class _OverviewPageState extends State<OverviewPage> {
       _chart = cr.ok ? cr.data : null;
       _loading = false;
     });
-    // 同步桌面小卡片（失败不影响主流程，服务内部已兜底）
+    // 同步桌面小卡片（失败不影响主流程，服务内部已兜底）。
+    // 卡片显示「剩余可消费 / 当月已消费」，家庭/个人两口径都写入，
+    // 卡片上切换范围时原生侧换 key 读取，因此这里顺带取另一口径的数据。
     final ov = r.data;
     if (ov != null) {
-      HomeWidgetService.updateFromOverview(
-        totalWealth: ov.totalWealth,
-        monthConsumableLeft: ov.monthConsumableLeft,
-        remainingBudget: ov.remainingBudget,
-        scope: _scope,
-      );
+      final other = _scope == 'family' ? 'personal' : 'family';
+      ApiClient.instance.overview(scope: other).then((orr) {
+        HomeWidgetService.updateBothScopes(
+          scope: _scope,
+          left: ov.consumptionBalance,
+          spent: ov.consumptionSpend,
+          otherScope: orr.ok ? other : null,
+          otherLeft: orr.ok ? orr.data?.consumptionBalance : null,
+          otherSpent: orr.ok ? orr.data?.consumptionSpend : null,
+        );
+      }).catchError((_) {
+        HomeWidgetService.updateBothScopes(
+          scope: _scope,
+          left: ov.consumptionBalance,
+          spent: ov.consumptionSpend,
+        );
+      });
     }
   }
 
