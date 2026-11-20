@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:padding="18dp">
+    android:padding="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -19,29 +19,30 @@
             android:layout_height="wrap_content"
             android:autoSizeTextType="uniform"
             android:autoSizeMinTextSize="20sp"
-            android:autoSizeMaxTextSize="50sp"
+            android:autoSizeMaxTextSize="38sp"
             android:autoSizeStepGranularity="1sp"
             android:ellipsize="end"
             android:includeFontPadding="false"
             android:maxLines="1"
             android:text="¥ --"
             android:textColor="@color/widget_value"
-            android:textSize="34sp"
+            android:textSize="25sp"
             android:textStyle="bold" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
+            android:layout_marginTop="3dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:maxLines="1"
                 android:text="剩余可消费"
                 android:textColor="@color/widget_label"
-                android:textSize="15sp" />
+                android:textSize="13sp" />
 
             <ImageView
                 android:id="@+id/widget_eye"
@@ -56,15 +57,15 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="· 家庭"
+                android:text="家庭"
                 android:textColor="@color/widget_accent"
-                android:textSize="15sp" />
+                android:textSize="13sp" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
+            android:layout_marginTop="14dp"
             android:gravity="bottom"
             android:orientation="horizontal">
 
@@ -77,9 +78,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:maxLines="1"
                     android:text="当月已消费"
                     android:textColor="@color/widget_label"
-                    android:textSize="15sp" />
+                    android:textSize="13sp" />
 
                 <TextView
                     android:id="@+id/widget_spent"
@@ -91,14 +93,14 @@
                     android:maxLines="1"
                     android:text="¥ --"
                     android:textColor="@color/widget_spent_value"
-                    android:textSize="21sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/widget_add"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
                 android:layout_marginStart="12dp"
                 android:background="@drawable/widget_add_btn"
                 android:gravity="center"
