@@ -1,101 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 4x2：同 2x2 结构，更宽更大，四边 16dp -->
+<!-- 4x2：内容垂直居中，加号与「当月已消费」同一行 -->
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:padding="16dp">
-
-    <TextView
-        android:id="@+id/widget_consumable"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:autoSizeTextType="uniform"
-        android:autoSizeMinTextSize="20sp"
-        android:autoSizeMaxTextSize="52sp"
-        android:autoSizeStepGranularity="1sp"
-        android:ellipsize="end"
-        android:includeFontPadding="false"
-        android:maxLines="1"
-        android:text="¥ --"
-        android:textColor="@color/widget_value"
-        android:textSize="34sp"
-        android:textStyle="bold" />
-
-    <LinearLayout
-        android:id="@+id/widget_label_row"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/widget_consumable"
-        android:layout_marginTop="5dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="剩余可消费"
-            android:textColor="@color/widget_label"
-            android:textSize="15sp" />
-
-        <ImageView
-            android:id="@+id/widget_eye"
-            android:layout_width="17dp"
-            android:layout_height="17dp"
-            android:layout_marginStart="7dp"
-            android:contentDescription="隐藏金额"
-            android:src="@drawable/widget_eye" />
-
-        <TextView
-            android:id="@+id/widget_scope"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="· 家庭"
-            android:textColor="@color/widget_accent"
-            android:textSize="15sp" />
-    </LinearLayout>
+    android:padding="18dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/widget_label_row"
-        android:layout_marginTop="24dp"
-        android:layout_marginEnd="60dp"
+        android:layout_centerVertical="true"
         android:orientation="vertical">
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="当月已消费"
-            android:textColor="@color/widget_label"
-            android:textSize="15sp" />
-
-        <TextView
-            android:id="@+id/widget_spent"
+            android:id="@+id/widget_consumable"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="20sp"
+            android:autoSizeMaxTextSize="50sp"
+            android:autoSizeStepGranularity="1sp"
             android:ellipsize="end"
             android:includeFontPadding="false"
             android:maxLines="1"
             android:text="¥ --"
-            android:textColor="@color/widget_spent_value"
-            android:textSize="20sp"
+            android:textColor="@color/widget_value"
+            android:textSize="34sp"
             android:textStyle="bold" />
-    </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_add"
-        android:layout_width="46dp"
-        android:layout_height="46dp"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentEnd="true"
-        android:background="@drawable/widget_add_btn"
-        android:gravity="center"
-        android:text="+"
-        android:textColor="@color/widget_add_fg"
-        android:textSize="27sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="剩余可消费"
+                android:textColor="@color/widget_label"
+                android:textSize="15sp" />
+
+            <ImageView
+                android:id="@+id/widget_eye"
+                android:layout_width="17dp"
+                android:layout_height="17dp"
+                android:layout_marginStart="7dp"
+                android:contentDescription="隐藏金额"
+                android:src="@drawable/widget_eye" />
+
+            <TextView
+                android:id="@+id/widget_scope"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="· 家庭"
+                android:textColor="@color/widget_accent"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="当月已消费"
+                    android:textColor="@color/widget_label"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/widget_spent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="¥ --"
+                    android:textColor="@color/widget_spent_value"
+                    android:textSize="21sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_add"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/widget_add_btn"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="@color/widget_add_fg"
+                android:textSize="28sp" />
+        </LinearLayout>
+    </LinearLayout>
 </RelativeLayout>
