@@ -1,26 +1,26 @@
 {
-  "version": "0.8.6",
-  "buildNumber": 28,
+  "version": "0.8.7",
+  "buildNumber": 29,
   "repo": "RongSec/KeepRich",
-  "notes": "v0.8.6 新版本：可在 App 内直接更新（设备访问不了 GitHub 时走云服务分发）",
+  "notes": "v0.8.7 新版本：可在 App 内直接更新（设备访问不了 GitHub 时走云服务分发）",
   "assets": [
     {
       "abi": "arm64-v8a",
       "file": "app-arm64-v8a-release.apk",
-      "sha256": "0e7f490971b1033507920611931d13b2c9cc98f88ea119dc2558337bb444f0d3",
-      "size": 28432501
+      "sha256": "a44f02c72a4cde5d2ba16e667ff8a1473351e1145c66f73bf1e4bebd59d4344e",
+      "size": 28432657
     },
     {
       "abi": "armeabi-v7a",
       "file": "app-armeabi-v7a-release.apk",
-      "sha256": "780c5b620d248d63452640c0bec73a48f6118c57c9007a1099fee24fa81c0183",
-      "size": 24755245
+      "sha256": "da416c0e62fc5ea0227be3d9677239400d8fcc62092e88428534c405fca76cd7",
+      "size": 24771785
     },
     {
       "abi": "x86_64",
       "file": "app-x86_64-release.apk",
-      "sha256": "77c67fb74f78f40f5c207efb3adb9fc23e63d509f64abe38a56e0c1812fee791",
-      "size": 30972875
+      "sha256": "de77c4fc65e89da2d7a836fd50ae337d9583c59ce686bd6688630acf12d05584",
+      "size": 30973031
     }
   ]
 }
