@@ -7,6 +7,7 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterFragmentActivity() {
@@ -16,6 +17,16 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 国产 ROM（ColorOS/MIUI/EMUI…）的通知管控在系统层，App 只能引导用户去开
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "foreverrich/system")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "vendor" -> result.success("${android.os.Build.MANUFACTURER} ${android.os.Build.BRAND}".lowercase())
+                    "openNotificationSettings" -> result.success(openNotificationSettings())
+                    "openAutoStartSettings" -> result.success(openAutoStartSettings())
+                    else -> result.notImplemented()
+                }
+            }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "foreverrich/widget_link")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -27,6 +38,58 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 override fun onCancel(arguments: Any?) { linkSink = null }
             })
+    }
+
+    /** 打开本应用的通知设置页（各 ROM 通用） */
+    private fun openNotificationSettings(): Boolean {
+        return try {
+            val i = Intent("android.settings.APP_NOTIFICATION_SETTINGS").apply {
+                putExtra("android.provider.extra.APP_PACKAGE", packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(i)
+            true
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent("android.settings.APPLICATION_DETAILS_SETTINGS").apply {
+                    data = android.net.Uri.parse("package:$packageName")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+                true
+            } catch (_: Exception) { false }
+        }
+    }
+
+    /** 打开自启动/后台管理页：按厂商尝试多个入口，全部失败返回 false 由 App 给文字指引 */
+    private fun openAutoStartSettings(): Boolean {
+        val candidates = listOf(
+            // OPPO / ColorOS
+            "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+            "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity",
+            // vivo
+            "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+            // 小米
+            "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+            // 华为
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+        )
+        for ((pkg, cls) in candidates) {
+            try {
+                startActivity(Intent().apply {
+                    setClassName(pkg, cls)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+                return true
+            } catch (_: Exception) { }
+        }
+        return try {
+            startActivity(Intent("android.settings.APPLICATION_DETAILS_SETTINGS").apply {
+                data = android.net.Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            true
+        } catch (_: Exception) { false }
     }
 
     override fun onNewIntent(intent: Intent) {

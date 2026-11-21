@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/notify.dart';
+import '../services/system_channel.dart';
 import '../utils/display_name.dart';
 
 /// 通知设置页：5 类通知各一个开关，可展开编辑标题/内容文案模板（支持 {占位符}）。
@@ -37,6 +38,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _saving = false;
   String? _error;
   bool? _sysNotify; // 系统通知是否允许（null=未知/平台不支持）
+  String _vendor = '';
+  bool _showTrouble = false;
 
   bool get _isForMember => widget.member != null;
 
@@ -45,6 +48,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     super.initState();
     _load();
     _checkSysNotification();
+    SystemChannel.vendor().then((v) {
+      if (mounted) setState(() => _vendor = v);
+    });
   }
 
   @override
@@ -189,6 +195,77 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     await _checkSysNotification();
   }
 
+  /// 国产 ROM 额外管控指引（ColorOS / MIUI / EMUI 等）
+  Widget _troubleGuide() {
+    final v = _vendor;
+    final steps = <String>[
+      if (v.contains('oppo') || v.contains('realme') || v.contains('oneplus')) ...[
+        '通知管理：长按应用图标 → 应用详情 → 通知管理 → 打开「允许通知」，并把「设为不重要通知」「移动至通知底部」关掉',
+        '横幅：通知管理里打开「横幅」「锁屏」，否则只在通知栏不弹窗',
+        '自启动：手机管家 → 权限隐私 → 自启动管理 → 允许「永远富裕」',
+        '耗电：应用详情 → 耗电管理 → 允许自启动 / 允许唤醒前台 / 允许完全后台行为',
+        '后台锁定：多任务里长按本应用卡片 → 下拉锁定，防止被清理',
+      ] else if (v.contains('xiaomi') || v.contains('redmi')) ...[
+        '通知管理：应用详情 → 通知管理 → 打开允许通知，关闭「不重要通知」',
+        '自启动：手机管家 → 应用管理 → 权限 → 自启动',
+        '省电策略：应用详情 → 省电策略 → 无限制',
+      ] else if (v.contains('vivo') || v.contains('iqoo')) ...[
+        '通知：设置 → 通知与状态栏 → 应用通知 → 永远富裕 → 打开允许通知',
+        '自启动：i管家 → 应用管理 → 自启动',
+        '后台：设置 → 电池 → 后台耗电管理 → 允许后台高耗电',
+      ] else if (v.contains('huawei') || v.contains('honor')) ...[
+        '通知：设置 → 通知 → 永远富裕 → 允许通知 + 横幅',
+        '启动管理：设置 → 应用 → 应用启动管理 → 关闭「自动管理」，三项手动全开',
+        '电池：设置 → 电池 → 更多电池设置 → 休眠保持网络连接',
+      ] else ...[
+        '在系统设置里允许本应用发送通知',
+        '关闭系统的后台限制与省电优化',
+      ],
+      '以上都开了仍不弹：本应用的通知靠 WebSocket 实时接收，进程被杀后收不到（需要厂商推送通道）',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < steps.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${i + 1}. ', style: const TextStyle(fontSize: 12)),
+                  Expanded(
+                    child: Text(steps[i], style: const TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            OutlinedButton.icon(
+              onPressed: () => SystemChannel.openNotificationSettings(),
+              icon: const Icon(Icons.tune, size: 15),
+              label: const Text('打开系统通知设置'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final ok = await SystemChannel.openAutoStartSettings();
+                if (!ok && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('未找到自启动页，请在「手机管家 → 权限隐私」里手动打开'),
+                  ));
+                }
+              },
+              icon: const Icon(Icons.battery_saver_outlined, size: 15),
+              label: const Text('打开自启动管理'),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
   String _memberLabel() {
     final m = widget.member!;
     final me = context.read<AuthState>().user;
@@ -264,6 +341,27 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                   ),
                                 ),
                               ]),
+                              const SizedBox(height: 8),
+                              if (SystemChannel.isAggressiveRom(_vendor)) ...[
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: () => setState(() => _showTrouble = !_showTrouble),
+                                  child: Row(children: [
+                                    Icon(
+                                      _showTrouble
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${SystemChannel.vendorLabel(_vendor)} 还有额外管控，点此排查',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ]),
+                                ),
+                                if (_showTrouble) _troubleGuide(),
+                              ],
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
