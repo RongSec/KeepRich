@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -46,7 +47,19 @@ class NotifyService extends ChangeNotifier {
       macOS: darwinSettings,
     );
     await _localNotifications.initialize(initSettings);
+    // 权限弹窗必须等首帧之后：initState 阶段 Activity 还没准备好，
+    // requestNotificationsPermission() 会静默失败，导致系统通知一直处于关闭状态
+    // （用户反馈「App 内有通知、手机通知栏没有」的根因）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestSystemNotificationPermission();
+    });
+  }
+
+  /// 主动申请系统通知权限（设置页「去开启」按钮调用），返回是否已允许
+  Future<bool> requestSystemNotificationPermission() async {
     await _requestSystemNotificationPermission();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return await systemNotificationsEnabled() ?? false;
   }
 
   /// 申请手机系统通知权限：

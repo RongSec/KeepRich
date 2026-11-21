@@ -164,6 +164,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     } catch (_) {}
   }
 
+  Future<void> _requestPermission() async {
+    try {
+      await context.read<NotifyService>().requestSystemNotificationPermission();
+    } catch (_) {}
+    await _checkSysNotification();
+    if (!mounted) return;
+    if (_sysNotify == false) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('仍未开启。请到「系统设置 → 应用 → 永远富裕 → 通知」手动打开'),
+      ));
+    }
+  }
+
   Future<void> _sendTestNotification() async {
     bool ok = false;
     try {
@@ -252,13 +265,23 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                 ),
                               ]),
                               const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: OutlinedButton.icon(
-                                  onPressed: _sendTestNotification,
-                                  icon: const Icon(Icons.send_outlined, size: 16),
-                                  label: const Text('发一条测试通知'),
-                                ),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: [
+                                  if (_sysNotify == false)
+                                    FilledButton.icon(
+                                      onPressed: _requestPermission,
+                                      icon: const Icon(Icons.notifications_on_outlined,
+                                          size: 16),
+                                      label: const Text('去开启通知权限'),
+                                    ),
+                                  OutlinedButton.icon(
+                                    onPressed: _sendTestNotification,
+                                    icon: const Icon(Icons.send_outlined, size: 16),
+                                    label: const Text('发一条测试通知'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
