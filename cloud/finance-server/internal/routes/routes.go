@@ -116,6 +116,11 @@ func Register(r *gin.Engine) {
 			auth.GET("/notifications", handlers.ListNotifications)
 			auth.POST("/notifications/:id/read", handlers.MarkNotificationRead)
 			auth.POST("/notifications/read-all", handlers.MarkAllNotificationsRead)
+			// 通知设置：自己的开关/模板；家庭管理员可查/改同家庭成员（后端校验 is_admin）
+			auth.GET("/notifications/settings", handlers.GetNotificationSettings)
+			auth.PUT("/notifications/settings", handlers.UpdateNotificationSettings)
+			auth.GET("/notifications/settings/:uid", handlers.GetMemberNotificationSettings)
+			auth.PUT("/notifications/settings/:uid", handlers.UpdateMemberNotificationSettings)
 			auth.GET("/ws", handlers.WS)
 
 			auth.POST("/profile", handlers.UpdateProfile)

@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/services"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
 type SourceDetail struct {
@@ -253,13 +253,23 @@ func CreateTx(c *gin.Context) {
 
 	// 超支提醒：仅当支出超过无顾虑单笔时触发
 	if req.Type == models.TxTypeExpense {
-		worryPerBuy := computeWorryFreePerBuy(req.Scope, uid, tx.FamilyID)
+		worryPerBuy := services.WorryFreePerBuyFor(database.DB, req.Scope, uid, tx.FamilyID)
 		if worryPerBuy > 0 && req.Amount > worryPerBuy {
 			ns := services.NewNotifyService(database.DB)
 			f := "%.0f"
-			_ = ns.PushTo(uid, models.NotifyTypeOverSpend, "超支提醒",
-				"一笔 "+models.CategoryLabel[req.Category]+" 支出 ¥"+fmt.Sprintf(f, req.Amount)+" 超过无顾虑单笔 ¥"+fmt.Sprintf(f, worryPerBuy), "")
+			// 模板变量：{分类}/{金额}/{限额}/{日期}，默认/自定义模板统一在 PushTo 渲染
+			_ = ns.PushTo(uid, models.NotifyTypeOverSpend, map[string]string{
+				"分类": models.CategoryLabel[req.Category],
+				"金额": fmt.Sprintf(f, req.Amount),
+				"限额": fmt.Sprintf(f, worryPerBuy),
+				"日期": time.Now().Format("2006-01-02"),
+			}, "")
 		}
+	}
+
+	// 家庭成员记账提醒：家庭账单落库后，通知**其他**在册成员（不含记录人自己）
+	if tx.FamilyID != nil && *tx.FamilyID > 0 {
+		notifyFamilyTx(uid, *tx.FamilyID, &tx)
 	}
 
 	utils.OK(c, tx)
@@ -271,6 +281,9 @@ func ListTx(c *gin.Context) {
 	txType := c.Query("type")
 	category := c.Query("category")
 	recorder := c.Query("recorder") // uid 字符串，"-1" 表示全部
+	// memberUid：家庭范围下「只看某个成员的个人账单」（每位家庭成员都可查看其他成员）。
+	// 0 / 空 = 整个家庭聚合。必须校验目标成员与自己同属一个活跃家庭，防跨家庭窥探。
+	memberUid, _ := strconv.ParseUint(c.Query("memberUid"), 10, 64)
 	startAt, _ := strconv.ParseInt(c.Query("startAt"), 10, 64)
 	endAt, _ := strconv.ParseInt(c.Query("endAt"), 10, 64)
 	exceedWorry := c.Query("exceedWorry") // "1"=仅超支；"0"=仅未超支；空=全部
@@ -285,7 +298,8 @@ func ListTx(c *gin.Context) {
 
 	q := database.DB.Model(&models.Transaction{})
 	if scope == models.TxScopePersonal {
-		q = q.Where("scope = ? AND uid = ?", models.TxScopePersonal, uid)
+		// 个人 = 我记的账（含家庭 scope 记录）：用户在家庭记账后也要在个人看得到
+		q = q.Where("uid = ?", uid)
 	} else {
 		// 家庭：聚合所有活跃成员的个人数据 + 家庭数据
 		var m models.FamilyMember
@@ -300,12 +314,29 @@ func ListTx(c *gin.Context) {
 		if len(memberIDs) == 0 {
 			memberIDs = []uint64{0}
 		}
-		q = q.Where("(scope = ? AND uid IN ?) OR (scope = ? AND family_id = ?)",
-			models.TxScopePersonal, memberIDs, models.TxScopeFamily, m.FamilyID)
+		if memberUid > 0 {
+			// 只看某个成员的账：目标必须是本家庭活跃成员（含自己）。
+			// 与「个人」口径一致：该成员的全部记录（含家庭 scope）。
+			isMember := false
+			for _, id := range memberIDs {
+				if id == memberUid {
+					isMember = true
+					break
+				}
+			}
+			if !isMember {
+				utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "该成员不属于当前家庭，无法查看其账单")
+				return
+			}
+			q = q.Where("uid = ?", memberUid)
+		} else {
+			// 整个家庭：聚合所有活跃成员的个人数据 + 家庭数据
+			q = q.Where("(scope = ? AND uid IN ?) OR (scope = ? AND family_id = ?)",
+				models.TxScopePersonal, memberIDs, models.TxScopeFamily, m.FamilyID)
+		}
 	}
-	if txType != "" {
-		q = q.Where("type = ?", txType)
-	}
+	// 注意：type 过滤挪到「三联求和」之后——收入/支出/存钱合计必须恒显示全部三项
+	// （不随当前 tab 的 type 变成 0），只有列表和 total 才按 type 过滤。
 	if category != "" && category != "all" {
 		q = q.Where("category = ?", category)
 	}
@@ -319,24 +350,22 @@ func ListTx(c *gin.Context) {
 		q = q.Where("occurred_at < ?", endAt)
 	}
 
-	// 计算无顾虑单笔金额（用于超支判断）
-	worryPerBuy := 0.0
-	if scope == models.TxScopePersonal {
-		worryPerBuy = computeWorryFreePerBuy(scope, uid, nil)
-	} else {
+	// 无顾虑单笔：全项目唯一口径（services.WorryFreePerBuyFor），
+	// 列表的 OverWorry 标记与超支筛选都用它，不再本地重算一遍公式。
+	var worryFamilyID *uint64
+	if scope != models.TxScopePersonal {
 		var m models.FamilyMember
-		if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m).Error; err == nil {
-			worryPerBuy = computeWorryFreePerBuy(scope, uid, &m.FamilyID)
+		if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).
+			First(&m).Error; err == nil {
+			worryFamilyID = &m.FamilyID
 		}
 	}
+	worryPerBuy := services.WorryFreePerBuyFor(database.DB, scope, uid, worryFamilyID)
 	if exceedWorry == "1" {
 		q = q.Where("amount > ?", worryPerBuy)
 	} else if exceedWorry == "0" {
 		q = q.Where("amount <= ?", worryPerBuy)
 	}
-
-	var total int64
-	q.Count(&total)
 
 	// 收入/支出/存钱合计（按当前筛选条件全量聚合；用 Session 复用 q 上的 where 但不复用 limit/order）
 	var sumIncome, sumExpense, sumTransfer float64
@@ -346,6 +375,15 @@ func ListTx(c *gin.Context) {
 	qExpense.Where("type = ?", models.TxTypeExpense).Select("COALESCE(SUM(amount),0)").Scan(&sumExpense)
 	qTransfer := q.Session(&gorm.Session{})
 	qTransfer.Where("type = ?", models.TxTypeTransfer).Select("COALESCE(SUM(amount),0)").Scan(&sumTransfer)
+
+	// 三联求和已用「不含 type 过滤」的 q 算完；下面才按 type 过滤列表与 total。
+	if txType != "" {
+		q = q.Where("type = ?", txType)
+	}
+
+	// total 与 list 都按 type 过滤（三联求和不受影响）
+	var total int64
+	q.Count(&total)
 
 	var list []models.Transaction
 	q.Order("occurred_at DESC").Offset((page - 1) * size).Limit(size).Find(&list)
@@ -377,22 +415,22 @@ func ListTx(c *gin.Context) {
 	}
 
 	utils.OK(c, gin.H{
-		"list":         out,
-		"total":        total,
-		"page":         page,
-		"size":         size,
-		"worryPerBuy":  worryPerBuy,
-		"sumIncome":    sumIncome,
-		"sumExpense":   sumExpense,
-		"sumTransfer":  sumTransfer,
+		"list":        out,
+		"total":       total,
+		"page":        page,
+		"size":        size,
+		"worryPerBuy": worryPerBuy,
+		"sumIncome":   sumIncome,
+		"sumExpense":  sumExpense,
+		"sumTransfer": sumTransfer,
 		"filter": gin.H{
-			"scope":        scope,
-			"type":         txType,
-			"category":     category,
-			"recorder":     recorder,
-			"startAt":      startAt,
-			"endAt":        endAt,
-			"exceedWorry":  exceedWorry,
+			"scope":       scope,
+			"type":        txType,
+			"category":    category,
+			"recorder":    recorder,
+			"startAt":     startAt,
+			"endAt":       endAt,
+			"exceedWorry": exceedWorry,
 		},
 	})
 }
@@ -438,52 +476,55 @@ func txScopeQuery(scope string, uid uint64, familyID *uint64) func(db *gorm.DB) 
 	}
 }
 
-// computeWorryFreePerBuy 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20
-// 文档 §4 公式结果以万元表述，API 与前端统一使用元，故此处不再 ÷10000
-func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 {
-	scopeQ := txScopeQuery(scope, uid, familyID)
-
-	// 储蓄桶余额
-	var savingBalance float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ?", models.TxTypeTransfer, models.TransferToSaving).
-		Where(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&savingBalance)
-
-	var interestSaving float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND target_bucket = ?", models.TxTypeIncome, models.IncomeInvestment, "saving").
-		Where(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&interestSaving)
-	savingBalance += interestSaving
-
-	// 年薪 = 月均工资 × 12，按实际有收入的月数年化（不含公积金）
-	yearAgo := time.Now().AddDate(-1, 0, 0).Unix()
-	var salaryIncome float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
-		Where(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&salaryIncome)
-
-	baseIncome := salaryIncome
-
-	// 计算实际有工资收入的月数（不含公积金）
-	activeMonths := services.CountDistinctMonths(
-		database.DB.Model(&models.Transaction{}).
-			Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
-			Where(scopeQ))
-	if activeMonths < 1 {
-		activeMonths = 1
-	}
-	annualIncome := baseIncome / float64(activeMonths) * 12.0
-
-	return savingBalance + annualIncome*20
-}
-
 func isValidBucket(b string) bool {
 	switch b {
 	case "saving", "investment", "emergency", "pension", "consumption":
 		return true
 	}
 	return false
+}
+
+// notifyFamilyTx 家庭成员记账 → 推送通知给该家庭其他在册成员。
+// 静默失败：通知属于附加能力，不能影响记账主流程。
+func notifyFamilyTx(recorderUID uint64, familyID uint64, tx *models.Transaction) {
+	var members []models.FamilyMember
+	if err := database.DB.Where("family_id = ? AND status = ?", familyID, "active").
+		Find(&members).Error; err != nil {
+		return
+	}
+	if len(members) == 0 {
+		return
+	}
+	// 记录人昵称（缺省用"家庭成员"）
+	var recorder models.User
+	nickname := "家庭成员"
+	if err := database.DB.Select("nickname, username").First(&recorder, recorderUID).Error; err == nil {
+		if recorder.Nickname != "" {
+			nickname = recorder.Nickname
+		} else if recorder.Username != "" {
+			nickname = recorder.Username
+		}
+	}
+	typeLabel := map[string]string{
+		models.TxTypeIncome:   "收入",
+		models.TxTypeExpense:  "支出",
+		models.TxTypeTransfer: "存钱",
+	}[tx.Type]
+	category := models.CategoryLabel[tx.Category]
+	if category == "" {
+		category = tx.Category
+	}
+	ns := services.NewNotifyService(database.DB)
+	for _, m := range members {
+		if m.UserID == recorderUID {
+			continue // 不通知自己
+		}
+		_ = ns.PushTo(m.UserID, models.NotifyTypeFamilyTx, map[string]string{
+			"昵称": nickname,
+			"类型": typeLabel,
+			"分类": category,
+			"金额": fmt.Sprintf("%.2f", tx.Amount),
+			"日期": time.Now().Format("2006-01-02"),
+		}, "")
+	}
 }

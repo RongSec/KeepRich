@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/services"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
 var wsUpgrader = websocket.Upgrader{
@@ -124,4 +126,178 @@ func MarkAllNotificationsRead(c *gin.Context) {
 		return
 	}
 	utils.OK(c, gin.H{"ok": true, "affected": res.RowsAffected})
+}
+
+// ===== 通知设置（类型开关 + 文案模板）=====
+
+// notificationSettingReq 设置项入参（enabled 缺省视为 true）
+type notificationSettingReq struct {
+	Type            string `json:"type"`
+	Enabled         *bool  `json:"enabled"`
+	TitleTemplate   string `json:"titleTemplate"`
+	ContentTemplate string `json:"contentTemplate"`
+}
+
+type updateNotificationSettingsReq struct {
+	Settings []notificationSettingReq `json:"settings"`
+}
+
+// notificationSettingView 设置项出参（附默认模板，前端展示"留空即用默认"）
+type notificationSettingView struct {
+	Type                   string `json:"type"`
+	Enabled                bool   `json:"enabled"`
+	TitleTemplate          string `json:"titleTemplate"`
+	ContentTemplate        string `json:"contentTemplate"`
+	DefaultTitleTemplate   string `json:"defaultTitleTemplate"`
+	DefaultContentTemplate string `json:"defaultContentTemplate"`
+}
+
+// loadSettingViews 读取某用户 5 类设置（无记录=默认开启/空模板），按 NotifyTypes 固定顺序返回
+func loadSettingViews(uid uint64) []notificationSettingView {
+	var rows []models.NotificationSetting
+	database.DB.Where("user_id = ?", uid).Find(&rows)
+	byType := make(map[string]models.NotificationSetting, len(rows))
+	for _, r := range rows {
+		byType[r.Type] = r
+	}
+	out := make([]notificationSettingView, 0, len(models.NotifyTypes))
+	for _, t := range models.NotifyTypes {
+		tpl := models.DefaultNotifyTemplates[t]
+		v := notificationSettingView{
+			Type:                   t,
+			Enabled:                true,
+			DefaultTitleTemplate:   tpl.Title,
+			DefaultContentTemplate: tpl.Content,
+		}
+		if r, ok := byType[t]; ok {
+			v.Enabled = r.Enabled
+			v.TitleTemplate = r.TitleTemplate
+			v.ContentTemplate = r.ContentTemplate
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// saveNotificationSettings 校验并保存（upsert）某用户的设置；成功回显最新设置
+func saveNotificationSettings(c *gin.Context, uid uint64) {
+	var req updateNotificationSettingsReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	if len(req.Settings) == 0 {
+		failBadRequest(c, "请提交通知设置")
+		return
+	}
+	for _, item := range req.Settings {
+		if !models.NotifyValidType(item.Type) {
+			failBadRequest(c, "未知的通知类型")
+			return
+		}
+		if len([]rune(item.TitleTemplate)) > 256 {
+			failBadRequest(c, "标题模板最多 256 字")
+			return
+		}
+		if len([]rune(item.ContentTemplate)) > 512 {
+			failBadRequest(c, "内容模板最多 512 字")
+			return
+		}
+		enabled := true
+		if item.Enabled != nil {
+			enabled = *item.Enabled
+		}
+		var row models.NotificationSetting
+		err := database.DB.Where("user_id = ? AND type = ?", uid, item.Type).First(&row).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			row = models.NotificationSetting{
+				UserID:          uid,
+				Type:            item.Type,
+				Enabled:         enabled,
+				TitleTemplate:   item.TitleTemplate,
+				ContentTemplate: item.ContentTemplate,
+			}
+			if err := database.DB.Create(&row).Error; err != nil {
+				failSave(c)
+				return
+			}
+		case err != nil:
+			failInternal(c)
+			return
+		default:
+			row.Enabled = enabled
+			row.TitleTemplate = item.TitleTemplate
+			row.ContentTemplate = item.ContentTemplate
+			if err := database.DB.Save(&row).Error; err != nil {
+				failSave(c)
+				return
+			}
+		}
+	}
+	utils.OK(c, gin.H{"settings": loadSettingViews(uid)})
+}
+
+// parseTargetUID 解析路径参数 :uid
+func parseTargetUID(c *gin.Context) (uint64, bool) {
+	id, err := strconv.ParseUint(c.Param("uid"), 10, 64)
+	if err != nil || id == 0 {
+		failBadRequest(c, "参数不正确")
+		return 0, false
+	}
+	return id, true
+}
+
+// requireFamilyAdminFor 校验操作者是同家庭管理员、目标是同家庭活跃成员。
+// action 只进错误文案（查看/修改），口径：普通成员只能改自己；
+// 家庭管理员可改家庭内其他成员；跨家庭一律 403 中文。
+func requireFamilyAdminFor(c *gin.Context, uid, target uint64, action string) bool {
+	var m models.FamilyMember
+	if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m).Error; err != nil || !m.IsAdmin {
+		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "仅家庭管理员可"+action+"他人通知设置")
+		return false
+	}
+	var t models.FamilyMember
+	if err := database.DB.Where("user_id = ? AND status = ?", target, models.MemberStatusActive).First(&t).Error; err != nil || t.FamilyID != m.FamilyID {
+		utils.Fail(c, http.StatusForbidden, utils.CodeForbidden, "仅可"+action+"同一家庭成员的通知设置")
+		return false
+	}
+	return true
+}
+
+// GetNotificationSettings 查询当前用户的通知设置
+func GetNotificationSettings(c *gin.Context) {
+	uid := middleware.MustUID(c)
+	utils.OK(c, gin.H{"settings": loadSettingViews(uid)})
+}
+
+// UpdateNotificationSettings 更新当前用户的通知设置
+func UpdateNotificationSettings(c *gin.Context) {
+	uid := middleware.MustUID(c)
+	saveNotificationSettings(c, uid)
+}
+
+// GetMemberNotificationSettings 家庭管理员查看某成员的通知设置（查自己不限权限）
+func GetMemberNotificationSettings(c *gin.Context) {
+	uid := middleware.MustUID(c)
+	target, ok := parseTargetUID(c)
+	if !ok {
+		return
+	}
+	if target != uid && !requireFamilyAdminFor(c, uid, target, "查看") {
+		return
+	}
+	utils.OK(c, gin.H{"settings": loadSettingViews(target), "uid": target})
+}
+
+// UpdateMemberNotificationSettings 家庭管理员修改某成员的通知设置（改自己不限权限）
+func UpdateMemberNotificationSettings(c *gin.Context) {
+	uid := middleware.MustUID(c)
+	target, ok := parseTargetUID(c)
+	if !ok {
+		return
+	}
+	if target != uid && !requireFamilyAdminFor(c, uid, target, "修改") {
+		return
+	}
+	saveNotificationSettings(c, target)
 }

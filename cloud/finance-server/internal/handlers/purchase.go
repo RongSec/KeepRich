@@ -524,10 +524,10 @@ func CheckBigPurchase(c *gin.Context) {
 			var members []models.FamilyMember
 			database.DB.Where("family_id = ? AND status = ?", *familyID, models.MemberStatusActive).Find(&members)
 			for _, mem := range members {
-				_ = ns.PushTo(mem.UserID, models.NotifyTypeBigPurchase, "大件可购买", "已可购买："+plans[i].Name, "")
+				_ = ns.PushTo(mem.UserID, models.NotifyTypeBigPurchase, map[string]string{"名称": plans[i].Name}, "")
 			}
 		} else {
-			_ = ns.PushTo(uid, models.NotifyTypeBigPurchase, "大件可购买", "已可购买："+plans[i].Name, "")
+			_ = ns.PushTo(uid, models.NotifyTypeBigPurchase, map[string]string{"名称": plans[i].Name}, "")
 		}
 		triggered = append(triggered, plans[i].Name)
 	}

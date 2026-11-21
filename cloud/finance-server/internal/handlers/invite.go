@@ -43,7 +43,7 @@ func AdminCreateInviteCodes(c *gin.Context) {
 	if count == 0 {
 		count = 1
 	}
-	if count < 1 || count > 5 {
+	if count < 1 || count > 20 {
 		utils.Fail(c, http.StatusBadRequest, utils.CodeBadRequest, utils.MsgInviteCountRange)
 		return
 	}

@@ -4,9 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:family_finance_app/models.dart';
 import 'package:family_finance_app/pages/notification_settings_page.dart';
 
-/// 通知设置页：5 类开关可切换、文案模板可编辑（测试注入，不走网络）。
+/// 通知设置页：每类通知一个开关、文案模板可编辑（测试注入，不走网络）。
 void main() {
-  testWidgets('通知设置页渲染 5 类开关与模板编辑', (tester) async {
+  testWidgets('通知设置页渲染各类开关与模板编辑', (tester) async {
     // 加高视口：ListView 懒加载，否则屏幕外的卡片不会构建
     tester.view.physicalSize = const Size(1080, 3200);
     tester.view.devicePixelRatio = 1.0;
@@ -27,8 +27,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 5 类各一个开关，标签齐全
-    expect(find.byType(SwitchListTile), findsNWidgets(5));
+    // 每类通知各一个开关，标签齐全
+    expect(find.byType(SwitchListTile), findsNWidgets(NotifyType.all.length));
     for (final label in NotifyType.labels.values) {
       expect(find.text(label), findsWidgets);
     }

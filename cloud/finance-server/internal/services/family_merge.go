@@ -130,7 +130,10 @@ func (s *FamilyMergeService) MergePersonalToFamily(uid uint64, familyID uint64) 
 
 	// 7. 通知用户合并完成
 	ns := NewNotifyService(s.DB)
-	_ = ns.PushTo(uid, models.NotifyTypeSystem, "数据同步完成", "规划/大件/投资/贷款/未来利益已合并到家庭空间（流水按聚合口径自动计入，无需复制）", "")
+	_ = ns.PushTo(uid, models.NotifyTypeSystem, map[string]string{
+		"标题": "数据同步完成",
+		"内容": "规划/大件/投资/贷款/未来利益已合并到家庭空间（流水按聚合口径自动计入，无需复制）",
+	}, "")
 
 	log.Printf("[family_merge] synced uid=%d to family=%d", uid, familyID)
 	return nil

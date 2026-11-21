@@ -14,7 +14,9 @@ type User struct {
 	Username     string `gorm:"size:64;uniqueIndex;not null" json:"username"`
 	PasswordHash string `gorm:"size:255;not null" json:"-"`
 	Nickname     string `gorm:"size:64" json:"nickname"`
-	Avatar       string `gorm:"size:255" json:"avatar"`
+	// 头像存 data URI（base64，相册上传后压缩）：随 users 表进云端快照，换机/重发布不丢。
+	// 用 text 而非 size:255，data URI 远超 255。
+	Avatar       string `gorm:"type:text" json:"avatar"`
 	Email        string `gorm:"size:128;index" json:"email"`
 	Phone        string `gorm:"size:32;index" json:"phone"`
 	Role         string `gorm:"size:16;default:user;index" json:"role"`

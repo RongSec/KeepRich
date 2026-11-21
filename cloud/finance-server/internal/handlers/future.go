@@ -18,6 +18,23 @@ import (
 
 // ====== 通用 scope 解析 ======
 
+// cascadeDeleteLoanCopy 删除个人贷款时级联删除建家庭时自动复制的家庭复件
+// （family_merge 按 uid+name+total 复制）。否则原件删除后复件成为孤儿，
+// 会以幽灵债务出现在家庭口径里（用户反馈：App 贷款页为空但财富为负）。
+func cascadeDeleteLoanCopy(uid uint64, name string, total float64, model any) {
+	_ = database.DB.
+		Where("scope = ? AND uid = ? AND name = ? AND total = ? AND deleted_at IS NULL",
+			models.TxScopeFamily, uid, name, total).
+		Delete(model)
+}
+
+// myScopeQuery：贷款/保险等元数据按 scope 过滤——建家庭时个人数据被复制成家庭记录
+// （family_merge），个人若含家庭 scope 会把原件+复件都列出来（重复）。
+// 交易流水的「个人含家庭记账」口径见 ListTx，不适用于此类元数据。
+func myScopeQuery(db *gorm.DB, scope string, uid uint64) *gorm.DB {
+	return db.Where("scope = ? AND uid = ?", scope, uid)
+}
+
 func resolveTarget(c *gin.Context, scope string) (targetID uint64, familyID *uint64, ok bool) {
 	uid := middleware.MustUID(c)
 	if scope == models.TxScopePersonal {
@@ -55,7 +72,7 @@ func ListHousingFundLoans(c *gin.Context) {
 		return
 	}
 	var list []models.HousingFundLoan
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	_ = targetID
 	utils.OK(c, list)
 }
@@ -149,6 +166,7 @@ func DeleteHousingFundLoan(c *gin.Context) {
 		failSave(c)
 		return
 	}
+	cascadeDeleteLoanCopy(rec.UID, rec.Name, rec.Total, &models.HousingFundLoan{})
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -172,7 +190,7 @@ func ListCommercialLoans(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
 	var list []models.CommercialLoan
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	utils.OK(c, list)
 }
 
@@ -265,6 +283,7 @@ func DeleteCommercialLoan(c *gin.Context) {
 		failSave(c)
 		return
 	}
+	cascadeDeleteLoanCopy(rec.UID, rec.Name, rec.Total, &models.CommercialLoan{})
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -288,7 +307,7 @@ func ListBorrowedMoney(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
 	var list []models.BorrowedMoney
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	utils.OK(c, list)
 }
 
@@ -381,6 +400,7 @@ func DeleteBorrowedMoney(c *gin.Context) {
 		failSave(c)
 		return
 	}
+	cascadeDeleteLoanCopy(rec.UID, rec.Name, rec.Total, &models.BorrowedMoney{})
 	utils.OK(c, gin.H{"ok": true})
 }
 
@@ -429,7 +449,7 @@ func ListFutureBenefits(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
 	var list []models.FutureBenefit
-	database.DB.Where("scope = ? AND uid = ?", scope, uid).Order("id DESC").Find(&list)
+	myScopeQuery(database.DB, scope, uid).Order("id DESC").Find(&list)
 	utils.OK(c, list)
 }
 
@@ -956,7 +976,10 @@ func MonthlyInvestmentCheck(c *gin.Context) {
 	if len(pending) > 0 {
 		ns := services.NewNotifyService(database.DB)
 		monthStr := fmt.Sprintf("%d年%d月", prevYear, prevMonth)
-		_ = ns.PushTo(uid, "system", "投资收益待记录", monthStr+"的投资收益尚未录入，请前往「未来财务」页面记录", "")
+		_ = ns.PushTo(uid, models.NotifyTypeSystem, map[string]string{
+			"标题": "投资收益待记录",
+			"内容": monthStr + "的投资收益尚未录入，请前往「未来财务」页面记录",
+		}, "")
 	}
 
 	utils.OK(c, gin.H{
