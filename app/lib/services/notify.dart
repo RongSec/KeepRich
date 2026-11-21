@@ -47,6 +47,7 @@ class NotifyService extends ChangeNotifier {
       macOS: darwinSettings,
     );
     await _localNotifications.initialize(initSettings);
+    await _createChannel();
     // 权限弹窗必须等首帧之后：initState 阶段 Activity 还没准备好，
     // requestNotificationsPermission() 会静默失败，导致系统通知一直处于关闭状态
     // （用户反馈「App 内有通知、手机通知栏没有」的根因）。
@@ -60,6 +61,32 @@ class NotifyService extends ChangeNotifier {
     await _requestSystemNotificationPermission();
     await Future<void>.delayed(const Duration(milliseconds: 300));
     return await systemNotificationsEnabled() ?? false;
+  }
+
+  /// 显式创建通知渠道。
+  ///
+  /// Android 8.0+ 通知必须归属一个 channel，没有渠道时通知会被系统**直接丢弃**
+  /// （用户看到的「该应用未发布任何通知」就是这个状态）。这里在启动时就把渠道建好，
+  /// importance 用 max 保证有声音 + 悬浮横幅；渠道一旦创建，importance 不可再改，
+  /// 所以调整通知等级需要换新的 channelId。
+  Future<void> _createChannel() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final android = _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(const AndroidNotificationChannel(
+        'family_finance_v2',
+        '家庭财务',
+        description: '记账、超支提醒、家庭成员记账等通知',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
+      ));
+    } catch (e) {
+      debugPrint('[notify] 创建通知渠道失败: $e');
+    }
   }
 
   /// 申请手机系统通知权限：

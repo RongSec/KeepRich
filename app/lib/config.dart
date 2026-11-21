@@ -27,7 +27,7 @@ class AppConfig {
 
   /// 应用版本号（与 pubspec.yaml 保持一致；构建脚本会用 --dart-define 覆盖）
   static const String appVersion =
-      String.fromEnvironment('APP_VERSION', defaultValue: '0.8.7');
+      String.fromEnvironment('APP_VERSION', defaultValue: '0.8.8');
 
   /// Android 模拟器映射到宿主机
   static const String androidEmulatorHost = 'http://10.0.2.2:28080';
@@ -218,6 +218,11 @@ class AppConfig {
     }
     final wsScheme = serverHost.startsWith('https') ? 'wss' : 'ws';
     final host = serverHost.replaceFirst(RegExp(r'https?://'), '');
-    return '$wsScheme://$host/api/ws';
+    // 必须带 sharecode：平台网关对除 /healthz 外的请求一律校验分享码，
+    // 缺了直接 403 —— WebSocket 连不上就收不到任何推送通知
+    // （用户反馈「App 内有通知、手机通知栏没有」的真正根因）。
+    final code = _shareCode;
+    final q = (code != null && code.isNotEmpty) ? '?sharecode=$code' : '';
+    return '$wsScheme://$host/api/ws$q';
   }
 }
