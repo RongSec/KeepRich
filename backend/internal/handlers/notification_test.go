@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yourname/family-finance/backend/internal/models"
+	"github.com/yourname/family-finance/backend/internal/services"
 	"gorm.io/gorm"
 )
 
@@ -247,8 +249,16 @@ func TestOverspendNotificationRespectsSettings(t *testing.T) {
 	if noti.Title != "超支啦" {
 		t.Fatalf("标题 = %q，期望 %q", noti.Title, "超支啦")
 	}
-	if !strings.Contains(noti.Content, "1000") || !strings.Contains(noti.Content, "240") {
-		t.Fatalf("内容未按模板渲染: %q", noti.Content)
+	// 断言「通知里的限额」与「总览口径」完全一致——这正是历史上分叉过的地方：
+	// 通知曾漏了 /10000，阈值放大一万倍导致永不触发。用服务口径取值比对，
+	// 将来口径调整只需改 services.WorryFreePerBuy 一处。
+	limit := services.WorryFreePerBuyFor(db, "personal", uid, nil)
+	if limit <= 0 {
+		t.Fatalf("无顾虑单笔应为正数，实际 %v", limit)
+	}
+	if !strings.Contains(noti.Content, "1000") ||
+		!strings.Contains(noti.Content, fmt.Sprintf("%.0f", limit)) {
+		t.Fatalf("内容未按模板渲染: %q（期望限额 %.0f）", noti.Content, limit)
 	}
 	if !strings.Contains(noti.Content, "花了") {
 		t.Fatalf("内容应为模板渲染文案: %q", noti.Content)

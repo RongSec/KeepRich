@@ -41,19 +41,19 @@ func (s *FinanceService) applyScopeQuery(q *gorm.DB, scope string, uid uint64, f
 // OverviewData 总览数据
 type OverviewData struct {
 	// 三大资产池
-	TotalCash         float64 `json:"totalCash"`         // 现金 = 累计收入 - 累计日常消费
-	TotalHousingFund  float64 `json:"totalHousingFund"`  // 公积金（单独展示）
+	TotalCash          float64 `json:"totalCash"`          // 现金 = 累计收入 - 累计日常消费
+	TotalHousingFund   float64 `json:"totalHousingFund"`   // 公积金（单独展示）
 	TotalWealthProduct float64 `json:"totalWealthProduct"` // 未来利益（折现到当下）
 
 	// 6 大分配桶的当前余额（来自记账聚合）
-	SavingBalance    float64 `json:"savingBalance"`    // 储蓄
+	SavingBalance     float64 `json:"savingBalance"`     // 储蓄
 	InvestmentBalance float64 `json:"investmentBalance"` // 长远投资（含收益复利）
 	EmergencyBalance  float64 `json:"emergencyBalance"`  // 应急备用金
 	PensionBalance    float64 `json:"pensionBalance"`    // 养老金
 	DailySpent        float64 `json:"dailySpent"`        // 本月日常消费
 	// 全量累计（用于家庭总财富）
-	CumulativeIncome   float64 `json:"cumulativeIncome"`   // 累计收入
-	CumulativeDaily    float64 `json:"cumulativeDaily"`    // 累计日常消费
+	CumulativeIncome float64 `json:"cumulativeIncome"` // 累计收入
+	CumulativeDaily  float64 `json:"cumulativeDaily"`  // 累计日常消费
 
 	// 目标
 	EmergencyTarget float64 `json:"emergencyTarget"`
@@ -66,14 +66,14 @@ type OverviewData struct {
 	PensionMonthsLeft   int     `json:"pensionMonthsLeft"`
 
 	// 关键指标
-	WorryFreePerBuy    float64 `json:"worryFreePerBuy"`    // 最大单笔消费 = (总财富+年薪×20)/10000，单位：元
-	AnnualIncome       float64 `json:"annualIncome"`       // 年薪（工资+公积金年化）
-	MonthlyConsumable  float64 `json:"monthlyConsumable"`  // 本月可消费配额（= 本月工资 × 消费比例，不含结转入）
+	WorryFreePerBuy     float64 `json:"worryFreePerBuy"`     // 最大单笔消费 = (总财富+年薪×20)/10000，单位：元
+	AnnualIncome        float64 `json:"annualIncome"`        // 年薪（工资+公积金年化）
+	MonthlyConsumable   float64 `json:"monthlyConsumable"`   // 本月可消费配额（= 本月工资 × 消费比例，不含结转入）
 	MonthConsumableLeft float64 `json:"monthConsumableLeft"` // 本月剩余可消费
 	//   v0.5.1 口径变更：= ConsumptionBalance（消费额度桶当前余额，含结转入/月末结转机制），
 	//   不再用「配额 − 本月日常消费 − 上月投资缺口」的旧口径。
-	SavingCarryOver    float64 `json:"savingCarryOver"`    // 上月剩余沉淀到储蓄的金额
-	RemainingBudget    float64 `json:"remainingBudget"`    // 剩余待支配（= 待支配可用来存钱的余额）
+	SavingCarryOver float64 `json:"savingCarryOver"` // 上月剩余沉淀到储蓄的金额
+	RemainingBudget float64 `json:"remainingBudget"` // 剩余待支配（= 待支配可用来存钱的余额）
 
 	// 消费额度桶（consumption）——按月推演派生，不落库。
 	// 余额口径：bal(M) = autoIn(M) + carryIn(M) − spend(M)；
@@ -87,9 +87,9 @@ type OverviewData struct {
 
 	// 现金池（待支配）构成明细，供"剩余待支配"弹窗展示
 	// 校验口径自洽：CashPoolIncome − CashPoolTransfer − CashPoolExpense ≡ RemainingBudget
-	CashPoolIncome  float64 `json:"cashPoolIncome"`  // 累计进入待支配的收入（工资+意外+投资收益+过往存款）
+	CashPoolIncome   float64 `json:"cashPoolIncome"`   // 累计进入待支配的收入（工资+意外+投资收益+过往存款）
 	CashPoolTransfer float64 `json:"cashPoolTransfer"` // 累计分配进桶净额（存钱转账 + 消费额度自动入账 − 月末结转回流）
-	CashPoolExpense float64 `json:"cashPoolExpense"`  // 累计现金来源支出（不含任何桶来源支出）
+	CashPoolExpense  float64 `json:"cashPoolExpense"`  // 累计现金来源支出（不含任何桶来源支出）
 
 	// 未来财富（不含债务，仅未来利益折现）— 用于 2x2 卡片阵列
 	FutureWealth float64 `json:"futureWealth"`
@@ -111,15 +111,15 @@ type OverviewData struct {
 }
 
 type Allocation struct {
-	MonthlyIncome   float64 `json:"monthlyIncome"`
-	Loan            float64 `json:"loan"`
-	Saving          float64 `json:"saving"`
-	Investment      float64 `json:"investment"`
-	Emergency       float64 `json:"emergency"`
-	Pension         float64 `json:"pension"`
-	Consumption     float64 `json:"consumption"`
-	Overspend       float64 `json:"overspend"`
-	InvestmentGap   float64 `json:"investmentGap"`
+	MonthlyIncome    float64 `json:"monthlyIncome"`
+	Loan             float64 `json:"loan"`
+	Saving           float64 `json:"saving"`
+	Investment       float64 `json:"investment"`
+	Emergency        float64 `json:"emergency"`
+	Pension          float64 `json:"pension"`
+	Consumption      float64 `json:"consumption"`
+	Overspend        float64 `json:"overspend"`
+	InvestmentGap    float64 `json:"investmentGap"`
 	InvestmentExcess float64 `json:"investmentExcess"`
 
 	// 本月已入桶金额（按 category 累计）
@@ -137,12 +137,12 @@ type Allocation struct {
 }
 
 type PurchaseProjection struct {
-	ID                uint64  `json:"id"`
-	Name              string  `json:"name"`
-	Price             float64 `json:"price"`
-	Priority          int     `json:"priority"`
-	EstimatedMonths   int     `json:"estimatedMonths"` // 0 表示已达成
-	Achievable        bool    `json:"achievable"`
+	ID              uint64  `json:"id"`
+	Name            string  `json:"name"`
+	Price           float64 `json:"price"`
+	Priority        int     `json:"priority"`
+	EstimatedMonths int     `json:"estimatedMonths"` // 0 表示已达成
+	Achievable      bool    `json:"achievable"`
 }
 
 // GetOverview scope=personal 时传 uid；scope=family 时传 familyID
@@ -264,18 +264,18 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeExpense, "", monthStart, &monthExpense)
 
 	alloc := Allocation{
-		MonthlyIncome:        monthlyIncome,
-		Loan:                 monthlyIncome * plan.LoanRatio,
-		Saving:               monthlyIncome * plan.SavingRatio,
-		Investment:           monthlyIncome * plan.InvestmentRatio,
-		Emergency:            monthlyIncome * plan.EmergencyRatio,
-		Pension:              monthlyIncome * plan.PensionRatio,
-		Consumption:          monthlyIncome * plan.ConsumptionRatio,
-		SavingTarget:         monthlyIncome * plan.SavingRatio,
-		InvestmentTarget:     monthlyIncome * plan.InvestmentRatio,
-		EmergencyTarget:      monthlyIncome * plan.EmergencyRatio,
-		PensionTarget:        monthlyIncome * plan.PensionRatio,
-		ConsumptionTarget:    monthlyIncome * plan.ConsumptionRatio,
+		MonthlyIncome:     monthlyIncome,
+		Loan:              monthlyIncome * plan.LoanRatio,
+		Saving:            monthlyIncome * plan.SavingRatio,
+		Investment:        monthlyIncome * plan.InvestmentRatio,
+		Emergency:         monthlyIncome * plan.EmergencyRatio,
+		Pension:           monthlyIncome * plan.PensionRatio,
+		Consumption:       monthlyIncome * plan.ConsumptionRatio,
+		SavingTarget:      monthlyIncome * plan.SavingRatio,
+		InvestmentTarget:  monthlyIncome * plan.InvestmentRatio,
+		EmergencyTarget:   monthlyIncome * plan.EmergencyRatio,
+		PensionTarget:     monthlyIncome * plan.PensionRatio,
+		ConsumptionTarget: monthlyIncome * plan.ConsumptionRatio,
 	}
 	// 本月已入桶金额（按 transfer 分类）
 	nowEnd := now.Unix()
@@ -392,7 +392,7 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	// 最大单笔消费（元）= (总财富 + 年收入 × 20) / 10000
 	// 例：年收入 12 万、总财富 20 万 → (200000 + 2400000)/10000 = 260 元
 	// 随总财富变化而变化
-	worryFree := utils.Round2((totalWealth + annualIncome*20) / 10000.0)
+	worryFree := WorryFreePerBuy(totalWealth, annualIncome)
 
 	// 本月剩余可消费 = 消费额度桶当前余额（v0.5.1 口径变更）。
 	// 旧口径「配额 − 本月日常消费 − 上月投资缺口」废弃：月末结转/超支结转
@@ -429,16 +429,16 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 		RemainingBudget:     remaining,
 		CashPoolIncome:      utils.Round2(incomeSum - nonSalaryIncome),
 		// 累计分配进桶净额 = 存钱转账 + 消费额度自动入账 − 月末结转回流
-		CashPoolTransfer:    utils.Round2(totalTransfer + ledger.AutoInSum - ledger.RefundSum),
-		CashPoolExpense:     utils.Round2(cumulativeExpense),
-		FutureWealth:        wealthProduct, // 未来财富（仅未来利益折现，不含债务）
-		Allocation:          alloc,
-		TopPurchases:        top,
-		TotalWealth:         totalWealth,
-		TotalPending:        totalPending,
-		TotalProgressPct:    totalProgressPct,
+		CashPoolTransfer:     utils.Round2(totalTransfer + ledger.AutoInSum - ledger.RefundSum),
+		CashPoolExpense:      utils.Round2(cumulativeExpense),
+		FutureWealth:         wealthProduct, // 未来财富（仅未来利益折现，不含债务）
+		Allocation:           alloc,
+		TopPurchases:         top,
+		TotalWealth:          totalWealth,
+		TotalPending:         totalPending,
+		TotalProgressPct:     totalProgressPct,
 		TotalRemainingMonths: maxRemain,
-		EstimatedPayoffAt:   estimatedPayoffAt,
+		EstimatedPayoffAt:    estimatedPayoffAt,
 	}, nil
 }
 
@@ -500,14 +500,14 @@ type ChartData struct {
 }
 
 type WealthPoint struct {
-	Month      string  `json:"month"` // YYYY-MM
-	TotalWealth float64 `json:"totalWealth"` // 累计净财富
-	Saving      float64 `json:"saving"`
-	Investment  float64 `json:"investment"`
-	Emergency   float64 `json:"emergency"`
-	Pension     float64 `json:"pension"`
+	Month         string  `json:"month"`       // YYYY-MM
+	TotalWealth   float64 `json:"totalWealth"` // 累计净财富
+	Saving        float64 `json:"saving"`
+	Investment    float64 `json:"investment"`
+	Emergency     float64 `json:"emergency"`
+	Pension       float64 `json:"pension"`
 	WealthProduct float64 `json:"wealthProduct"` // 未来利益折现
-	Pending     float64 `json:"pending"`         // 待还款
+	Pending       float64 `json:"pending"`       // 待还款
 }
 
 type CategorySlice struct {
@@ -613,6 +613,25 @@ func (s *FinanceService) GetChartData(scope string, uid uint64, familyID *uint64
 }
 
 // 工具
+// WorryFreePerBuy 无顾虑单笔（元）= (总财富 + 年收入×20) / 10000。
+//
+// 全项目**唯一**口径实现：总览展示、超支提醒、超支筛选都必须调用这里，
+// 不允许任何地方再手写一遍公式——历史上通知里漏了 /10000，阈值放大一万倍，
+// 导致超支提醒永不触发。
+func WorryFreePerBuy(totalWealth, annualIncome float64) float64 {
+	return utils.Round2((totalWealth + annualIncome*20) / 10000.0)
+}
+
+// WorryFreePerBuyFor 按口径直接取「无顾虑单笔」（内部走总览，保证与其他地方一致）。
+// 查询失败返回 0（调用方按「不提醒/不过滤」处理）。
+func WorryFreePerBuyFor(db *gorm.DB, scope string, uid uint64, familyID *uint64) float64 {
+	ov, err := NewFinanceService(db).GetOverview(scope, uid, familyID)
+	if err != nil || ov == nil {
+		return 0
+	}
+	return ov.WorryFreePerBuy
+}
+
 func clamp01(v float64) float64 {
 	if v < 0 {
 		return 0
@@ -930,7 +949,7 @@ func (s *FinanceService) consumptionLedger(scope string, uid uint64, familyID *u
 		spendByMonth[monthKey(r.OccurredAt)] += r.Amount
 	}
 	var multiRows []struct {
-		OccurredAt   int64  `gorm:"column:occurred_at"`
+		OccurredAt    int64  `gorm:"column:occurred_at"`
 		SourceDetails string `gorm:"column:source_details"`
 	}
 	q2 := s.DB.Model(&models.Transaction{}).

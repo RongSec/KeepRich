@@ -253,7 +253,7 @@ func CreateTx(c *gin.Context) {
 
 	// 超支提醒：仅当支出超过无顾虑单笔时触发
 	if req.Type == models.TxTypeExpense {
-		worryPerBuy := computeWorryFreePerBuy(req.Scope, uid, tx.FamilyID)
+		worryPerBuy := services.WorryFreePerBuyFor(database.DB, req.Scope, uid, tx.FamilyID)
 		if worryPerBuy > 0 && req.Amount > worryPerBuy {
 			ns := services.NewNotifyService(database.DB)
 			f := "%.0f"
@@ -350,16 +350,17 @@ func ListTx(c *gin.Context) {
 		q = q.Where("occurred_at < ?", endAt)
 	}
 
-	// 计算无顾虑单笔金额（用于超支判断）
-	worryPerBuy := 0.0
-	if scope == models.TxScopePersonal {
-		worryPerBuy = computeWorryFreePerBuy(scope, uid, nil)
-	} else {
+	// 无顾虑单笔：全项目唯一口径（services.WorryFreePerBuyFor），
+	// 列表的 OverWorry 标记与超支筛选都用它，不再本地重算一遍公式。
+	var worryFamilyID *uint64
+	if scope != models.TxScopePersonal {
 		var m models.FamilyMember
-		if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).First(&m).Error; err == nil {
-			worryPerBuy = computeWorryFreePerBuy(scope, uid, &m.FamilyID)
+		if err := database.DB.Where("user_id = ? AND status = ?", uid, models.MemberStatusActive).
+			First(&m).Error; err == nil {
+			worryFamilyID = &m.FamilyID
 		}
 	}
+	worryPerBuy := services.WorryFreePerBuyFor(database.DB, scope, uid, worryFamilyID)
 	if exceedWorry == "1" {
 		q = q.Where("amount > ?", worryPerBuy)
 	} else if exceedWorry == "0" {
@@ -473,61 +474,6 @@ func txScopeQuery(scope string, uid uint64, familyID *uint64) func(db *gorm.DB) 
 		return db.Where("(scope = 'personal' AND uid IN ?) OR (scope = 'family' AND family_id = ?)",
 			memberIDs, *familyID)
 	}
-}
-
-// computeWorryFreePerBuy 无顾虑单笔（元）= 储蓄桶余额 + 年薪×20
-// 文档 §4 公式结果以万元表述，API 与前端统一使用元，故此处不再 ÷10000
-func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 {
-	// scopeQ 是 scope 条件函数：必须用 Scopes 应用。
-	// 历史 bug：曾写成 Where(scopeQ)——函数被当 SQL 绑定参数报错，
-	// 查询静默失败，无顾虑单笔恒为 0，超支提醒从不触发。
-	scopeQ := txScopeQuery(scope, uid, familyID)
-
-	// 储蓄桶余额
-	var savingBalance float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ?", models.TxTypeTransfer, models.TransferToSaving).
-		Scopes(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&savingBalance)
-
-	var interestSaving float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND target_bucket = ?", models.TxTypeIncome, models.IncomeInvestment, "saving").
-		Scopes(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&interestSaving)
-	savingBalance += interestSaving
-
-	// 年薪 = 月均（工资 + 当月公积金）× 12，按实际有收入的月数年化
-	// （过往公积金/过往存款/意外收入仍不计入）
-	yearAgo := time.Now().AddDate(-1, 0, 0).Unix()
-	var salaryIncome float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeSalary, yearAgo).
-		Scopes(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&salaryIncome)
-	var housingIncome float64
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND category = ? AND occurred_at >= ?", models.TxTypeIncome, models.IncomeHousingFund, yearAgo).
-		Scopes(scopeQ).
-		Select("COALESCE(SUM(amount),0)").Scan(&housingIncome)
-
-	baseIncome := salaryIncome + housingIncome
-
-	// 计算实际有收入的月数（工资或当月公积金）
-	activeMonths := services.CountDistinctMonths(
-		database.DB.Model(&models.Transaction{}).
-			Where("type = ? AND category IN ? AND occurred_at >= ?",
-				models.TxTypeIncome,
-				[]string{models.IncomeSalary, models.IncomeHousingFund}, yearAgo).
-			Scopes(scopeQ))
-	if activeMonths < 1 {
-		activeMonths = 1
-	}
-	annualIncome := baseIncome / float64(activeMonths) * 12.0
-
-	// 与总览 WorryFreePerBuy 同口径：/10000（历史 bug：这里漏了除，
-	// 阈值被放大一万倍，导致超支提醒永不触发）
-	return (savingBalance + annualIncome*20) / 10000.0
 }
 
 func isValidBucket(b string) bool {
