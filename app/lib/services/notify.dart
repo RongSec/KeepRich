@@ -32,8 +32,8 @@ class NotifyService extends ChangeNotifier {
   ///
   /// 系统通知是"锦上添花"：拿不到权限就只保留 App 内通知，不崩不挡启动。
   Future<void> initLocalNotifications() async {
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    // 必须用单色剪影图标：彩色 launcher 图在部分机型上会让通知显示空白/不弹
+    const androidSettings = AndroidInitializationSettings('ic_stat_notify');
     // iOS/macOS：初始化即请求 UNUserNotificationCenter 授权（弹系统通知栏）
     const darwinSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -76,11 +76,16 @@ class NotifyService extends ChangeNotifier {
   /// 显示本地通知（系统通知栏）；无权限/平台不支持时静默降级
   Future<void> _showLocalNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
-      'family_finance',
+      'family_finance_v2', // 新通道 id：旧通道一旦创建，importance 不可改，换 id 才能生效
       '家庭财务',
       channelDescription: '家庭财务管理系统通知',
-      importance: Importance.high,
+      importance: Importance.max,
       priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      icon: 'ic_stat_notify',
+      category: AndroidNotificationCategory.message,
+      visibility: NotificationVisibility.public,
       showWhen: true,
     );
     const details = NotificationDetails(android: androidDetails);
@@ -94,6 +99,38 @@ class NotifyService extends ChangeNotifier {
     } catch (e) {
       // 权限被拒/系统限制：不弹系统通知即可，App 内通知列表仍可用
       debugPrint('[notify] 系统通知展示失败: $e');
+    }
+  }
+
+  /// 系统通知权限当前是否允许（Android 13+ / iOS）。拿不到状态时返回 null。
+  Future<bool?> systemNotificationsEnabled() async {
+    if (kIsWeb) return null;
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final android = _localNotifications
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        return await android?.areNotificationsEnabled();
+      }
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final ios = _localNotifications
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>();
+        final opts = await ios?.checkPermissions();
+        return opts?.isEnabled;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 发一条测试通知（设置页「测试系统通知」按钮用），返回是否成功提交
+  Future<bool> showTestNotification() async {
+    if (kIsWeb) return false;
+    try {
+      await _showLocalNotification('永远富裕 · 测试通知', '如果你在通知栏看到这条，说明系统通知正常。');
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

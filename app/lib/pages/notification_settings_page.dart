@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
+import '../services/notify.dart';
 import '../utils/display_name.dart';
 
 /// 通知设置页：5 类通知各一个开关，可展开编辑标题/内容文案模板（支持 {占位符}）。
@@ -35,6 +36,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  bool? _sysNotify; // 系统通知是否允许（null=未知/平台不支持）
 
   bool get _isForMember => widget.member != null;
 
@@ -42,6 +44,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   void initState() {
     super.initState();
     _load();
+    _checkSysNotification();
   }
 
   @override
@@ -154,6 +157,25 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (mounted) setState(() => _saving = false);
   }
 
+  Future<void> _checkSysNotification() async {
+    try {
+      final ok = await context.read<NotifyService>().systemNotificationsEnabled();
+      if (mounted) setState(() => _sysNotify = ok);
+    } catch (_) {}
+  }
+
+  Future<void> _sendTestNotification() async {
+    bool ok = false;
+    try {
+      ok = await context.read<NotifyService>().showTestNotification();
+    } catch (_) {}
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? '已发送，请下拉通知栏查看' : '发送失败，请检查系统通知权限'),
+    ));
+    await _checkSysNotification();
+  }
+
   String _memberLabel() {
     final m = widget.member!;
     final me = context.read<AuthState>().user;
@@ -201,6 +223,48 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               : ListView(
                   padding: const EdgeInsets.only(bottom: 24),
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Icon(
+                                  _sysNotify == false
+                                      ? Icons.notifications_off_outlined
+                                      : Icons.notifications_active_outlined,
+                                  size: 20,
+                                  color: _sysNotify == false
+                                      ? Colors.orange
+                                      : const Color(0xFF2E7D32),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _sysNotify == false
+                                        ? '系统通知已被关闭，手机通知栏不会提醒（仅 App 内可见）'
+                                        : '系统通知已开启，新通知会推到手机通知栏',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                              ]),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: OutlinedButton.icon(
+                                  onPressed: _sendTestNotification,
+                                  icon: const Icon(Icons.send_outlined, size: 16),
+                                  label: const Text('发一条测试通知'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                     if (_isForMember)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
