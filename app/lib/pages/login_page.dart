@@ -103,6 +103,16 @@ class _LoginPageState extends State<LoginPage>
       _ready = true;
     });
     if (reason != null) auth.clearSessionReason();
+    // 15 分钟内已验证过 → 直接静默登录，不再弹指纹/面容（用户拍板）
+    if (!kIsWeb && _graceCheckEnabled) {
+      final acc = accounts.defaultAccount;
+      if (acc != null && deviceAuth.canUse) {
+        final within = await deviceAuth.withinGrace(const Duration(minutes: 15));
+        if (within && mounted) {
+          _startBiometric(skipUnlock: true);
+        }
+      }
+    }
   }
 
   bool _canUseBiometric() {
@@ -185,7 +195,10 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
-  Future<void> _startBiometric() async {
+  /// 是否需要做 15 分钟宽限检查（退出登录后为 false，必须重新验证）
+  bool _graceCheckEnabled = true;
+
+  Future<void> _startBiometric({bool skipUnlock = false}) async {
     final account = context.read<AccountsRepo>().defaultAccount;
     if (account == null) return;
     final deviceAuth = context.read<DeviceAuthService>();
@@ -197,7 +210,8 @@ class _LoginPageState extends State<LoginPage>
       // 指纹验证即重新登录：清掉上一轮的「登录已失效」提示，避免成功后仍看着像 token 过期
       _notice = null;
     });
-    final result = await deviceAuth.unlock();
+    // skipUnlock：宽限期内直接复用上次验证结果，不弹系统弹窗
+    final result = skipUnlock ? UnlockResult.success : await deviceAuth.unlock();
     if (!mounted) return;
     switch (result) {
       case UnlockResult.canceled:
@@ -456,11 +470,17 @@ class _LoginPageState extends State<LoginPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.fingerprint, size: 44, color: AppTheme.gold),
+          Icon(
+            context.read<DeviceAuthService>().hasFace
+                ? Icons.face_retouching_natural
+                : Icons.fingerprint,
+            size: 44,
+            color: AppTheme.gold,
+          ),
           SizedBox(height: 12),
           CircularProgressIndicator(),
           SizedBox(height: 12),
-          Text('正在验证指纹或面容',
+          Text('正在验证${context.read<DeviceAuthService>().biometricLabel}',
               style: TextStyle(fontSize: 13, color: AppTheme.textDim)),
         ],
       ),

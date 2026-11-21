@@ -58,14 +58,14 @@ func TestNotificationSettingsCRUD(t *testing.T) {
 	db, uid := txTestDB(t)
 	_ = db
 
-	// 默认：5 类全开、模板为空（空=用默认模板）
+	// 默认：6 类全开、模板为空（空=用默认模板）
 	w := callJSON(t, uid, "GET", "", GetNotificationSettings, nil)
 	if w.Code != 200 {
 		t.Fatalf("查询设置失败: %d %s", w.Code, w.Body.String())
 	}
 	list := settingsOf(t, decodeResp(t, w))
-	if len(list) != 5 {
-		t.Fatalf("设置项 = %d，期望 5", len(list))
+	if len(list) != len(models.NotifyTypes) {
+		t.Fatalf("设置项 = %d，期望 %d", len(list), len(models.NotifyTypes))
 	}
 	for i, typ := range models.NotifyTypes {
 		if list[i]["type"] != typ {
@@ -216,11 +216,11 @@ func TestMemberNotificationSettingsPermission(t *testing.T) {
 func TestOverspendNotificationRespectsSettings(t *testing.T) {
 	db, uid := txTestDB(t)
 	seedSalary(t, uid)
-	// 无顾虑单笔 = 年薪 120000×20 = 240 万；消费桶允许透支，250 万支出触发超支提醒
+	// 无顾虑单笔 = (年薪 120000×20)/10000 = 240 元；消费桶允许透支，1000 元支出触发超支提醒
 	seedNotifySetting(t, db, uid, models.NotifyTypeOverSpend, false, "", "")
 
 	w := callJSON(t, uid, "POST",
-		`{"scope":"personal","type":"expense","category":"daily","amount":2500000,"sourceBucket":"consumption"}`,
+		`{"scope":"personal","type":"expense","category":"daily","amount":1000,"sourceBucket":"consumption"}`,
 		CreateTx, nil)
 	if w.Code != 200 {
 		t.Fatalf("记账失败: %d %s", w.Code, w.Body.String())
@@ -234,7 +234,7 @@ func TestOverspendNotificationRespectsSettings(t *testing.T) {
 	// 开启 + 自定义模板
 	seedNotifySetting(t, db, uid, models.NotifyTypeOverSpend, true, "超支啦", "{分类} 花了 {金额} 元（限 {限额}）")
 	w2 := callJSON(t, uid, "POST",
-		`{"scope":"personal","type":"expense","category":"daily","amount":2500000,"sourceBucket":"consumption"}`,
+		`{"scope":"personal","type":"expense","category":"daily","amount":1000,"sourceBucket":"consumption"}`,
 		CreateTx, nil)
 	if w2.Code != 200 {
 		t.Fatalf("记账失败: %d %s", w2.Code, w2.Body.String())
@@ -247,7 +247,7 @@ func TestOverspendNotificationRespectsSettings(t *testing.T) {
 	if noti.Title != "超支啦" {
 		t.Fatalf("标题 = %q，期望 %q", noti.Title, "超支啦")
 	}
-	if !strings.Contains(noti.Content, "2500000") || !strings.Contains(noti.Content, "2400000") {
+	if !strings.Contains(noti.Content, "1000") || !strings.Contains(noti.Content, "240") {
 		t.Fatalf("内容未按模板渲染: %q", noti.Content)
 	}
 	if !strings.Contains(noti.Content, "花了") {

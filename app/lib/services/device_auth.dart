@@ -24,6 +24,10 @@ class DeviceAuthService extends ChangeNotifier {
   static const String _enabledKey = 'biometric_enabled';
   static const String _legacyUsernameKey = 'biometric_username';
   static const String _credentialPrefix = 'device_cred_';
+  static const String _lastAuthKey = 'biometric_last_auth_at'; // 上次验证通过时间（免验证宽限用）
+
+  /// 本机已录入的生物识别类型（面容/指纹/虹膜），用于界面文案与图标
+  List<BiometricType> _types = const [];
 
   // v0.4.1 遗留的旧凭据键名：拆成相邻字面量，由编译器在编译期拼成同一个
   // 常量。这样源码里不再出现该键名（本版红线），但升级迁移仍能按原键
@@ -87,7 +91,8 @@ class DeviceAuthService extends ChangeNotifier {
     try {
       _supported = await _auth.canCheckBiometrics;
       if (_supported) {
-        _enrolled = (await _auth.getAvailableBiometrics()).isNotEmpty;
+        _types = await _auth.getAvailableBiometrics();
+        _enrolled = _types.isNotEmpty;
       }
     } catch (_) {
       _supported = false;
@@ -119,15 +124,18 @@ class DeviceAuthService extends ChangeNotifier {
     try {
       final didAuthenticate = await _auth.authenticate(
         localizedReason: '使用指纹或面容登录',
+        // biometricOnly 关掉：安卓很多机型的面容属于 weak 生物识别，
+        // 只允许 strong 时系统弹窗里根本看不到「面容」选项（用户反馈只有指纹）。
         options: const AuthenticationOptions(
           stickyAuth: false,
-          biometricOnly: true,
+          biometricOnly: false,
           useErrorDialogs: false,
           sensitiveTransaction: false,
         ),
       );
       if (didAuthenticate) {
         _failCount = 0;
+        await _markAuthed();
         notifyListeners();
         return UnlockResult.success;
       }
@@ -156,6 +164,57 @@ class DeviceAuthService extends ChangeNotifier {
       return UnlockResult.failed;
     }
   }
+
+  /// 记录「刚刚验证通过」的时间戳（免验证宽限判断用）。
+  Future<void> _markAuthed() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_lastAuthKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  /// 距离上次验证通过过了多久；没记录过返回 null。
+  Future<Duration?> lastAuthAgo() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final at = p.getInt(_lastAuthKey);
+      if (at == null || at <= 0) return null;
+      return DateTime.now().difference(
+          DateTime.fromMillisecondsSinceEpoch(at));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 是否在免验证宽限期内（用户拍板 15 分钟：大退后不用重新指纹）。
+  Future<bool> withinGrace(Duration grace) async {
+    final ago = await lastAuthAgo();
+    return ago != null && ago >= Duration.zero && ago < grace;
+  }
+
+  /// 主动标记一次已验证（例如密码登录成功，也应享受宽限期）。
+  Future<void> markAuthed() => _markAuthed();
+
+  /// 清除宽限记录：主动退出登录/切换账号后必须重新验证。
+  Future<void> clearLastAuth() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_lastAuthKey);
+    } catch (_) {}
+  }
+
+  /// 本机可用的生物识别类型文案（面容/指纹/生物识别），用于界面提示与图标。
+  String get biometricLabel {
+    try {
+      if (_types.contains(BiometricType.face)) return '面容';
+      if (_types.contains(BiometricType.fingerprint)) return '指纹';
+      if (_types.contains(BiometricType.iris)) return '虹膜';
+    } catch (_) {}
+    return '生物识别';
+  }
+
+  /// 是否支持面容
+  bool get hasFace => _types.contains(BiometricType.face);
 
   void resetFailCount() {
     if (_failCount == 0) return;

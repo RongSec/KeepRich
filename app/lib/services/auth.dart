@@ -165,9 +165,15 @@ class AuthState extends ChangeNotifier {
 
   /// 登录/注册/设备登录共用的收尾：拉 /auth/me → 写账号卡 → 存设备凭据 → 清旧密码。
   Future<bool> _finishLogin(LoginResult result) async {
-    final ApiResponse<UserProfile> me;
+    // 用户反馈「第一次指纹提示登录过期、第二次才进得去」：换到新 token 后
+    // 立刻 me() 偶发失败，重试一次即可恢复，避免白折腾一次验证。
+    ApiResponse<UserProfile> me;
     try {
       me = await ApiClient.instance.me();
+      if (!me.ok) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        me = await ApiClient.instance.me();
+      }
     } catch (_) {
       // 网络异常不能吞掉刚换好的登录态，更不能误报「登录已失效」
       lastLoginError = '网络异常，请稍后重试';
@@ -192,6 +198,10 @@ class AuthState extends ChangeNotifier {
     } catch (_) {
       // 本机存储异常不能把已成功的登录打回去。
     }
+    // 登录成功即开始计 15 分钟免验证宽限（大退后不用重新指纹）
+    try {
+      await _deviceAuth.markAuthed();
+    } catch (_) {}
     notifyListeners();
     return true;
   }
@@ -229,6 +239,7 @@ class AuthState extends ChangeNotifier {
       await _accounts.remove(uid);
     }
     _deviceAuth.resetFailCount();
+    await _deviceAuth.clearLastAuth(); // 主动登出后不得再走 15 分钟免验证
     notifyListeners();
   }
 

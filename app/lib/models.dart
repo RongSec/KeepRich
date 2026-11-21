@@ -1165,14 +1165,16 @@ class NotifyType {
   static const String familyApply = 'family_apply';
   static const String familyResult = 'family_result';
   static const String system = 'system';
+  static const String familyTx = 'family_tx';
 
-  /// 5 类固定顺序（与后端 NotifyTypes 一致）
+  /// 6 类固定顺序（与后端 NotifyTypes 一致）
   static const List<String> all = [
     overSpend,
     bigPurchase,
     familyApply,
     familyResult,
     system,
+    familyTx,
   ];
 
   static const Map<String, String> labels = {
@@ -1181,6 +1183,7 @@ class NotifyType {
     familyApply: '家庭申请',
     familyResult: '申请结果',
     system: '系统通知',
+    familyTx: '家庭成员记账',
   };
   static String labelOf(String t) => labels[t] ?? '通知';
 

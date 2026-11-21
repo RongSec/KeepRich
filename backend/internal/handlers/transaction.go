@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"github.com/yourname/family-finance/backend/internal/database"
 	"github.com/yourname/family-finance/backend/internal/middleware"
 	"github.com/yourname/family-finance/backend/internal/models"
 	"github.com/yourname/family-finance/backend/internal/services"
 	"github.com/yourname/family-finance/backend/internal/utils"
+	"gorm.io/gorm"
 )
 
 type SourceDetail struct {
@@ -267,6 +267,11 @@ func CreateTx(c *gin.Context) {
 		}
 	}
 
+	// 家庭成员记账提醒：家庭账单落库后，通知**其他**在册成员（不含记录人自己）
+	if tx.FamilyID != nil && *tx.FamilyID > 0 {
+		notifyFamilyTx(uid, *tx.FamilyID, &tx)
+	}
+
 	utils.OK(c, tx)
 }
 
@@ -409,22 +414,22 @@ func ListTx(c *gin.Context) {
 	}
 
 	utils.OK(c, gin.H{
-		"list":         out,
-		"total":        total,
-		"page":         page,
-		"size":         size,
-		"worryPerBuy":  worryPerBuy,
-		"sumIncome":    sumIncome,
-		"sumExpense":   sumExpense,
-		"sumTransfer":  sumTransfer,
+		"list":        out,
+		"total":       total,
+		"page":        page,
+		"size":        size,
+		"worryPerBuy": worryPerBuy,
+		"sumIncome":   sumIncome,
+		"sumExpense":  sumExpense,
+		"sumTransfer": sumTransfer,
 		"filter": gin.H{
-			"scope":        scope,
-			"type":         txType,
-			"category":     category,
-			"recorder":     recorder,
-			"startAt":      startAt,
-			"endAt":        endAt,
-			"exceedWorry":  exceedWorry,
+			"scope":       scope,
+			"type":        txType,
+			"category":    category,
+			"recorder":    recorder,
+			"startAt":     startAt,
+			"endAt":       endAt,
+			"exceedWorry": exceedWorry,
 		},
 	})
 }
@@ -520,7 +525,9 @@ func computeWorryFreePerBuy(scope string, uid uint64, familyID *uint64) float64 
 	}
 	annualIncome := baseIncome / float64(activeMonths) * 12.0
 
-	return savingBalance + annualIncome*20
+	// 与总览 WorryFreePerBuy 同口径：/10000（历史 bug：这里漏了除，
+	// 阈值被放大一万倍，导致超支提醒永不触发）
+	return (savingBalance + annualIncome*20) / 10000.0
 }
 
 func isValidBucket(b string) bool {
@@ -529,4 +536,49 @@ func isValidBucket(b string) bool {
 		return true
 	}
 	return false
+}
+
+// notifyFamilyTx 家庭成员记账 → 推送通知给该家庭其他在册成员。
+// 静默失败：通知属于附加能力，不能影响记账主流程。
+func notifyFamilyTx(recorderUID uint64, familyID uint64, tx *models.Transaction) {
+	var members []models.FamilyMember
+	if err := database.DB.Where("family_id = ? AND status = ?", familyID, "active").
+		Find(&members).Error; err != nil {
+		return
+	}
+	if len(members) == 0 {
+		return
+	}
+	// 记录人昵称（缺省用"家庭成员"）
+	var recorder models.User
+	nickname := "家庭成员"
+	if err := database.DB.Select("nickname, username").First(&recorder, recorderUID).Error; err == nil {
+		if recorder.Nickname != "" {
+			nickname = recorder.Nickname
+		} else if recorder.Username != "" {
+			nickname = recorder.Username
+		}
+	}
+	typeLabel := map[string]string{
+		models.TxTypeIncome:   "收入",
+		models.TxTypeExpense:  "支出",
+		models.TxTypeTransfer: "存钱",
+	}[tx.Type]
+	category := models.CategoryLabel[tx.Category]
+	if category == "" {
+		category = tx.Category
+	}
+	ns := services.NewNotifyService(database.DB)
+	for _, m := range members {
+		if m.UserID == recorderUID {
+			continue // 不通知自己
+		}
+		_ = ns.PushTo(m.UserID, models.NotifyTypeFamilyTx, map[string]string{
+			"昵称": nickname,
+			"类型": typeLabel,
+			"分类": category,
+			"金额": fmt.Sprintf("%.2f", tx.Amount),
+			"日期": time.Now().Format("2006-01-02"),
+		}, "")
+	}
 }

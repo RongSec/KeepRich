@@ -6,6 +6,7 @@ const (
 	NotifyTypeFamilyApply  = "family_apply"  // 家庭加入申请
 	NotifyTypeFamilyResult = "family_result" // 家庭申请结果
 	NotifyTypeSystem       = "system"        // 系统通知
+	NotifyTypeFamilyTx     = "family_tx"     // 家庭成员记账提醒
 )
 
 // NotifyTypes 五类通知的固定顺序（设置接口返回/校验用），Go 1.22 兼容：普通切片。
@@ -15,6 +16,7 @@ var NotifyTypes = []string{
 	NotifyTypeFamilyApply,
 	NotifyTypeFamilyResult,
 	NotifyTypeSystem,
+	NotifyTypeFamilyTx,
 }
 
 // NotifyValidType 是否为已知通知类型
@@ -54,7 +56,7 @@ type NotificationSetting struct {
 	Base
 	UserID          uint64 `gorm:"uniqueIndex:idx_notify_setting_user_type;not null" json:"userId"`
 	Type            string `gorm:"size:32;uniqueIndex:idx_notify_setting_user_type;not null" json:"type"`
-	Enabled         bool   `json:"enabled"` // 不加 gorm default 标签：GORM 会跳过零值 false、被列默认值覆盖；默认开启语义在查询侧（无行=开启）
+	Enabled         bool   `json:"enabled"`                       // 不加 gorm default 标签：GORM 会跳过零值 false、被列默认值覆盖；默认开启语义在查询侧（无行=开启）
 	TitleTemplate   string `gorm:"size:256" json:"titleTemplate"` // 空=默认模板
 	ContentTemplate string `gorm:"type:text" json:"contentTemplate"`
 }
@@ -75,4 +77,5 @@ var DefaultNotifyTemplates = map[string]NotifyTemplate{
 	NotifyTypeFamilyApply:  {Title: "新加入申请", Content: "有用户申请加入家庭：{家庭名}"},
 	NotifyTypeFamilyResult: {Title: "家庭加入结果", Content: "{结果}"},
 	NotifyTypeSystem:       {Title: "{标题}", Content: "{内容}"},
+	NotifyTypeFamilyTx:     {Title: "家庭成员记账", Content: "{昵称} 记了一笔{类型}：{分类} {金额} 元"},
 }

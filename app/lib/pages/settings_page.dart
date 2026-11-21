@@ -156,7 +156,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _Tile(
               icon: Icons.notifications_outlined,
               title: '通知中心',
-              subtitle: '超支提醒、大件可购买、家庭申请等',
+              subtitle: '超支提醒、家庭成员记账、家庭申请等',
               badge: unreadCount,
               onTap: () async {
                 await Navigator.push(
