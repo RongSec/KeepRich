@@ -111,7 +111,8 @@ type OverviewData struct {
 }
 
 type Allocation struct {
-	MonthlyIncome    float64 `json:"monthlyIncome"`
+	MonthlyIncome    float64 `json:"monthlyIncome"`    // 本月已实现工资收入
+	AvgMonthlyIncome float64 `json:"avgMonthlyIncome"` // 月均工资收入（近 12 个月 / 有收入月数），分配与估算以此为准
 	Loan             float64 `json:"loan"`
 	Saving           float64 `json:"saving"`
 	Investment       float64 `json:"investment"`
@@ -263,19 +264,24 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	var monthExpense float64
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeExpense, "", monthStart, &monthExpense)
 
+	// 月均工资收入：近 12 个月工资 / 有收入的月数（只记录 1 个月时就是该月收入）。
+	// 所有「每月应分配多少 / 还需多久」统一以月均为基准 —— 按月会随发薪日和月份波动，
+	// 均值随时间推移逐渐收敛到更精确的数值。
+	avgIncome := utils.Round2(annualIncome / 12.0)
 	alloc := Allocation{
 		MonthlyIncome:     monthlyIncome,
-		Loan:              monthlyIncome * plan.LoanRatio,
-		Saving:            monthlyIncome * plan.SavingRatio,
-		Investment:        monthlyIncome * plan.InvestmentRatio,
-		Emergency:         monthlyIncome * plan.EmergencyRatio,
-		Pension:           monthlyIncome * plan.PensionRatio,
-		Consumption:       monthlyIncome * plan.ConsumptionRatio,
-		SavingTarget:      monthlyIncome * plan.SavingRatio,
-		InvestmentTarget:  monthlyIncome * plan.InvestmentRatio,
-		EmergencyTarget:   monthlyIncome * plan.EmergencyRatio,
-		PensionTarget:     monthlyIncome * plan.PensionRatio,
-		ConsumptionTarget: monthlyIncome * plan.ConsumptionRatio,
+		AvgMonthlyIncome:  avgIncome,
+		Loan:              avgIncome * plan.LoanRatio,
+		Saving:            avgIncome * plan.SavingRatio,
+		Investment:        avgIncome * plan.InvestmentRatio,
+		Emergency:         avgIncome * plan.EmergencyRatio,
+		Pension:           avgIncome * plan.PensionRatio,
+		Consumption:       avgIncome * plan.ConsumptionRatio,
+		SavingTarget:      avgIncome * plan.SavingRatio,
+		InvestmentTarget:  avgIncome * plan.InvestmentRatio,
+		EmergencyTarget:   avgIncome * plan.EmergencyRatio,
+		PensionTarget:     avgIncome * plan.PensionRatio,
+		ConsumptionTarget: avgIncome * plan.ConsumptionRatio,
 	}
 	// 本月已入桶金额（按 transfer 分类）
 	nowEnd := now.Unix()
@@ -307,15 +313,18 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	// 完成度
 	emergencyPct := 0.0
 	emergencyMonthsLeft := 0
+	// 估算用的月收入：优先本月已发工资，还没发（月初/月末发薪）时回落到近 12 个月均值，
+	// 否则「剩余时间」在大部分月份都算不出来（旧版会返回 -1）。
+	estIncome := avgIncome
 	if plan.EmergencyTarget > 0 {
 		emergencyPct = clamp01(emergency / plan.EmergencyTarget)
-		emergencyMonthsLeft = monthsToTarget(plan.EmergencyRatio, monthlyIncome, plan.EmergencyTarget, emergency)
+		emergencyMonthsLeft = monthsToTarget(plan.EmergencyRatio, estIncome, plan.EmergencyTarget, emergency)
 	}
 	pensionPct := 0.0
 	pensionMonthsLeft := 0
 	if plan.PensionTarget > 0 {
 		pensionPct = clamp01(pension / plan.PensionTarget)
-		pensionMonthsLeft = monthsToTarget(plan.PensionRatio, monthlyIncome, plan.PensionTarget, pension)
+		pensionMonthsLeft = monthsToTarget(plan.PensionRatio, estIncome, plan.PensionTarget, pension)
 	}
 
 	// 剩余待支配（待支配可用来存钱的余额）。
@@ -655,7 +664,8 @@ func monthsToTarget(ratio, monthlyIncome, target, current float64) int {
 	if monthlyAdd <= 0 {
 		return -1
 	}
-	m := int((target - current) / monthlyAdd)
+	// 向上取整：差 1.2 个月也要算 2 个月才够（截断会低估）。
+	m := int(math.Ceil((target - current) / monthlyAdd))
 	if m < 1 {
 		return 1
 	}
