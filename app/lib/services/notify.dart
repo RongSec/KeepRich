@@ -47,7 +47,22 @@ class NotifyService extends ChangeNotifier {
       iOS: darwinSettings,
       macOS: darwinSettings,
     );
-    await _localNotifications.initialize(initSettings);
+    try {
+      await _localNotifications.initialize(initSettings);
+    } catch (e) {
+      // 图标资源异常（如 release 被资源精简器删掉）不能连累整个通知通道：
+      // 退回到 launcher 图标再初始化一次，保证通知仍能发出去。
+      debugPrint('[notify] initialize 失败($e)，退回 launcher 图标重试');
+      try {
+        await _localNotifications.initialize(const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: darwinSettings,
+          macOS: darwinSettings,
+        ));
+      } catch (e2) {
+        debugPrint('[notify] 再次初始化仍失败: $e2');
+      }
+    }
     await _createChannel();
     // 权限弹窗必须等首帧之后：initState 阶段 Activity 还没准备好，
     // requestNotificationsPermission() 会静默失败，导致系统通知一直处于关闭状态
@@ -86,7 +101,7 @@ class NotifyService extends ChangeNotifier {
         showBadge: true,
       ));
     } catch (e) {
-      debugPrint('[notify] 创建通知渠道失败: $e');
+      debugPrint('[notify] 建渠道失败: $e');
     }
   }
 
@@ -138,8 +153,27 @@ class NotifyService extends ChangeNotifier {
         details,
       );
     } catch (e) {
-      // 权限被拒/系统限制：不弹系统通知即可，App 内通知列表仍可用
-      debugPrint('[notify] 系统通知展示失败: $e');
+      // 图标无效时改用系统默认小图标重试一次
+      debugPrint('[notify] 系统通知展示失败($e)，换默认图标重试');
+      try {
+        await _localNotifications.show(
+          DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          title,
+          body,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'family_finance_v2',
+              '家庭财务',
+              importance: Importance.max,
+              priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
+            ),
+          ),
+        );
+      } catch (e2) {
+        debugPrint('[notify] 重试仍失败: $e2');
+      }
     }
   }
 

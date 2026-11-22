@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知小图标只在代码里按名字引用（AndroidInitializationSettings('ic_stat_notify')），
+     release 打包时资源精简器看不到静态引用会把它删掉，导致
+     PlatformException(invalid_icon) → 通知插件初始化失败 → 一条通知都发不出去。 -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notify" />
