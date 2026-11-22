@@ -1151,7 +1151,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   Set<String> _selectedSources = {'cash'}; // 当前选中的来源桶
   FutureFinanceData? _futureData;
   bool _loadingLoans = false;
-  double _monthlyIncome = 0; // 本月收入（非意外收入），存钱快捷比例的基数
+  double _monthlyIncome = 0; // 月均收入（非意外收入），存钱快捷比例的基数
   ({double saving, double investment, double emergency, double pension}) _planRatios =
       (saving: 0, investment: 0, emergency: 0, pension: 0);
   Map<String, double> _bucketBalances = {}; // 各桶当前余额，来源选择器上显示
@@ -1353,7 +1353,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       final data = r.data;
       if (data != null) {
         setState(() {
-          _monthlyIncome = data.allocation.monthlyIncome;
+          _monthlyIncome = data.allocation.avgMonthlyIncome;
           _bucketBalances = {
             'cash': data.remainingBudget,
             'saving': data.savingBalance,
@@ -1391,7 +1391,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_monthlyIncome > 0)
-          Text('本月收入 ${f.format(_monthlyIncome)} 元（按预规划比例计算）',
+          Text('月均收入 ${f.format(_monthlyIncome)} 元（按预规划比例计算）',
               style: TextStyle(fontSize: 11, color: AppTheme.textDim)),
         const SizedBox(height: 6),
         Wrap(

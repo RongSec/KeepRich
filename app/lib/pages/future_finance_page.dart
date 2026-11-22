@@ -178,7 +178,7 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             final monthlyIncome =
-                                _overview?.allocation.monthlyIncome ?? 10000;
+                                _overview?.allocation.avgMonthlyIncome ?? 10000;
                             const loanRatio = 0.4; // 默认贷款比例
                             Navigator.push(
                               context,

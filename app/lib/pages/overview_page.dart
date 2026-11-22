@@ -374,7 +374,7 @@ class _OverviewPageState extends State<OverviewPage> {
               const SizedBox(width: 6),
               Text('财务统筹', style: theme.textTheme.titleMedium),
               const Spacer(),
-              Text('月收入 ${f.format(a.monthlyIncome)} 元',
+              Text('月均收入 ${f.format(a.avgMonthlyIncome)} 元',
                   style: theme.textTheme.bodySmall),
             ]),
             const SizedBox(height: 6),

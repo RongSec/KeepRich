@@ -393,6 +393,7 @@ class OverviewData {
 
 class Allocation {
   final double monthlyIncome;
+  final double avgMonthlyIncome; // 月均工资（分配与估算的基准）
   final double saving;
   final double investment;
   final double emergency;
@@ -417,6 +418,7 @@ class Allocation {
 
   Allocation({
     required this.monthlyIncome,
+    required this.avgMonthlyIncome,
     required this.saving,
     required this.investment,
     required this.emergency,
@@ -439,6 +441,9 @@ class Allocation {
 
   factory Allocation.fromJson(Map<String, dynamic> json) => Allocation(
         monthlyIncome: (json['monthlyIncome'] as num? ?? 0).toDouble(),
+        avgMonthlyIncome:
+            (json['avgMonthlyIncome'] as num? ?? json['monthlyIncome'] as num? ?? 0)
+                .toDouble(),
         saving: (json['saving'] as num? ?? 0).toDouble(),
         investment: (json['investment'] as num? ?? 0).toDouble(),
         emergency: (json['emergency'] as num? ?? 0).toDouble(),
