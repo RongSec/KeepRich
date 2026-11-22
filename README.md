@@ -13,11 +13,16 @@
 
 ## 快速开始
 
+全新环境只需要 Docker，**一条命令**即可（无需先建 `.env`、无需本机装 Flutter/Go）：
+
 ```bash
-cp .env.example .env   # 按需修改数据库/JWT 密钥
 docker compose up -d
 # 后端: http://localhost:28080  管理端: http://localhost:18000
+# 默认管理员 admin / admin123456（首次启动自动创建）
 ```
+
+首次启动会自动建库、迁移、创建管理员，并在容器内编译后端与管理端（约 5～10 分钟）。
+需要自定义数据库密码、JWT 密钥或管理员账号时，`cp .env.example .env` 改完再执行同一条命令即可。
 
 ## 本地开发（Android Studio / Web）
 

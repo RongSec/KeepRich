@@ -1,6 +1,12 @@
-# 预编译模式：本地先执行 flutter build web --release
-# 然后 docker build 只打包 nginx + 编译产物，不需要 Flutter 镜像
+# 多阶段构建：全新环境不需要宿主机装 Flutter，docker compose up 即可
+FROM ghcr.io/cirruslabs/flutter:stable AS build
+WORKDIR /src
+COPY pubspec.* ./
+RUN flutter pub get
+COPY . .
+RUN flutter build web --release
+
 FROM nginx:1.25-alpine
-COPY build/web /usr/share/nginx/html
+COPY --from=build /src/build/web /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
