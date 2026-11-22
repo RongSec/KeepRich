@@ -22,6 +22,7 @@
         <!-- usesCleartextTraffic: 开发期直连 http://10.0.2.2（Android 9+ 默认禁明文流量）；正式发布建议改用 HTTPS + networkSecurityConfig -->
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

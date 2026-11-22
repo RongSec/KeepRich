@@ -307,15 +307,21 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	// 完成度
 	emergencyPct := 0.0
 	emergencyMonthsLeft := 0
+	// 估算用的月收入：优先本月已发工资，还没发（月初/月末发薪）时回落到近 12 个月均值，
+	// 否则「剩余时间」在大部分月份都算不出来（旧版会返回 -1）。
+	estIncome := monthlyIncome
+	if estIncome <= 0 {
+		estIncome = annualIncome / 12.0
+	}
 	if plan.EmergencyTarget > 0 {
 		emergencyPct = clamp01(emergency / plan.EmergencyTarget)
-		emergencyMonthsLeft = monthsToTarget(plan.EmergencyRatio, monthlyIncome, plan.EmergencyTarget, emergency)
+		emergencyMonthsLeft = monthsToTarget(plan.EmergencyRatio, estIncome, plan.EmergencyTarget, emergency)
 	}
 	pensionPct := 0.0
 	pensionMonthsLeft := 0
 	if plan.PensionTarget > 0 {
 		pensionPct = clamp01(pension / plan.PensionTarget)
-		pensionMonthsLeft = monthsToTarget(plan.PensionRatio, monthlyIncome, plan.PensionTarget, pension)
+		pensionMonthsLeft = monthsToTarget(plan.PensionRatio, estIncome, plan.PensionTarget, pension)
 	}
 
 	// 剩余待支配（待支配可用来存钱的余额）。
@@ -655,7 +661,8 @@ func monthsToTarget(ratio, monthlyIncome, target, current float64) int {
 	if monthlyAdd <= 0 {
 		return -1
 	}
-	m := int((target - current) / monthlyAdd)
+	// 向上取整：差 1.2 个月也要算 2 个月才够（截断会低估）。
+	m := int(math.Ceil((target - current) / monthlyAdd))
 	if m < 1 {
 		return 1
 	}

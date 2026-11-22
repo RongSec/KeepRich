@@ -523,7 +523,11 @@ class _OverviewPageState extends State<OverviewPage> {
               if (monthsLeft != null) ...[
                 const SizedBox(height: 2),
                 Text(
-                  monthsLeft == 0 ? '已达成' : '预估还需 $monthsLeft 个月',
+                  monthsLeft == 0
+                      ? '已达成'
+                      : monthsLeft < 0
+                          ? '暂无收入记录，无法估算'
+                          : '预估还需 $monthsLeft 个月',
                   style: TextStyle(
                       fontSize: 10,
                       color: monthsLeft == 0

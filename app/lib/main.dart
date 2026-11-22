@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -39,6 +40,13 @@ Future<void> main() async {
     FlutterError.presentError(details);
   };
   runZonedGuarded(() async {
+    // 只支持竖屏：手机开启自动旋转时，横过来也不跟着转。
+    // Android 侧另有 AndroidManifest 的 screenOrientation="portrait" 兜底。
+    if (!kIsWeb) {
+      await SystemChrome.setPreferredOrientations(
+        const [DeviceOrientation.portraitUp],
+      );
+    }
     // 先读本地保存的服务端地址，再建连接（否则会先连到默认地址）
     await AppConfig.init();
     runApp(const AppRoot());

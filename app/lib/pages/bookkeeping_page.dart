@@ -1136,6 +1136,7 @@ class _AddTxSheetState extends State<_AddTxSheet> {
   late final TextEditingController _amount;
   late final TextEditingController _note;
   bool _busy = false;
+  bool _dupConfirmed = false; // 重复账单已确认，避免二次弹窗
   /// 表单内联错误提示（余额不足、未选贷款等）
   String? _formError;
   String? _loanRef;
@@ -1588,6 +1589,19 @@ class _AddTxSheetState extends State<_AddTxSheet> {
         body['sourceBucket'] = _selectedSources.first;
       }
     }
+    // 近 7 天相同金额提醒：只对新增生效，编辑不提示；
+    // 用户确认过一次就不再重复弹（_dupConfirmed）。
+    if (widget.existing == null && !_dupConfirmed) {
+      final dup = await _findRecentSameAmount(v);
+      if (dup != null) {
+        final go = await _askDuplicate(dup, v);
+        if (go != true) {
+          if (mounted) setState(() => _busy = false);
+          return;
+        }
+        _dupConfirmed = true;
+      }
+    }
     dynamic r;
     try {
       if (widget.existing != null) {
@@ -1609,6 +1623,57 @@ class _AddTxSheetState extends State<_AddTxSheet> {
       _showTopSnack(r.message);
     }
     setState(() => _busy = false);
+  }
+
+  /// 查近 7 天是否有同类型、同金额的账单；有则返回最早那条用于提示。
+  Future<TxRecord?> _findRecentSameAmount(double amount) async {
+    try {
+      final start =
+          DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch ~/ 1000;
+      final r = await ApiClient.instance.txPage(
+        scope: widget.scope,
+        type: _type,
+        startAt: start,
+        size: 200,
+      );
+      if (!r.ok || r.data == null) return null;
+      final raw = r.data!['list'] as List? ?? const [];
+      for (final e in raw) {
+        final rec = TxRecord.fromJson(e as Map<String, dynamic>);
+        if ((rec.amount - amount).abs() < 0.005) return rec;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 弹窗确认是否仍要记录；返回 true 表示继续保存。
+  Future<bool?> _askDuplicate(TxRecord dup, double amount) {
+    final d = DateTime.fromMillisecondsSinceEpoch(dup.occurredAt * 1000);
+    final dateStr = '${d.month} 月 ${d.day} 日';
+    final catLabel = TxCategory.labelOf(dup.category);
+    final typeLabel = TxType.labels[_type] ?? '';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('疑似重复记账'),
+        content: Text(
+          '近 7 天已有一笔相同金额的$typeLabel：\n\n'
+          '$dateStr · $catLabel · ${_fmt(amount)} 元'
+          '${dup.note.isNotEmpty ? '\n备注：${dup.note}' : ''}\n\n'
+          '确认不是重复的话可以继续记录。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('仍要记录'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
