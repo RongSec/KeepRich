@@ -55,16 +55,27 @@ class AuthState extends ChangeNotifier {
       // 读不到本地登录态：按未登录处理
     }
     if (ApiClient.instance.hasToken) {
-      try {
-        final r = await ApiClient.instance.me();
-        if (r.ok && r.data != null) {
-          _user = r.data;
-        } else {
-          ApiClient.instance.clearTokens();
-          await ApiClient.instance.clearPersisted();
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          final r = await ApiClient.instance.me();
+          if (r.ok && r.data != null) {
+            _user = r.data;
+            break;
+          }
+          // 只有鉴权类错误才真失效；5xx/限流等只是服务端暂时不可用，
+          // 不能把本地登录态清掉（否则一次波动就要重新登录/重新指纹）。
+          if (_isAuthCode(r.code)) {
+            ApiClient.instance.clearTokens();
+            await ApiClient.instance.clearPersisted();
+            break;
+          }
+        } catch (_) {
+          // 网络失败：保留 token，进 App 后各页面会自行重试/走 401 刷新
         }
-      } catch (_) {
-        // 网络失败：保留 token，进 App 后各页面会自行重试/走 401 刷新
+        if (attempt < 2) {
+          await Future<void>.delayed(
+              Duration(milliseconds: 300 * (attempt + 1)));
+        }
       }
     }
     _loading = false;
@@ -164,29 +175,55 @@ class AuthState extends ChangeNotifier {
   }
 
   /// 登录/注册/设备登录共用的收尾：拉 /auth/me → 写账号卡 → 存设备凭据 → 清旧密码。
+  /// 是否属于「会话/凭据无效」类错误码（只有这类才该清登录态）。
+  static bool _isAuthCode(int code) =>
+      code == 401 ||
+      code == 40100 ||
+      code == 40101 ||
+      code == 40110 ||
+      code == 40111 ||
+      code == 40112;
+
   Future<bool> _finishLogin(LoginResult result) async {
     // 用户反馈「第一次指纹提示登录过期、第二次才进得去」：换到新 token 后
     // 立刻 me() 偶发失败，重试一次即可恢复，避免白折腾一次验证。
-    ApiResponse<UserProfile> me;
-    try {
-      me = await ApiClient.instance.me();
-      if (!me.ok) {
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        me = await ApiClient.instance.me();
+    // 换成新 token 后立刻 me() 偶发失败（弱网 / 服务端重启 / 网关 5xx）。
+    // 最多试 3 次；只有真正的鉴权失败才算会话失效 ——
+    // 否则会出现「指纹刚验证通过，却提示登录已失效」的矛盾。
+    ApiResponse<UserProfile>? me;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final r = await ApiClient.instance.me();
+        me = r;
+        if (r.ok && r.data != null) break;
+        // 鉴权类失败重试无意义
+        if (_isAuthCode(r.code)) break;
+      } catch (_) {
+        me = null;
       }
-    } catch (_) {
-      // 网络异常不能吞掉刚换好的登录态，更不能误报「登录已失效」
+      if (attempt < 2) {
+        await Future<void>.delayed(
+            Duration(milliseconds: 400 * (attempt + 1)));
+      }
+    }
+    if (me == null) {
+      // 全程网络异常：保留刚换好的凭据，让用户直接重试（不必重新指纹）
       lastLoginError = '网络异常，请稍后重试';
       notifyListeners();
       return false;
     }
     if (!me.ok || me.data == null) {
-      // me() 失败不能算登录成功（否则"登录成功又闪回"）
-      ApiClient.instance.clearTokens();
-      await ApiClient.instance.clearPersisted();
-      _user = null;
-      lastLoginError =
-          me.message.isNotEmpty ? me.message : '登录已失效，请重新登录';
+      if (_isAuthCode(me.code)) {
+        // 真会话失效：清干净并回登录页
+        ApiClient.instance.clearTokens();
+        await ApiClient.instance.clearPersisted();
+        _user = null;
+        lastLoginError =
+            me.message.isNotEmpty ? me.message : '登录已失效，请重新登录';
+      } else {
+        // 服务端暂时不可用（5xx / 限流等）：不清凭据，提示重试即可
+        lastLoginError = '服务器暂时不可用，请稍后重试';
+      }
       notifyListeners();
       return false;
     }
