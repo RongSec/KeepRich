@@ -9,6 +9,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models.dart';
 import 'api.dart';
+import 'ws_channel.dart';
 
 /// 通知服务（WebSocket + 本地通知）
 class NotifyService extends ChangeNotifier {
@@ -180,13 +181,10 @@ class NotifyService extends ChangeNotifier {
     try {
       final token = ApiClient.instance.accessToken;
       if (token == null || token.isEmpty) return;
-      final wsUrl = Uri.parse(AppConfig.wsUrl).replace(
-        queryParameters: {
-          ...Uri.parse(AppConfig.wsUrl).queryParameters,
-          'token': token,
-        },
-      );
-      _channel = WebSocketChannel.connect(wsUrl);
+      // token 通过 header 传（原生）：云网关会丢弃 URL 上的 token 参数，
+      // 用 ?token= 会一律 401，WebSocket 永远连不上 → 收不到任何推送。
+      final wsUrl = Uri.parse(AppConfig.wsUrl);
+      _channel = openAuthedWs(wsUrl, token);
       // 连接建立失败走 ready Future：不 catch 会变成未捕获异步异常（浏览器 pageerror）
       unawaited(_channel!.ready.then((_) {}, onError: (Object e) {
         debugPrint('[notify] ws ready failed: $e');
