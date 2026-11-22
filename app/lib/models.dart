@@ -1194,6 +1194,7 @@ class NotifyType {
     familyApply: '{家庭名}',
     familyResult: '{结果}',
     system: '{标题} {内容}',
+    familyTx: '{昵称} {类型} {分类} {金额}',
   };
   static String placeholdersOf(String t) => placeholders[t] ?? '';
 }

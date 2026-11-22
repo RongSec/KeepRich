@@ -172,14 +172,20 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   }
 
   Future<void> _requestPermission() async {
+    bool granted = false;
     try {
-      await context.read<NotifyService>().requestSystemNotificationPermission();
+      granted = await context
+          .read<NotifyService>()
+          .requestSystemNotificationPermission();
     } catch (_) {}
     await _checkSysNotification();
-    if (!mounted) return;
-    if (_sysNotify == false) {
+    if (!mounted || granted) return;
+    // 系统不再弹授权框（已被拒绝两次或被系统策略禁用）时，直接送到通知设置页，
+    // 比只提示一句「请手动去开」更省事。
+    final opened = await SystemChannel.openNotificationSettings();
+    if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('仍未开启。请到「系统设置 → 应用 → 永远富裕 → 通知」手动打开'),
+        content: Text('请到「系统设置 → 应用 → 永远富裕 → 通知」手动打开'),
       ));
     }
   }

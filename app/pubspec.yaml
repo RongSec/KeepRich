@@ -1,7 +1,7 @@
 name: family_finance_app
 description: 家庭与个人财务管理系统客户端
 publish_to: 'none'
-version: 0.8.9+33
+version: 0.8.10+37
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

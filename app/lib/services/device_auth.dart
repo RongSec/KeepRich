@@ -124,11 +124,13 @@ class DeviceAuthService extends ChangeNotifier {
     try {
       final didAuthenticate = await _auth.authenticate(
         localizedReason: '使用指纹或面容登录',
-        // biometricOnly 关掉：安卓很多机型的面容属于 weak 生物识别，
-        // 只允许 strong 时系统弹窗里根本看不到「面容」选项（用户反馈只有指纹）。
+        // biometricOnly 必须为 true：为 false 时系统会把「设备凭据(PIN/图案/密码)」
+        // 一并作为可用方式，很多机型会直接弹出密码输入盘而不是面容/指纹，
+        // 用户看到的就是「面容不生效」。true 时仍是 BIOMETRIC_STRONG|WEAK，
+        // 弱生物识别（面容）依然可选，只是不再弹密码盘。
         options: const AuthenticationOptions(
           stickyAuth: false,
-          biometricOnly: false,
+          biometricOnly: true,
           useErrorDialogs: false,
           sensitiveTransaction: false,
         ),
@@ -209,6 +211,13 @@ class DeviceAuthService extends ChangeNotifier {
       if (_types.contains(BiometricType.face)) return '面容';
       if (_types.contains(BiometricType.fingerprint)) return '指纹';
       if (_types.contains(BiometricType.iris)) return '虹膜';
+      // Android 11+ 不再细分 face/fingerprint，只给 weak/strong：
+      // weak 通常是面容（2D），strong 是指纹，两者都有时统一叫「指纹/面容」
+      final hasWeak = _types.contains(BiometricType.weak);
+      final hasStrong = _types.contains(BiometricType.strong);
+      if (hasWeak && hasStrong) return '指纹/面容';
+      if (hasWeak) return '面容';
+      if (hasStrong) return '指纹';
     } catch (_) {}
     return '生物识别';
   }
