@@ -131,11 +131,21 @@ void main() {
         req.response.write(jsonEncode(
             <String, dynamic>{'code': 40111, 'message': '登录已失效'}));
       } else {
-        // 业务请求：**延迟 1.5s** 再回 401 —— 模拟在途请求的响应迟到
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
-        req.response.statusCode = 401;
-        req.response.write(jsonEncode(
-            <String, dynamic>{'code': 40111, 'message': '登录已失效'}));
+        final sent = req.headers.value('X-Finance-Token') ??
+            req.headers.value('Authorization') ??
+            '';
+        if (sent.contains('new-access')) {
+          // 已换上新 token 的重发请求：应当成功（真实服务端就是这样）
+          req.response.statusCode = 200;
+          req.response.write(jsonEncode(
+              <String, dynamic>{'code': 0, 'message': 'ok', 'data': {}}));
+        } else {
+          // 旧 token 的业务请求：**延迟 1.5s** 再回 401 —— 模拟响应迟到
+          await Future<void>.delayed(const Duration(milliseconds: 1500));
+          req.response.statusCode = 401;
+          req.response.write(jsonEncode(
+              <String, dynamic>{'code': 40111, 'message': '登录已失效'}));
+        }
       }
       await req.response.close();
     });

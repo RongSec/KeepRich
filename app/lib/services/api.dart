@@ -175,12 +175,30 @@ class ApiClient {
           handler.next(resp);
           return;
         }
-        // 陈旧 401 守卫：请求发出后若 token 已被换新（登录/刷新成功），
-        // 这条 401 属于旧会话，直接透传即可 —— 绝不能清掉新 token 跳回登录页
-        // （用户反馈「指纹验证后依旧显示 token 过期」的根因）。
+        // 陈旧 401：这条请求是用**旧 token** 发出去的，而此刻 token 已经换新
+        // （指纹登录 / 刷新成功）。正确做法是**用新 token 重发**，
+        // 不能把 401 透传给页面 —— 否则页面会停在「登录已失效」、
+        // 数据一片空白且不会自动重试（指纹登录后"什么都看不到"的根因）。
         if (req.extra['tokenUsed'] != _accessToken) {
-          handler.next(resp);
-          return;
+          final current = _accessToken;
+          if (current == null ||
+              current.isEmpty ||
+              req.extra['retried'] == true) {
+            handler.next(resp);
+            return;
+          }
+          req.extra['retried'] = true;
+          req.extra['tokenUsed'] = current;
+          req.headers['Authorization'] = 'Bearer $current';
+          req.headers['X-Finance-Token'] = current;
+          try {
+            final clone = await dio.fetch(req);
+            handler.resolve(clone);
+            return;
+          } catch (_) {
+            handler.next(resp);
+            return;
+          }
         }
         final originalReason = _reasonFromCode(_codeOf(d));
         String reason = originalReason;
