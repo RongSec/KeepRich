@@ -78,3 +78,12 @@ docs/backups/finance-backup-20261109-live.json
 
 # 所有导出的备份包都含真实账目/口令哈希，一律不入库
 docs/backups/*.json
+
+# ===== 部署产物（由 cloud/sync.sh 重建，不入库）=====
+# APK、Flutter Web 产物、Go 可执行文件都是构建输出，每次发版重新生成；
+# 提交进 git 会让仓库无限膨胀（曾累积到 875MB）。
+# 发布用的 APK 放在 GitHub Release 资源里，部署目录由 sync.sh 现场生成。
+cloud/finance-server/apk/
+cloud/finance-server/web/
+cloud/finance-server/finance-app-x64
+cloud/finance-server/finance-app-arm64
