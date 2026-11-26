@@ -393,7 +393,8 @@ class OverviewData {
 
 class Allocation {
   final double monthlyIncome;
-  final double avgMonthlyIncome; // 月均工资（分配与估算的基准）
+  final double avgMonthlyIncome; // 月均工资（估算基准）
+  final double loanRatio; // 还贷比例（= 当前分配下的剩余）
   final double saving;
   final double investment;
   final double emergency;
@@ -419,6 +420,7 @@ class Allocation {
   Allocation({
     required this.monthlyIncome,
     required this.avgMonthlyIncome,
+    required this.loanRatio,
     required this.saving,
     required this.investment,
     required this.emergency,
@@ -444,6 +446,7 @@ class Allocation {
         avgMonthlyIncome:
             (json['avgMonthlyIncome'] as num? ?? json['monthlyIncome'] as num? ?? 0)
                 .toDouble(),
+        loanRatio: (json['loanRatio'] as num? ?? 0.4).toDouble(),
         saving: (json['saving'] as num? ?? 0).toDouble(),
         investment: (json['investment'] as num? ?? 0).toDouble(),
         emergency: (json['emergency'] as num? ?? 0).toDouble(),

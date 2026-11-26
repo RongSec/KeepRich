@@ -179,7 +179,9 @@ class _FutureFinancePageState extends State<FutureFinancePage> {
                           onTap: () {
                             final monthlyIncome =
                                 _overview?.allocation.avgMonthlyIncome ?? 10000;
-                            const loanRatio = 0.4; // 默认贷款比例
+                            // 还贷比例取规划里的「剩余」，不再写死 0.4
+                            final loanRatio =
+                                _overview?.allocation.loanRatio ?? 0.4;
                             Navigator.push(
                               context,
                               MaterialPageRoute(

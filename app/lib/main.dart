@@ -107,9 +107,18 @@ class _AppRootState extends State<AppRoot> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 回前台主动刷一次（access 剩余 <5 分钟才真发请求），避免第一屏先吃 401。
-    if (state == AppLifecycleState.resumed && _auth.isLoggedIn) {
-      _auth.refreshIfIdle();
+    if (state == AppLifecycleState.resumed) {
+      if (_auth.isLoggedIn) {
+        // 回前台主动刷一次（access 剩余 <5 分钟才真发请求），避免第一屏先吃 401
+        _auth.refreshIfIdle();
+        // 同步状态轮询在后台被暂停过，这里清零失败计数并立刻拉一次，
+        // 否则会先弹一条「云端同步暂时失败」的假故障。
+        unawaited(SyncStatusService.instance.resume());
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // 后台暂停轮询，避免系统挂起网络后连续失败被误判为同步失败
+      SyncStatusService.instance.pause();
     }
   }
 

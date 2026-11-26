@@ -129,8 +129,8 @@ func TestConsumptionCarryOverSplitHalf(t *testing.T) {
 	}
 }
 
-// TestConsumptionOverspendFullNegativeCarry 月末余额<0：全额结转负数，不产生回流
-func TestConsumptionOverspendFullNegativeCarry(t *testing.T) {
+// TestConsumptionOverspendHalfCarry 月末余额<0：超支也只结转 50% 负数，不产生回流
+func TestConsumptionOverspendHalfCarry(t *testing.T) {
 	db := ledgerTestDB(t)
 	const uid = uint64(1)
 	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.Local)
@@ -142,14 +142,14 @@ func TestConsumptionOverspendFullNegativeCarry(t *testing.T) {
 		time.Date(2026, 2, 12, 10, 0, 0, 0, time.Local), "consumption", "")
 
 	led := NewFinanceService(db).consumptionLedger(models.TxScopePersonal, uid, nil, now, 0.25)
-	if led.CarryIn != -700 {
-		t.Fatalf("本月结转入 = %.2f，期望 -700.00（超支全额结转负数）", led.CarryIn)
+	if led.CarryIn != -350 {
+		t.Fatalf("本月结转入 = %.2f，期望 -350.00（超支 -700 只扣 50%%）", led.CarryIn)
 	}
 	if led.RefundSum != 0 {
 		t.Fatalf("结转回流累计 = %.2f，期望 0（超支不回流）", led.RefundSum)
 	}
-	if led.Balance != -700 {
-		t.Fatalf("当前余额 = %.2f，期望 -700.00", led.Balance)
+	if led.Balance != -350 {
+		t.Fatalf("当前余额 = %.2f，期望 -350.00", led.Balance)
 	}
 }
 

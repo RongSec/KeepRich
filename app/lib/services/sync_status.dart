@@ -57,6 +57,22 @@ class SyncStatusService extends ChangeNotifier {
     _timer = Timer.periodic(pollInterval, (_) => unawaited(refresh()));
   }
 
+  /// 切到后台：暂停轮询。
+  /// 后台网络会被系统挂起，60s 一次的请求连续失败 3 次就会误判成
+  /// 「云端同步失败」，用户回到前台先看到一条假故障横条。
+  void pause() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  /// 回到前台：清零失败计数并立即拉一次，然后恢复轮询。
+  Future<void> resume() async {
+    if (_timer != null) return;
+    _consecutiveFailures = 0;
+    _timer = Timer.periodic(pollInterval, (_) => unawaited(refresh()));
+    await refresh();
+  }
+
   /// 退出登录 / 会话失效时调用
   void stop() {
     _timer?.cancel();

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../services/api.dart';
 import '../services/auth.dart';
+import '../theme.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -33,6 +34,9 @@ class _PlanPageState extends State<PlanPage> {
   /// 当前用户是否家庭管理员（家庭范围下控制能否保存）。
   /// 未判定前默认 false（先禁用，避免非管理员误改）。
   bool _isFamilyAdmin = false;
+  bool _inFamily = false;
+  /// 非管理员加入家庭后个人规划被锁：分配由家庭统一，个人页仅只读不可改
+  bool _personalLocked = false;
 
   @override
   void dispose() {
@@ -59,6 +63,9 @@ class _PlanPageState extends State<PlanPage> {
     } else {
       _isFamilyAdmin = true; // 个人规划人人可改
     }
+    if (_scope == 'personal' && _personalLocked) {
+      _scope = 'family';
+    }
     final r = await ApiClient.instance.getPlan(scope: _scope);
     if (r.ok && r.data != null) {
       final d = r.data!;
@@ -84,12 +91,14 @@ class _PlanPageState extends State<PlanPage> {
     final me = context.read<AuthState>().user;
     final r = await ApiClient.instance.familyMembers();
     if (r.ok && r.data != null && me != null) {
-      final admins =
-          r.data!.where((m) => m.userId == me.id && m.isAdmin).toList();
-      _isFamilyAdmin = admins.isNotEmpty;
+      final mine = r.data!.where((m) => m.userId == me.id).toList();
+      _inFamily = mine.isNotEmpty;
+      _isFamilyAdmin = mine.isNotEmpty && mine.first.isAdmin;
     } else {
+      _inFamily = false;
       _isFamilyAdmin = false;
     }
+    _personalLocked = _inFamily && !_isFamilyAdmin;
     if (mounted) setState(() {});
   }
 
@@ -137,6 +146,19 @@ class _PlanPageState extends State<PlanPage> {
         .fold<double>(0, (s, c) => s + (double.tryParse(c.text) ?? 0));
   }
 
+  /// 其余各项比例之和
+  double _othersSum() => [_saving, _investment, _emergency, _pension, _consumption]
+      .fold<double>(0, (s, c) => s + (double.tryParse(c.text) ?? 0));
+
+  /// 「贷款还款」不是独立可填项：恒等于当前分配下的剩余（1 − 其余之和）。
+  /// 它对应贷款计算器的可用还贷额，必须与其它分配严格互补。
+  void _syncLoan() {
+    final rest = 1 - _othersSum();
+    final v = rest <= 0 ? 0.0 : rest;
+    final s = v.toStringAsFixed(2);
+    if (_loan.text != s) _loan.text = s;
+  }
+
   void _resetDefaults() {
     setState(() {
       _loan.text = '0.4';
@@ -177,12 +199,23 @@ class _PlanPageState extends State<PlanPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'personal', label: Text('个人')),
-                    ButtonSegment(value: 'family', label: Text('家庭')),
+                  segments: [
+                    ButtonSegment(value: 'family', label: const Text('家庭')),
+                    ButtonSegment(
+                      value: 'personal',
+                      enabled: !_personalLocked,
+                      label: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Text('个人'),
+                        if (_personalLocked) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.lock_outline, size: 14),
+                        ],
+                      ]),
+                    ),
                   ],
                   selected: {_scope},
                   onSelectionChanged: (s) {
+                    if (s.first == 'personal' && _personalLocked) return;
                     setState(() => _scope = s.first);
                     _load();
                   },
@@ -202,7 +235,8 @@ class _PlanPageState extends State<PlanPage> {
                 ]),
                 const SizedBox(height: 16),
                 _section('收入分配占比（合计=1，当前=${_sum().toStringAsFixed(2)}）', [
-                  _field(_loan, '贷款还款', hint: '默认 40%'),
+                  _field(_loan, '贷款还款（自动=剩余）',
+                      hint: '当前分配下的剩余', readOnly: true),
                   _field(_saving, '硬性储蓄', hint: '默认 20%'),
                   _field(_investment, '投资', hint: '默认 5%'),
                   _field(_emergency, '应急备用金', hint: '默认 5%'),
@@ -231,17 +265,23 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   Widget _field(TextEditingController c, String label,
-      {String? suffix, String? hint}) {
+      {String? suffix, String? hint, bool readOnly = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: c,
+        readOnly: readOnly,
+        onChanged: readOnly ? null : (_) => _syncLoan(),
         decoration: InputDecoration(
           labelText: label,
           suffixText: suffix,
           hintText: hint,
           border: const OutlineInputBorder(),
           isDense: true,
+          filled: readOnly,
+          fillColor: readOnly ? const Color(0x11FFFFFF) : null,
+          labelStyle:
+              readOnly ? TextStyle(color: AppTheme.textDim) : null,
         ),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
       ),

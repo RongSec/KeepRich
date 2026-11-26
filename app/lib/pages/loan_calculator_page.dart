@@ -48,11 +48,17 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
     _maxLoanAmount = _calculateMaxLoan();
   }
 
+  /// 可用于还贷的收入占比：只把「分配后剩余」的 70% 拿来还贷，
+  /// 留 30% 作为缓冲，避免月供把现金流压死。
+  static const double usableFactor = 0.7;
+
   /// 计算最大可贷款金额
   /// 公式：最大可贷款额 = 月可还贷额 × 贷款系数
+  /// 月可还贷额 = 月均收入 × 还贷比例（当前分配下的剩余）× 70%
   /// 贷款系数 = ((1+r)^n - 1) / (r × (1+r)^n)
   double _calculateMaxLoan() {
-    final monthlyPayment = widget.monthlyIncome * widget.loanRatio;
+    final monthlyPayment =
+        widget.monthlyIncome * widget.loanRatio * usableFactor;
     final annualRate = double.tryParse(_annualRate.text) ?? 3.5;
     final termYears = int.tryParse(_termYears.text) ?? 30;
     final r = annualRate / 12 / 100;
@@ -100,7 +106,8 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
       total = P + P * r * (n + 1) / 2;
     }
 
-    final maxMonthly = widget.monthlyIncome * widget.loanRatio;
+    final maxMonthly =
+        widget.monthlyIncome * widget.loanRatio * usableFactor;
 
     setState(() {
       _monthlyPayment = round2(monthly);
@@ -151,10 +158,11 @@ class _LoanCalculatorPageState extends State<LoanCalculatorPage> {
                   const SizedBox(height: 8),
                   // 本卡片是浅色底（blue.shade50），正文必须用深色，
                   // 否则会落到全局深色主题的浅色文字上，浅底浅字看不清。
-                  Text('月收入：¥${f.format(widget.monthlyIncome)}',
+                  Text('月均收入：¥${f.format(widget.monthlyIncome)}',
                       style: TextStyle(color: Colors.blue.shade900)),
                   Text(
-                      '可用于还贷：¥${f.format(widget.monthlyIncome * widget.loanRatio)}（${(widget.loanRatio * 100).toStringAsFixed(0)}%）',
+                      '可用于还贷：¥${f.format(widget.monthlyIncome * widget.loanRatio * usableFactor)}'
+                      '（剩余 ${(widget.loanRatio * 100).toStringAsFixed(0)}% × 70%）',
                       style: TextStyle(color: Colors.blue.shade900)),
                   Divider(color: Colors.blue.shade200),
                   Text('最大可贷款额：¥${f.format(_maxLoanAmount)}',
