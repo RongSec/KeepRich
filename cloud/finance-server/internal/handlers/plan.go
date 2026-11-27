@@ -133,12 +133,14 @@ func SavePlan(c *gin.Context) {
 	p.EmergencyTarget = req.EmergencyTarget
 	p.PensionTarget = req.PensionTarget
 	p.MonthlySurvivalCost = req.MonthlySurvivalCost
-	p.LoanRatio = req.LoanRatio
 	p.SavingRatio = req.SavingRatio
 	p.InvestmentRatio = req.InvestmentRatio
 	p.EmergencyRatio = req.EmergencyRatio
 	p.PensionRatio = req.PensionRatio
 	p.ConsumptionRatio = req.ConsumptionRatio
+	// 还贷比例不取客户端传值，一律按其余各项的剩余推导，保证合计恒为 1
+	p.LoanRatio = deriveLoanRatio(req.SavingRatio, req.InvestmentRatio,
+		req.EmergencyRatio, req.PensionRatio, req.ConsumptionRatio)
 	p.BigPurchaseRatio = req.BigPurchaseRatio
 	p.InvestAnnualRate = req.InvestAnnualRate
 	if req.CurrentAge > 0 {
@@ -163,6 +165,16 @@ func SavePlan(c *gin.Context) {
 }
 
 // GetPlan 读取规划
+// deriveLoanRatio 还贷比例恒等于当前分配下的剩余（1 − 其余之和）。
+// 它对应贷款计算器的可用还贷额，不接受单独设置，读和写都必须走这里。
+func deriveLoanRatio(saving, investment, emergency, pension, consumption float64) float64 {
+	rest := 1 - (saving + investment + emergency + pension + consumption)
+	if rest < 0 {
+		return 0
+	}
+	return utils.Round2(rest)
+}
+
 func GetPlan(c *gin.Context) {
 	uid := middleware.MustUID(c)
 	scope := c.DefaultQuery("scope", models.TxScopePersonal)
@@ -182,7 +194,8 @@ func GetPlan(c *gin.Context) {
 		// 返回默认值
 		defaults := models.GetDefaultRatios()
 		utils.OK(c, gin.H{
-			"loanRatio":        defaults["loan"],
+			"loanRatio": deriveLoanRatio(defaults["saving"], defaults["investment"],
+				defaults["emergency"], defaults["pension"], defaults["consumption"]),
 			"savingRatio":      defaults["saving"],
 			"investmentRatio":  defaults["investment"],
 			"emergencyRatio":   defaults["emergency"],
@@ -197,5 +210,7 @@ func GetPlan(c *gin.Context) {
 		})
 		return
 	}
+	p.LoanRatio = deriveLoanRatio(p.SavingRatio, p.InvestmentRatio,
+		p.EmergencyRatio, p.PensionRatio, p.ConsumptionRatio)
 	utils.OK(c, p)
 }

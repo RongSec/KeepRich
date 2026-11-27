@@ -78,7 +78,7 @@ type OverviewData struct {
 	// 消费额度桶（consumption）——按月推演派生，不落库。
 	// 余额口径：bal(M) = autoIn(M) + carryIn(M) − spend(M)；
 	// 月末结转（已结束月份）：bal>0 → 下月 carryIn=bal×0.5、refund=bal×0.5（回流待支配）；
-	//                        bal≤0 → 下月 carryIn=bal（超支全额结转负数），refund=0。
+	//                        bal≤0 → 下月 carryIn=bal×0.5（超支也只扣一半），refund=0。
 	ConsumptionBalance float64 `json:"consumptionBalance"` // 消费额度桶当前余额（= bal(当前月)），即「剩余可消费」
 	ConsumptionAutoIn  float64 `json:"consumptionAutoIn"`  // 本月自动入账 = 本月工资收入 × 计划消费比例（视为从待支配转入）
 	ConsumptionCarryIn float64 `json:"consumptionCarryIn"` // 本月结转入（上月末结转来的额度，可能为负）
@@ -112,7 +112,8 @@ type OverviewData struct {
 
 type Allocation struct {
 	MonthlyIncome    float64 `json:"monthlyIncome"`    // 本月已实现工资收入
-	AvgMonthlyIncome float64 `json:"avgMonthlyIncome"` // 月均工资收入（近 12 个月 / 有收入月数），分配与估算以此为准
+	AvgMonthlyIncome float64 `json:"avgMonthlyIncome"` // 月均工资收入（近 12 个月 / 有收入月数），估算以此为准
+	LoanRatio        float64 `json:"loanRatio"`        // 还贷比例（= 当前分配下的剩余）
 	Loan             float64 `json:"loan"`
 	Saving           float64 `json:"saving"`
 	Investment       float64 `json:"investment"`
@@ -226,20 +227,19 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 		totalCash = 0
 	}
 
-	// 年薪计算：工资 + 当月公积金（过往公积金/过往存款/意外收入仍不计入）
+	// 年薪 / 月均计算：**只算工资**。
+	// 公积金进独立账户、不参与分配，计进来会让月均虚高、分配额对不上
+	// （用户口径：公积金不算）。过往公积金/过往存款/意外收入同样不计入。
 	yearAgo := time.Now().AddDate(-1, 0, 0).Unix()
 	var salaryIncome float64
 	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeSalary, yearAgo, &salaryIncome)
-	var housingIncome float64
-	_ = s.sumScopeAfter(scope, uid, familyID, models.TxTypeIncome, models.IncomeHousingFund, yearAgo, &housingIncome)
-	baseIncome := salaryIncome + housingIncome
+	baseIncome := salaryIncome
 
-	// 计算实际有收入的月数（工资或当月公积金，与 baseIncome 同一聚合口径，
-	// 否则家庭空间月数缺失导致年薪虚增）
+	// 实际有工资的月数（与 baseIncome 同一口径）
 	mq := s.DB.Model(&models.Transaction{}).
 		Where("type = ? AND category IN ? AND occurred_at >= ?",
 			models.TxTypeIncome,
-			[]string{models.IncomeSalary, models.IncomeHousingFund}, yearAgo)
+			[]string{models.IncomeSalary}, yearAgo)
 	mq = s.applyScopeQuery(mq, scope, uid, familyID)
 	activeMonths := CountDistinctMonths(mq)
 	if activeMonths < 1 {
@@ -271,17 +271,20 @@ func (s *FinanceService) GetOverview(scope string, uid uint64, familyID *uint64)
 	alloc := Allocation{
 		MonthlyIncome:     monthlyIncome,
 		AvgMonthlyIncome:  avgIncome,
-		Loan:              avgIncome * plan.LoanRatio,
-		Saving:            avgIncome * plan.SavingRatio,
-		Investment:        avgIncome * plan.InvestmentRatio,
-		Emergency:         avgIncome * plan.EmergencyRatio,
-		Pension:           avgIncome * plan.PensionRatio,
-		Consumption:       avgIncome * plan.ConsumptionRatio,
-		SavingTarget:      avgIncome * plan.SavingRatio,
-		InvestmentTarget:  avgIncome * plan.InvestmentRatio,
-		EmergencyTarget:   avgIncome * plan.EmergencyRatio,
-		PensionTarget:     avgIncome * plan.PensionRatio,
-		ConsumptionTarget: avgIncome * plan.ConsumptionRatio,
+		LoanRatio:         plan.LoanRatio,
+		// 各桶「本月应分配」按**当月已到账工资**算：可消费金额是动态的，
+		// 实际到手多少就按比例分多少（月均只用于"还需多久"这类估算）。
+		Loan:              monthlyIncome * plan.LoanRatio,
+		Saving:            monthlyIncome * plan.SavingRatio,
+		Investment:        monthlyIncome * plan.InvestmentRatio,
+		Emergency:         monthlyIncome * plan.EmergencyRatio,
+		Pension:           monthlyIncome * plan.PensionRatio,
+		Consumption:       monthlyIncome * plan.ConsumptionRatio,
+		SavingTarget:      monthlyIncome * plan.SavingRatio,
+		InvestmentTarget:  monthlyIncome * plan.InvestmentRatio,
+		EmergencyTarget:   monthlyIncome * plan.EmergencyRatio,
+		PensionTarget:     monthlyIncome * plan.PensionRatio,
+		ConsumptionTarget: monthlyIncome * plan.ConsumptionRatio,
 	}
 	// 本月已入桶金额（按 transfer 分类）
 	nowEnd := now.Unix()
@@ -867,6 +870,15 @@ func (s *FinanceService) getPlan(scope string, uid uint64, familyID *uint64) (*m
 		}
 		return nil, err
 	}
+	// 还贷比例 = 当前分配下的剩余（1 − 其余各项之和），不接受单独设置：
+	// 它对应贷款计算器的可用还贷额，必须与其它分配严格互补。
+	others := p.SavingRatio + p.InvestmentRatio + p.EmergencyRatio +
+		p.PensionRatio + p.ConsumptionRatio
+	if rest := utils.Round2(1 - others); rest >= 0 {
+		p.LoanRatio = rest
+	} else {
+		p.LoanRatio = 0
+	}
 	return &p, nil
 }
 
@@ -900,7 +912,7 @@ func pickTargetID(scope string, uid uint64, familyID *uint64) uint64 {
 //                bucket=consumption 的部分）；
 //   bal(M)     = autoIn(M) + carryIn(M) − spend(M)；
 //   bal(M) > 0（没花完）→ carryIn(M+1) = bal(M)×0.5（下月额度），refund(M) = bal(M)×0.5（回流待支配）；
-//   bal(M) ≤ 0（超支/恰好平）→ carryIn(M+1) = bal(M)（超支全额结转负数，下月额度扣减），refund(M) = 0；
+//   bal(M) ≤ 0（超支/恰好平）→ carryIn(M+1) = bal(M)×0.5（超支只扣一半），refund(M) = 0；
 //   carryIn(第一个月) = 0，从最早有交易的月份逐月推演到当前月。
 //
 // 实时推演、不落库、不新增表（消费桶余额是派生量，快照兼容）。
@@ -1014,7 +1026,13 @@ func (s *FinanceService) consumptionLedger(scope string, uid uint64, familyID *u
 			carry = utils.FromCents(carryCents)
 			refundSum += utils.FromCents(balCents - carryCents)
 		} else {
-			carry = bal // 超支：全额结转负数（下月额度扣减）；恰好平：结转 0
+			// 超支也只扣 50%：下月额度减半扣，另一半视作已消化，
+			// 避免一次超支把后面几个月额度压低。
+			if bal < 0 {
+				carry = utils.FromCents(utils.ToCents(bal) / 2)
+			} else {
+				carry = 0 // 恰好平
+			}
 		}
 	}
 	return out
